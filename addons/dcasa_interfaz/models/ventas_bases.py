@@ -539,7 +539,8 @@ class DcasaTableroBases(models.AbstractModel):
     def _unidades_por_tipo(self, filas, limite=TIPOS_A_LA_VISTA):
         """``{'tipos': [{'tipo', 'unidades'}], 'total'}``: las unidades de esas facturas (las de «Lo más vendido»,
         ``_unidades_por_producto``: sin servicios, flete, descuentos ni anticipos; las notas de crédito restan) por
-        tipo, la categoría de producto de primer nivel bajo la raíz (``Hogar / Lámparas / …`` → «Salas»; una categoría
+        tipo,
+            la categoría de producto de primer nivel bajo la raíz (``Hogar / Lámparas / …`` → «Lámparas»; una categoría
         raíz, como «Jabones», es su propio tipo). De más a menos unidades; pasados ``limite`` tipos, los demás van
         juntos en «Otros». Un tipo que queda en 0 (vendido y devuelto) no sale."""
         por_tipo = defaultdict(float)

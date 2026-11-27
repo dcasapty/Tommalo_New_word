@@ -32,9 +32,9 @@ class TestValorInventario(VentasCommon):
         cls.espejo = cls.crear_producto('ESPEJO VALOR INV', 300.0, 750.0, 2)
         cls.mesa = cls.crear_producto('MESA VALOR INV ITBMS INCLUIDO', 50.0, 107.0, 4, impuestos=incluido)
         cls.silla = cls.crear_producto('SILLA VALOR INV SIN COSTO', 0.0, 80.0, 5)
-        cls.lampara = cls.crear_producto('LAMPARA VALOR INV SIN PRECIO', 20.0, 0.0, 1)
+        cls.lampara_sin_precio = cls.crear_producto('LAMPARA VALOR INV SIN PRECIO', 20.0, 0.0, 1)
         cls.lampara = cls.crear_producto('LÁMPARA VALOR INV NEGATIVA', 200.0, 500.0, -2)
-        cls.espejo = cls.crear_producto('ESPEJO VALOR INV SIN EXISTENCIAS', 10.0, 30.0, 0)
+        cls.espejo_sin_stock = cls.crear_producto('ESPEJO VALOR INV SIN EXISTENCIAS', 10.0, 30.0, 0)
         cls.baul = cls.crear_producto('BAUL VALOR INV ARCHIVADO', 40.0, 90.0, 1)
         cls.baul.active = False
         cls.repisa = cls.crear_producto('REPISA VALOR INV DE TERCERO', 30.0, 60.0, 0)
@@ -71,19 +71,20 @@ class TestValorInventario(VentasCommon):
         self.assertEqual(tipo['costo'], 600.0 + 200.0 + 0.0 + 20.0 + 40.0)
         self.assertEqual(tipo['venta'], 1500.0 + 400.0 + 400.0 + 0.0 + 90.0)
         self.assertEqual((tipo['unidades'], tipo['productos']), (13.0, 5))
-        self.assertEqual(self.ids(tipo['accion']), {self.espejo.id, self.mesa.id, self.silla.id, self.lampara.id,
+        self.assertEqual(self.ids(tipo['accion']), {self.espejo.id, self.mesa.id, self.silla.id,
+            self.lampara_sin_precio.id,
                                                     self.baul.id})
         self.assertEqual(tipo['accion']['contexto'], {'active_test': False}, 'la lista también trae el archivado')
-        valorados = (self.espejo | self.mesa | self.lampara)._with_valuation_context()
+        valorados = (self.espejo | self.mesa | self.lampara_sin_precio)._with_valuation_context()
         self.assertEqual(sum(valorados.mapped('total_value')), 820.0, 'al costo es la valuación de Odoo')
         total = self.ids(datos['total']['accion'])
         self.assertTrue({self.espejo.id, self.baul.id} <= total)
-        self.assertFalse({self.lampara.id, self.espejo.id, self.repisa.id} & total)
+        self.assertFalse({self.lampara.id, self.espejo_sin_stock.id, self.repisa.id} & total)
 
     def test_lo_que_falta_cargar_se_avisa_con_su_lista(self):
         avisos = self.valor()['avisos']
         self.assertIn(self.silla.id, self.ids(avisos['sin_costo']['accion']))
-        self.assertIn(self.lampara.id, self.ids(avisos['sin_precio']['accion']))
+        self.assertIn(self.lampara_sin_precio.id, self.ids(avisos['sin_precio']['accion']))
         self.assertIn(self.lampara.id, self.ids(avisos['negativos']['accion']))
         self.assertNotIn(self.espejo.id, self.ids(avisos['sin_costo']['accion'])
                          | self.ids(avisos['sin_precio']['accion']) | self.ids(avisos['negativos']['accion']))

@@ -41,7 +41,7 @@ class SitioMetaCase(HttpCase):
             'attribute_line_ids': [Command.create({'attribute_id': color.id,
                                                    'value_ids': [Command.set(color.value_ids.ids)]})]})
         cls.lampara = cls.env['product.product'].create({
-            'name': 'LAMPARA META RENDER', 'type': 'consu', 'list_price': 120.0, 'is_published': True,
+            'name': 'FILTRO META RENDER', 'type': 'consu', 'list_price': 120.0, 'is_published': True,
             'sale_ok': True, 'taxes_id': [Command.clear()]})
         panama = cls.env.ref('base.pa')
         cls.cliente_partner = cls.env['res.partner'].create({
@@ -102,7 +102,7 @@ class TestRender(SitioMetaCase):
         self.authenticate(None, None)
         html = {
             'portada': self.url_open('/').text,
-            'tienda': self.url_open('/shop?search=lampara').text,
+            'tienda': self.url_open('/shop?search=filtro').text,
             'ficha': self.url_open(self.crema.website_url).text,
         }
         self.carrito_del_cliente()

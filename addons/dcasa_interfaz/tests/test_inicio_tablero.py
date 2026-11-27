@@ -393,7 +393,7 @@ class TestInicioTableroEnElNavegador(VentasMixin, HttpCase):
             if (hace.getBoundingClientRect().top < monto.bottom - 2) {
                 throw new Error('lo demás va debajo del monto');
             }
-            igual(getComputedStyle(hace).color, 'rgb(94, 109, 120)', 'lo demás, en el gris de apoyo');
+            igual(getComputedStyle(hace).color, 'rgb(92, 92, 92)', 'lo demás, en el gris de apoyo');
             // Entregas: «Lista» en verde salvia fuerte y «Falta mercancía» en ámbar oscuro (se leen sobre el crema).
             const colores = { o_dcasa_estado_lista: 'rgb(83, 115, 92)', o_dcasa_estado_falta: 'rgb(133, 87, 0)' };
             const estados = todos('.o_dcasa_lista_entregas .o_dcasa_estado');

@@ -9,7 +9,7 @@ from odoo.tests import new_test_user, tagged
 
 from ..controllers import main as C
 from ..models.venta import CONSERVAR_ENVIO
-from .common import RAIZ, TiendaCase
+from .common import RAIZ, TiendaCase, promocion_de_prueba
 
 HOY = 'odoo.addons.dcasa_envios.models.promocion.EnvioPromocion._hoy'
 
@@ -25,13 +25,14 @@ class TestEnvioEnElCarrito(TiendaCase):
         importar(cls.env, cls.gerencia)
         cls.tarifa = cls.env['dcasa.envio.tarifa'].search([], limit=1)
         cls.tarifa.with_user(cls.gerencia).action_aprobar()
+        promocion_de_prueba(cls.env)
         Lugar = cls.env['dcasa.envio.lugar']
         cls.costa = Lugar.search([('name', '=', 'Costa Inventada')])     # $45 normal; gratis con la promoción
         cls.colon = Lugar.search([('name', '=', 'Barrio Simulado')])     # $105; abono de $20
 
     def setUp(self):
         super().setUp()
-        # La promoción de envío de noviembre de 2026 (viene cargada): un día dentro de ella.
+        # La promoción de envío de noviembre de 2026 (la de prueba de promocion_de_prueba): un día dentro de ella.
         self.startPatcher(patch(HOY, return_value=date(2026, 11, 16)))
 
     # ------------------------------------------------------------------ ayudas

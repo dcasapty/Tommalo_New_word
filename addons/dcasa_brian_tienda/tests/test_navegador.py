@@ -3,7 +3,7 @@
 1366 px, el chat de punta a punta (saludo, tarjetas de Odoo, «te lo puse en el carrito», la ubicación, las estrellas),
 la ventana ampliada, Esc, el foco, que no tape la barra de la ficha ni el botón de WhatsApp de la ficha, el movimiento
 reducido y el micrófono de las notas de voz (con el micrófono de prueba de Chrome). Y la marca Tommalo
-(docs/MARCA_TOMMALO.md): la burbuja naranja con el globo navy, quieta; la cabecera naranja con todo en navy; el
+(docs/MARCA_TOMMALO.md): la burbuja de acento con el globo oscuro, quieta; la cabecera de acento con todo en oscuro; el
 panel crema; nada del robot ni del azul de D'CASA."""
 import contextlib
 import os
@@ -25,11 +25,11 @@ ALTO = 800
 # Chrome con un micrófono de prueba (un pitido) y el permiso ya dado: MediaRecorder graba de verdad.
 MICROFONO_DE_PRUEBA = ('--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream')
 # Los colores de la marca, como los devuelve getComputedStyle.
-NARANJA = 'rgb(212, 212, 212)'     # accent: relleno
-NAVY = 'rgb(38, 38, 38)'          # fg y accent-fg: la letra y los íconos sobre el naranja (5.56)
-CREMA = 'rgb(250, 250, 250)'      # bg
+ACENTO = 'rgb(212, 212, 212)'     # accent: relleno
+TEXTO = 'rgb(38, 38, 38)'          # fg y accent-fg: la letra y los íconos sobre el de acento (5.56)
+FONDO = 'rgb(250, 250, 250)'      # bg
 SUPERFICIE = 'rgb(255, 255, 255)'  # surface
-NARANJA_TEXTO = 'rgb(152, 93, 47)'  # accent-strong
+ACENTO_TEXTO = 'rgb(89, 89, 89)'  # accent-strong (#595959)
 AZUL_DCASA = 'rgb(19, 64, 177)'
 # Chrome sin pantalla no dice qué puntero tiene (pointer: none, hover: none); con esto dice lo que dice una computadora
 # de verdad: ratón (pointer: fine, hover: hover).
@@ -203,8 +203,8 @@ BAJAR = """
         await esperar(ms);
     };
     const esLaDeLaMarca = () => Boolean(burbujaB.querySelector('.o_dcbt_burbuja_ico svg')) && !burbujaB.querySelector('img')
-        && getComputedStyle(burbujaB).backgroundColor === 'NARANJA';
-""".replace('NARANJA', NARANJA)
+        && getComputedStyle(burbujaB).backgroundColor === 'ACENTO';
+""".replace('ACENTO', ACENTO)
 
 QUIETA_EN_EL_INICIO = """(async () => {
     /*ESPERAR*/
@@ -411,10 +411,10 @@ class TestBurbujaEnLaPagina(NavegadorCase):
                     browser.navigate_to(self.base_url() + ruta, wait_stop=True)
                     m = self.evaluar(browser, BURBUJA)
                     b = m['burbuja']
-                    # La de Tommalo (Chatbot.tsx): 56 px, naranja, redonda, con el globo de chat en navy y sin robot.
-                    self.assertEqual(m['marca']['fondo'], NARANJA, 'la burbuja, naranja')
-                    self.assertEqual(m['marca']['color'], NAVY, 'el ícono navy (5.56), nunca blanco')
-                    self.assertEqual(m['marca']['colorIcono'], NAVY)
+                    # La de Tommalo (Chatbot.tsx): 56 px, de acento, redonda, con el globo de chat en oscuro y sin robot.
+                    self.assertEqual(m['marca']['fondo'], ACENTO, 'la burbuja, de acento')
+                    self.assertEqual(m['marca']['color'], TEXTO, 'el ícono oscuro (5.56), nunca blanco')
+                    self.assertEqual(m['marca']['colorIcono'], TEXTO)
                     self.assertTrue(m['marca']['icono'], 'el globo de chat')
                     self.assertEqual(m['marca']['imagenes'], 0, 'sin el robot de D’CASA')
                     self.assertEqual(m['marca']['redondo'], '50%')
@@ -602,11 +602,11 @@ class TestBrianDeNoche(NavegadorCase):
         with self.chrome(1366, 768, movil=False) as browser:
             browser.navigate_to(self.base_url() + self.jabon.website_url, wait_stop=True)
             r = self.evaluar(browser, NOCHE_BURBUJA)
-        self.assertEqual((r['alLlegar'], r['cambios']), (True, 0), 'naranja con el globo navy, y no cambia al bajar')
+        self.assertEqual((r['alLlegar'], r['cambios']), (True, 0), 'de acento con el globo oscuro, y no cambia al bajar')
 
 
-# La cabecera del chat con la marca Tommalo (Chatbot.tsx): naranja, con el nombre de la tienda, el estado y los íconos
-# en navy (5.56), y el corazón en un círculo crema. El panel en `surface` y la conversación en crema. Se mide normal y
+# La cabecera del chat con la marca Tommalo (Chatbot.tsx): de acento, con el nombre de la tienda, el estado y los íconos
+# en oscuro (5.56), y el corazón en un círculo crema. El panel en `surface` y la conversación en crema. Se mide normal y
 # ampliada.
 CABECERA = """(async () => {
     /*ESPERAR*/
@@ -662,17 +662,17 @@ class TestCabeceraDeLaMarca(NavegadorCase):
         for tamano in ('normal', 'ampliado'):
             m = r[tamano]
             with self.subTest(tamano=tamano):
-                self.assertEqual(m['cabecera'], NARANJA, 'la cabecera naranja de Tommalo')
+                self.assertEqual(m['cabecera'], ACENTO, 'la cabecera de acento de Tommalo')
                 self.assertEqual(m['titulo'], empresa, 'el nombre de la tienda (la empresa del sitio), no D’CASA')
-                self.assertEqual((m['colorTitulo'], m['estado']), (NAVY, NAVY), 'en navy sobre el naranja (5.56)')
+                self.assertEqual((m['colorTitulo'], m['estado']), (TEXTO, TEXTO), 'en oscuro sobre el de acento (5.56)')
                 self.assertTrue(m['letra'].startswith('Montserrat'), m['letra'])
                 self.assertEqual(m['caja'], 'none', 'el titular como frase, nunca en caja alta')
-                self.assertEqual(set(m['iconos']), {NAVY}, 'los íconos navy')
-                self.assertEqual(m['avatar'], {'fondo': CREMA, 'color': NARANJA_TEXTO, 'redondo': '50%'},
+                self.assertEqual(set(m['iconos']), {TEXTO}, 'los íconos oscuro')
+                self.assertEqual(m['avatar'], {'fondo': FONDO, 'color': ACENTO_TEXTO, 'redondo': '50%'},
                                  'el corazón en su círculo crema')
-                self.assertEqual(m['punto']['aro'], NAVY)
+                self.assertEqual(m['punto']['aro'], TEXTO)
                 self.assertEqual(m['panel'], SUPERFICIE)
-                self.assertEqual(m['cuerpo'], CREMA, 'la conversación sobre crema')
+                self.assertEqual(m['cuerpo'], FONDO, 'la conversación sobre crema')
                 self.assertEqual(m['imagenes'], 0, 'sin el robot de D’CASA')
                 self.assertNotIn(AZUL_DCASA, (m['cabecera'], m['colorTitulo'], *m['iconos']))
 
@@ -771,11 +771,11 @@ class TestCarritoEnLaBarra(NavegadorCase):
         self.assertEqual(r['lleno']['cuenta'], '2')
         self.assertEqual(r['lleno']['etiqueta'], 'Ver tu carrito: 2 artículos')
         self.assertEqual(r['lleno']['href'], '/shop/cart')
-        # El color de la cantidad en la cabecera naranja del chat (marca Tommalo): la pastilla navy con el número
-        # crema (12.21) y un filo naranja que la despega del círculo. (La del menú del sitio la pinta website_dcasa.)
+        # El color de la cantidad en la cabecera de acento del chat (marca Tommalo): la pastilla oscuro con el número
+        # crema (12.21) y un filo de acento que la despega del círculo. (La del menú del sitio la pinta website_dcasa.)
         fondo, texto, aro = r['lleno']['colores']
-        self.assertEqual((fondo, texto), (NAVY, CREMA), 'la cantidad, navy con número crema')
-        self.assertIn(NARANJA, aro, 'el filo naranja la despega del círculo')
+        self.assertEqual((fondo, texto), (TEXTO, FONDO), 'la cantidad, oscuro con número crema')
+        self.assertIn(ACENTO, aro, 'el filo de acento la despega del círculo')
         self.assertNotIn(AZUL_DCASA, (fondo, texto, aro))
         self.assertEqual((r['otraVez']['wa'], r['otraVez']['carrito']), (True, False), 'vacío otra vez: WhatsApp')
 

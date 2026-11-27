@@ -43,8 +43,8 @@ def _excel(filas, fotos=None, foto_en_titulo=False):
 
 
 FILAS = [
-    ('IMP-888K', 'Lámpara tapizada Chica – beige', '228 × 223 × 120 cm', 259.98999999999998, 'CHICA', '=E5+158.67'),
-    ('IMP-888Q', 'Lámpara tapizada Grande', '228 × 182 × 120 cm', 219.99, 'GRANDE', 378.66),
+    ('IMP-888K', 'Lámpara tapizada King – beige', '228 × 223 × 120 cm', 259.98999999999998, 'KING', '=E5+158.67'),
+    ('IMP-888Q', 'Lámpara tapizada Queen', '228 × 182 × 120 cm', 219.99, 'QUEEN', 378.66),
     ('IMP-DUP', 'Mesa de noche blanca', None, 49.99, None, None),
     (' imp-dup ', 'Mesa de noche negra', None, 49.99, None, None),
     ('IMP-SINPRECIO', 'Espejo gris', None, '$—', None, None),
@@ -67,8 +67,8 @@ class TestImportacion(TransactionCase):
             'name': 'Gerente Importa', 'login': 'imp_gerente',
             'group_ids': [Command.set([ref('base.group_user').id, ref('dcasa_base.group_gerencia').id])]})
         impuesto = cls.env['brian.herramientas']._b_itbms_venta()
-        cls.grande = cls.env['product.template'].create({
-            'name': 'LÁMPARA GRANDE VIEJA', 'default_code': 'imp-888q ', 'list_price': 150.0, 'type': 'consu',
+        cls.queen = cls.env['product.template'].create({
+            'name': 'LÁMPARA QUEEN VIEJA', 'default_code': 'imp-888q ', 'list_price': 150.0, 'type': 'consu',
             'is_storable': True, 'taxes_id': [Command.set(impuesto.ids)]})
         cls.foto_k = _png((19, 64, 177))
         cls.foto_q = _png((19, 64, 177, 128), modo='RGBA')
@@ -156,7 +156,7 @@ class TestImportacion(TransactionCase):
         self.assertIn('no es de un producto', avisos)       # la foto del título no se asigna
         # Nada cambió todavía.
         self.assertFalse(self.producto('IMP-888K'))
-        self.assertEqual(self.grande.list_price, 150.0)
+        self.assertEqual(self.queen.list_price, 150.0)
         # La vendedora ve su borrador pero no lo puede editar por RPC.
         importacion = self.env['brian.importacion'].with_user(self.vendedora).browse(datos['importacion_id'])
         self.assertEqual(importacion.estado, 'borrador')
@@ -186,26 +186,26 @@ class TestImportacion(TransactionCase):
         self.assertIn('cambian más de 30%', respuesta['resumen'])
         self.ok(self.confirmar(self.gerente, respuesta))
 
-        chica = self.producto('IMP-888K')
-        self.assertEqual(len(chica), 1)
-        self.assertEqual(chica.list_price, 259.99)          # el precio del Excel tal cual (sin ITBMS)
-        self.assertFalse(chica.taxes_id.price_include)
-        self.assertEqual(chica.taxes_id, self.env['brian.herramientas']._b_itbms_venta())
-        self.assertFalse(chica.is_published)
-        self.assertFalse(chica.allow_out_of_stock_order, 'lo agotado no se pide en la web (Tommalo, 2026-11-24)')
-        self.assertEqual(chica.dcasa_medidas, 'L × A × Alto: 228 × 223 × 120 cm')
+        king = self.producto('IMP-888K')
+        self.assertEqual(len(king), 1)
+        self.assertEqual(king.list_price, 259.99)          # el precio del Excel tal cual (sin ITBMS)
+        self.assertFalse(king.taxes_id.price_include)
+        self.assertEqual(king.taxes_id, self.env['brian.herramientas']._b_itbms_venta())
+        self.assertFalse(king.is_published)
+        self.assertFalse(king.allow_out_of_stock_order, 'lo agotado no se pide en la web (Tommalo, 2026-11-24)')
+        self.assertEqual(king.dcasa_medidas, 'L × A × Alto: 228 × 223 × 120 cm')
         # La categoría sale del nombre con las reglas del catálogo (Tommalo: pañales, toallitas, fulares): una lámpara
         # no es de ninguna, así que queda en la categoría por defecto de Odoo (en Odoo 19, ninguna).
         por_defecto = self.env['product.template'].default_get(['categ_id']).get('categ_id') or False
-        self.assertEqual(chica.categ_id.id, por_defecto)
-        self.assertEqual(chica.attribute_line_ids.value_ids.name, 'Chica')
-        self.assertTrue(chica.image_1920)
-        self.assertEqual(Image.open(io.BytesIO(base64.b64decode(chica.image_1920))).format, 'JPEG')
+        self.assertEqual(king.categ_id.id, por_defecto)
+        self.assertEqual(king.attribute_line_ids.value_ids.name, 'King')
+        self.assertTrue(king.image_1920)
+        self.assertEqual(Image.open(io.BytesIO(base64.b64decode(king.image_1920))).format, 'JPEG')
         # El existente: precio nuevo, foto (PNG con transparencia) y medidas porque no tenía; el nombre no se toca.
-        self.assertEqual(self.grande.list_price, 219.99)
-        self.assertEqual(self.grande.name, 'LÁMPARA GRANDE VIEJA')
-        self.assertEqual(Image.open(io.BytesIO(base64.b64decode(self.grande.image_1920))).format, 'PNG')
-        self.assertEqual(self.grande.dcasa_medidas, 'L × A × Alto: 228 × 182 × 120 cm')
+        self.assertEqual(self.queen.list_price, 219.99)
+        self.assertEqual(self.queen.name, 'LÁMPARA QUEEN VIEJA')
+        self.assertEqual(Image.open(io.BytesIO(base64.b64decode(self.queen.image_1920))).format, 'PNG')
+        self.assertEqual(self.queen.dcasa_medidas, 'L × A × Alto: 228 × 182 × 120 cm')
         self.assertFalse(self.producto('IMP-DUP'))
         primera = self.env['brian.importacion'].browse(datos['importacion_id'])
         self.assertEqual(primera.estado, 'aplicada')
@@ -215,31 +215,31 @@ class TestImportacion(TransactionCase):
         self.assertFalse(otra['ok'])
         self.assertIn('ya no está en borrador', otra['error'])
 
-        # Segunda importación: el Chica sube de precio; guarda el antes.
-        filas = [('imp-888k', 'Lámpara tapizada Chica – beige', '228 × 223 × 120 cm', 279.99, 'CHICA', None)]
+        # Segunda importación: el King sube de precio; guarda el antes.
+        filas = [('imp-888k', 'Lámpara tapizada King – beige', '228 × 223 × 120 cm', 279.99, 'KING', None)]
         segunda = self.proponer(self.gerente, _excel(filas))
         self.assertEqual(segunda['conteo'], {'crear': 0, 'actualizar': 1, 'omitir': 0})
         self.ok(self.confirmar(self.gerente, self.ejecutar(
             self.gerente, 'aplicar_importacion', {'importacion_id': segunda['importacion_id']})))
-        self.assertEqual(chica.list_price, 279.99)
+        self.assertEqual(king.list_price, 279.99)
         linea = self.env['brian.importacion'].browse(segunda['importacion_id']).linea_ids
         self.assertIn('"list_price": 259.99', linea.antes)
 
         # Deshacer la segunda: vuelve el precio anterior.
         self.ok(self.confirmar(self.gerente, self.ejecutar(self.gerente, 'deshacer_importacion', {
             'importacion_id': segunda['importacion_id'], 'motivo': 'precio equivocado'})))
-        self.assertEqual(chica.list_price, 259.99)
+        self.assertEqual(king.list_price, 259.99)
 
-        # La dueña cambia a mano el precio del Grande; deshacer la primera respeta ese cambio.
-        self.grande.list_price = 199.0
+        # La dueña cambia a mano el precio del Queen; deshacer la primera respeta ese cambio.
+        self.queen.list_price = 199.0
         respuesta = self.ejecutar(self.gerente, 'deshacer_importacion', {
             'importacion_id': primera.id, 'motivo': 'lote cancelado'})
         self.assertIn('Deshacer', respuesta['resumen'])
         datos = self.ok(self.confirmar(self.gerente, respuesta))
-        self.assertFalse(chica.exists())                     # creado y sin uso: se borra
-        self.assertEqual(self.grande.list_price, 199.0)      # cambiado después: no se toca
-        self.assertFalse(self.grande.image_1920)             # la foto que puso la importación se quita
-        self.assertFalse(self.grande.dcasa_medidas)
+        self.assertFalse(king.exists())                     # creado y sin uso: se borra
+        self.assertEqual(self.queen.list_price, 199.0)      # cambiado después: no se toca
+        self.assertFalse(self.queen.image_1920)             # la foto que puso la importación se quita
+        self.assertFalse(self.queen.dcasa_medidas)
         self.assertEqual(datos['conservados'][0]['codigo'], 'IMP-888Q')
         self.assertEqual(primera.estado, 'deshecha')
         self.assertEqual(primera.motivo_deshacer, 'lote cancelado')
@@ -248,14 +248,14 @@ class TestImportacion(TransactionCase):
         datos = self.proponer(self.gerente, self.excel_base())
         self.ok(self.confirmar(self.gerente, self.ejecutar(
             self.gerente, 'aplicar_importacion', {'importacion_id': datos['importacion_id']})))
-        chica = self.producto('IMP-888K')
+        king = self.producto('IMP-888K')
         cliente = self.env['res.partner'].create({'name': 'Cliente Importación'})
         self.env['sale.order'].create({'partner_id': cliente.id, 'order_line': [
-            Command.create({'product_id': chica.product_variant_id.id, 'product_uom_qty': 1})]})
+            Command.create({'product_id': king.product_variant_id.id, 'product_uom_qty': 1})]})
         self.ok(self.confirmar(self.gerente, self.ejecutar(self.gerente, 'deshacer_importacion', {
             'importacion_id': datos['importacion_id'], 'motivo': 'prueba'})))
-        self.assertTrue(chica.exists())
-        self.assertFalse(chica.active)
+        self.assertTrue(king.exists())
+        self.assertFalse(king.active)
         # Un Excel con ese código ahora avisa que existe archivado (no crea otro).
         otra = self.proponer(self.gerente, self.excel_base())
         linea = next(li for li in otra['lineas'] if li['codigo'] == 'IMP-888K')

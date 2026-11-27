@@ -34,8 +34,8 @@ class TestPieDeFoto(BaseCase):
     def test_pie_completo(self):
         self.assertEqual(
             pie_de_foto('Lámpara Roble Grande', '$349.99 + ITBMS', 'Ancho × Largo: 160 × 200 cm',
-                        'https://tommalo.example/shop/lámpara-1'),
-            'Lámpara Roble Grande\n$349.99 + ITBMS\nMedidas: Ancho × Largo: 160 × 200 cm\nhttps://tommalo.example/shop/lámpara-1')
+                        'https://tommalo.example/shop/lampara-1'),
+            'Lámpara Roble Grande\n$349.99 + ITBMS\nMedidas: Ancho × Largo: 160 × 200 cm\nhttps://tommalo.example/shop/lampara-1')
 
     def test_no_se_rellena_lo_que_no_hay(self):
         self.assertEqual(pie_de_foto('Espejo Gris', '$800.00 + ITBMS', '', None), 'Espejo Gris\n$800.00 + ITBMS')
@@ -58,12 +58,13 @@ class CatalogoCase(PanelCase):
         base = {'type': 'consu', 'is_storable': True, 'sale_ok': True, 'is_published': True,
                 'taxes_id': [Command.set(impuesto.ids)], 'public_categ_ids': [Command.set(cls.categoria.ids)]}
         cls.lampara = Template.create({
-            **base, 'name': 'ZZCAMA ROBLE GRANDE', 'default_code': 'ZZ-LÁMPARA', 'list_price': 349.99,
+            **base, 'name': 'ZZCAMA ROBLE GRANDE', 'default_code': 'ZZ-LAMPARA', 'list_price': 349.99,
             'standard_price': 123.45, 'dcasa_medidas': 'Ancho × Largo: 160 × 200 cm', 'image_1920': foto(),
             'product_template_image_ids': [
                 Command.create({'name': 'Lado', 'image_1920': foto((200, 30, 30))}),
                 Command.create({'name': 'Detalle', 'image_1920': foto((30, 200, 30))})]})
-        cls.espejo = Template.create({**base, 'name': 'ZZESPEJO GRIS', 'default_code': 'ZZ-ESPEJO', 'list_price': 800.0})
+        cls.espejo = Template.create({**base, 'name': 'ZZESPEJO GRIS', 'default_code': 'ZZ-ESPEJO',
+            'list_price': 800.0})
         cls.secreto = Template.create({**base, 'name': 'ZZSECRETO BORRADOR', 'default_code': 'ZZ-SECRETO',
                                        'list_price': 10.0, 'is_published': False, 'image_1920': foto()})
         tamano = cls.env['product.attribute'].create({'name': 'Zztamaño', 'create_variant': 'always', 'value_ids': [
@@ -125,8 +126,9 @@ class TestBuscarCatalogo(CatalogoCase):
                 self.assertEqual(self.panel.buscar_catalogo(consulta), {'productos': [], 'encontrados': 0})
 
     def test_precio_mas_itbms_y_disponibilidad_como_etiqueta(self):
-        (lampara,) = self.panel.buscar_catalogo('ZZ-LÁMPARA')['productos']
-        self.assertEqual((lampara['precio'], lampara['precio_texto'], lampara['mas_itbms']), (349.99, '$349.99 + ITBMS', True))
+        (lampara,) = self.panel.buscar_catalogo('ZZ-LAMPARA')['productos']
+        self.assertEqual((lampara['precio'], lampara['precio_texto'], lampara['mas_itbms']), (349.99,
+            '$349.99 + ITBMS', True))
         self.assertEqual(lampara['disponibilidad'], 'disponible')
         (espejo,) = self.panel.buscar_catalogo('ZZ-ESPEJO')['productos']
         self.assertEqual(espejo['disponibilidad'], 'pocas')
@@ -139,7 +141,7 @@ class TestBuscarCatalogo(CatalogoCase):
         self.assertNotRegex(datos, r'(?i)standard_price|costo|free_qty|qty_available|existencias')
 
     def test_trae_medidas_enlace_y_fotos(self):
-        (lampara,) = self.panel.buscar_catalogo('ZZ-LÁMPARA')['productos']
+        (lampara,) = self.panel.buscar_catalogo('ZZ-LAMPARA')['productos']
         self.assertEqual(lampara['medidas'], 'Ancho × Largo: 160 × 200 cm')
         self.assertEqual(lampara['id'], self.lampara.id)
         self.assertEqual(lampara['fotos_total'], 3)
@@ -154,7 +156,7 @@ class TestBuscarCatalogo(CatalogoCase):
         self.assertIsNone(jabon['variante_id'])
         self.assertEqual(sorted(v['nombre'] for v in jabon['variantes']),
                          ['ZZJABÓN FIRST CLASS (Zzchica)', 'ZZJABÓN FIRST CLASS (Zzgrande)'])
-        (lampara,) = self.panel.buscar_catalogo('ZZ-LÁMPARA')['productos']
+        (lampara,) = self.panel.buscar_catalogo('ZZ-LAMPARA')['productos']
         self.assertEqual((lampara['variante_id'], lampara['variantes']), (self.lampara.product_variant_id.id, []))
 
     def test_limite(self):

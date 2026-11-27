@@ -19,8 +19,8 @@ from odoo.tests import HttpCase, tagged
 CON_CABECERA_ENCIMA = ('/', '/socios', '/visitanos', '/contactus', '/privacidad', '/terminos', '/web/login')
 
 # Los colores de la marca, como los dice el navegador (getComputedStyle).
-CREMA, SURFACE, NAVY = 'rgb(250, 250, 250)', 'rgb(255, 255, 255)', 'rgb(38, 38, 38)'
-NARANJA, VERDE = 'rgb(212, 212, 212)', 'rgb(189, 189, 189)'
+FONDO, SURFACE, TEXTO = 'rgb(250, 250, 250)', 'rgb(255, 255, 255)', 'rgb(38, 38, 38)'
+ACENTO, SUAVE = 'rgb(212, 212, 212)', 'rgb(189, 189, 189)'
 DE_DCASA = ('rgb(19, 64, 177)', 'rgb(254, 208, 15)', 'rgb(14, 42, 107)', 'rgb(15, 53, 145)')
 
 
@@ -53,19 +53,19 @@ REVISAR_MARCA = r"""
             && !el.closest('[class*="o_dcbt"], [id^="o_dcbt"]'));
         for (const el of todos) {
             const e = cs(el);
-            // El naranja y el verde son RELLENO: nunca color de letra (de un texto visible) ni de borde.
-            if (tieneTexto(el) && ['%(naranja)s', '%(verde)s'].includes(e.color)) {
-                fallar('texto en naranja o verde: ' + nombre(el) + ' «' + el.textContent.trim().slice(0, 30) + '»');
+            // El de acento y el verde son RELLENO: nunca color de letra (de un texto visible) ni de borde.
+            if (tieneTexto(el) && ['%(de acento)s', '%(verde)s'].includes(e.color)) {
+                fallar('texto en de acento o verde: ' + nombre(el) + ' «' + el.textContent.trim().slice(0, 30) + '»');
             }
             for (const lado of ['Top', 'Right', 'Bottom', 'Left']) {
                 if (parseFloat(e['border' + lado + 'Width']) > 0 && e['border' + lado + 'Style'] !== 'none'
-                        && ['%(naranja)s', '%(verde)s'].includes(e['border' + lado + 'Color'])
+                        && ['%(de acento)s', '%(verde)s'].includes(e['border' + lado + 'Color'])
                         && e.backgroundColor !== e['border' + lado + 'Color']) {
-                    fallar('borde naranja o verde: ' + nombre(el));
+                    fallar('borde de acento o verde: ' + nombre(el));
                     break;
                 }
             }
-            // Nada del azul, el amarillo ni el navy de D'CASA.
+            // Nada del azul, el amarillo ni el oscuro de D'CASA.
             for (const valor of [e.color, e.backgroundColor, e.borderTopColor, e.outlineColor]) {
                 if (%(de_dcasa)s.includes(valor)) { fallar('color de D\'CASA (' + valor + ') en ' + nombre(el)); break; }
             }
@@ -83,24 +83,24 @@ REVISAR_MARCA = r"""
                 fallar('letra de ' + e.fontSize + ' (menos de 12 px): ' + nombre(el));
             }
         }
-        // El botón principal: relleno naranja, letra navy, pastilla. (En la ficha «Agregar al carrito» es de contorno a
+        // El botón principal: relleno de acento, letra oscuro, pastilla. (En la ficha «Agregar al carrito» es de contorno a
         // propósito: el principal es «Pregunta por este producto por WhatsApp».)
         for (const boton of [...document.querySelectorAll('#wrapwrap .btn-primary:not(#add_to_cart)')].filter(visible)) {
             const e = cs(boton);
-            if (e.backgroundColor !== '%(naranja)s') fallar('botón principal sin el naranja: ' + nombre(boton) + ' ' + e.backgroundColor);
-            if (e.color !== '%(navy)s') fallar('botón principal sin letra navy: ' + nombre(boton) + ' ' + e.color);
+            if (e.backgroundColor !== '%(de acento)s') fallar('botón principal sin el de acento: ' + nombre(boton) + ' ' + e.backgroundColor);
+            if (e.color !== '%(oscuro)s') fallar('botón principal sin letra oscuro: ' + nombre(boton) + ' ' + e.color);
             const alto = boton.getBoundingClientRect().height;
             if (parseFloat(e.borderTopLeftRadius) < alto / 2 - 1) fallar('botón principal sin pastilla: ' + nombre(boton));
             if (e.fontWeight !== '700') fallar('botón principal sin 700: ' + nombre(boton));
         }
-        // El aro de foco: 2 px navy (tokens de su web).
+        // El aro de foco: 2 px oscuro (tokens de su web).
         const enlace = document.querySelector('#wrapwrap main a, #wrapwrap #wrap a');
         if (enlace) {
             enlace.focus({ focusVisible: true });
             const e = cs(enlace);
             if (document.activeElement === enlace && e.outlineStyle !== 'none'
-                    && (e.outlineColor !== '%(navy)s' || e.outlineWidth !== '2px')) {
-                fallar('aro de foco que no es el navy de 2 px: ' + e.outlineWidth + ' ' + e.outlineColor);
+                    && (e.outlineColor !== '%(oscuro)s' || e.outlineWidth !== '2px')) {
+                fallar('aro de foco que no es el oscuro de 2 px: ' + e.outlineWidth + ' ' + e.outlineColor);
             }
             enlace.blur();
         }
@@ -117,8 +117,8 @@ REVISAR_MARCA = r"""
         if (document.documentElement.scrollWidth > innerWidth) fallar('la página se sale de lado: ' + document.documentElement.scrollWidth);
         return fallas;
     })()
-""".replace('%(crema)s', CREMA).replace('%(naranja)s', NARANJA).replace('%(verde)s', VERDE).replace(
-    '%(navy)s', NAVY).replace('%(de_dcasa)s', str(list(DE_DCASA)))
+""".replace('%(crema)s', FONDO).replace('%(de acento)s', ACENTO).replace('%(verde)s', SUAVE).replace(
+    '%(oscuro)s', TEXTO).replace('%(de_dcasa)s', str(list(DE_DCASA)))
 
 
 @tagged('post_install', '-at_install')
@@ -149,7 +149,7 @@ class TestDisenoUniforme(HttpCase):
                 cabecera = _cabecera(html)
                 self.assertNotIn('o_dcasa_anuncios', cabecera, 'sin la barra de anuncios encima (S01Nav.tsx)')
                 self.assertIn('o_main_nav', cabecera)
-                # Solo la marca escrita (Montserrat 700 navy), sin el sello: como en S01Nav.tsx.
+                # Solo la marca escrita (Montserrat 700 oscuro), sin el sello: como en S01Nav.tsx.
                 self.assertRegex(cabecera, r'<span class="o_dcasa_marca" translate="no">Tommalo</span>')
                 self.assertNotIn('logo-200.webp', cabecera)
                 self.assertNotIn('/web/image/website/1/logo', cabecera)
@@ -226,8 +226,8 @@ class TestDisenoUniforme(HttpCase):
 
     def test_la_marca_en_el_navegador(self):
         """Medido en Chrome, elemento por elemento, en la portada, la tienda, la ficha, el contacto, la cuenta y una
-        legal: el crema, el navy, Montserrat, el botón principal naranja con letra navy en pastilla, el aro de foco
-        navy, el piso de 12 px, y que el naranja y el verde nunca sean texto ni borde ni quede color de D'CASA."""
+        legal: el crema, el oscuro, Montserrat, el botón principal de acento con letra oscuro en pastilla, el aro de foco
+        oscuro, el piso de 12 px, y que el de acento y el verde nunca sean texto ni borde ni quede color de D'CASA."""
         for ruta in ('/', '/shop', self.producto.website_url, '/visitanos', '/web/login', '/privacidad'):
             for ancho in (1440, 390):
                 with self.subTest(ruta=ruta, ancho=ancho):
@@ -243,8 +243,8 @@ class TestDisenoUniforme(HttpCase):
 
     def test_la_pastilla_de_vidrio_crema_en_el_navegador(self):
         """La pastilla de tommalo.example (`.bc-vidrio` de tokens.css): vidrio crema (surface al 50 %; al bajar, al 80 %),
-        desenfoque y saturación (o la refracción), esquinas de 16 px, la marca en Montserrat 700 navy y los enlaces
-        navy en 500. La misma en la tienda y en /socios: ya no hay vidrio ahumado."""
+        desenfoque y saturación (o la refracción), esquinas de 16 px, la marca en Montserrat 700 oscuro y los enlaces
+        oscuro en 500. La misma en la tienda y en /socios: ya no hay vidrio ahumado."""
         codigo = """
             (async () => {
             const fallar = (m) => console.error('Pastilla: ' + m);
@@ -263,7 +263,7 @@ class TestDisenoUniforme(HttpCase):
             const marca = nav.querySelector('.o_dcasa_marca');
             const m = getComputedStyle(marca);
             if (m.color !== 'rgb(38, 38, 38)' || m.fontWeight !== '700' || !/Montserrat/.test(m.fontFamily)) {
-                fallar('la marca no es Montserrat 700 navy: ' + m.color + ' ' + m.fontWeight + ' ' + m.fontFamily);
+                fallar('la marca no es Montserrat 700 oscuro: ' + m.color + ' ' + m.fontWeight + ' ' + m.fontFamily);
             }
             if (marca.getBoundingClientRect().height > 40) fallar('la marca se partió en dos líneas');
             const enlace = document.querySelector('#top_menu .nav-link:not(.active)');

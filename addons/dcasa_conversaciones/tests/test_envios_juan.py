@@ -2,8 +2,9 @@
 ``agregar_envio`` (sumar o reemplazar el envío en la cotización de ESTA conversación y volver a armar el PDF).
 
 Los lugares y la tarifa son los del fixture sintético de dcasa_envios (precios de juguete: Costa Inventada, en la
-provincia de Panamá, $45; Villa Prueba, en Coclé, $15; Barrio Simulado, en Colón, $105). La promoción es una de
-noviembre de PRUEBA que se crea aquí (Tommalo no trae ninguna de fábrica), y las pruebas fijan la fecha de Panamá en el 12 de noviembre de 2026."""
+provincia de Panamá, $45; Villa Prueba, en Panamá Oeste, $15; Barrio Simulado, en Colón, $105). La promoción es una de
+noviembre de PRUEBA que se crea aquí (Tommalo no trae ninguna de fábrica),
+    y las pruebas fijan la fecha de Panamá en el 12 de noviembre de 2026."""
 import json
 import logging
 from datetime import date
@@ -32,7 +33,7 @@ class EnviosJuanCase(CotizarCase):
         importar(cls.env, cls.gerencia)
         cls.env['dcasa.envio.promocion'].create({
             'name': 'Envío Gratis Todo Noviembre', 'desde': date(2026, 11, 1), 'hasta': date(2026, 11, 30),
-            'minimo': 200, 'mide': 'sin_itbms', 'provincias_gratis': 'Panamá\nCoclé', 'abono': 20,
+            'minimo': 200, 'mide': 'sin_itbms', 'provincias_gratis': 'Panamá\nPanamá Oeste', 'abono': 20,
             'excluye_colchon': True, 'active': True})
         cls.tarifa = cls.env['dcasa.envio.tarifa'].search([], limit=1)
         cls.tarifa.with_user(cls.gerencia).action_aprobar()
@@ -147,7 +148,7 @@ class TestCotizarEnvio(EnviosJuanCase):
         duplicados[1].with_user(self.gerencia).write({'km': 60})
         Lugar.with_user(self.gerencia).create({
             'name': 'Duplicado Norte', 'tipo': 'barrio', 'corr': 'Vista Inventada', 'dist': 'Arraiján',
-            'prov': 'Coclé', 'km': 20.0, 'estado': 'ok'})
+            'prov': 'Panamá Oeste', 'km': 20.0, 'estado': 'ok'})
         datos = self.envio(lugar='duplicados')
         self.assertEqual(datos['estado'], 'varios', datos)
         gemelo = [o for o in datos['opciones'] if o['nombre'] == 'El Duplicado']
@@ -167,7 +168,7 @@ class TestCotizarEnvio(EnviosJuanCase):
         base = {'nombre': 'Calle Repetida', 'tipo': 'barrio', 'cat': 'barrio o urbanización', 'corr_exacto': True,
                 'estado': 'ok'}
         for km in (12.1, 12.2, 12.3, 12.4, 12.5):
-            datos_archivo['lugares'].append(dict(base, corr='Los Ensayos', dist='Penonomé', prov='Coclé',
+            datos_archivo['lugares'].append(dict(base, corr='Los Ensayos', dist='La Chorrera', prov='Panamá Oeste',
                                                  km=km))
         datos_archivo['lugares'].append(dict(base, corr='Barrio Simulado', dist='Colón', prov='Colón', km=91.0))
         importar(self.env, self.gerencia, datos=datos_archivo, tarifa=False)
@@ -439,7 +440,7 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertEqual(orden.order_line.filtered('dcasa_envio_lugar_id').dcasa_envio_lugar_id, barato)
 
     def test_h18_con_dos_cotizaciones_abiertas_pregunta_a_cual(self):
-        """Revisión adversarial (I6): espejo $800 y, aparte, una mesa $90. Ni la promoción se mide con la más reciente ni
+        """Revisión (I6): espejo $800 y, aparte, una mesa $90. Ni la promoción se mide con la más reciente ni
         el envío se suma a una sin que el cliente diga cuál."""
         self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.cotizar({'codigo': 'ZZ-MESA'})

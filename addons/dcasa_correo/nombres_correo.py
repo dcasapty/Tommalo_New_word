@@ -1,6 +1,6 @@
 """Los correos de Odoo que listan productos los nombran en formato título (F5, decisión de la dueña 2026-10-22).
 
-Por dentro los nombres van en MAYÚSCULAS; el cliente los lee «Crema Hidratante de Prueba» (``dcasa_base/nombres.py``). Dos
+Por dentro los nombres van en MAYÚSCULAS; el cliente los lee «Crema Hidratante» (``dcasa_base/nombres.py``). Dos
 correos de Odoo pintan el nombre tal cual: la confirmación del pedido y el del carrito abandonado. Sus plantillas
 son datos (``noupdate``) que la tienda puede editar, así que no se reemplazan enteras: solo se cambia la expresión
 que pinta el nombre, en todos los idiomas, y solo si sigue como la dejó Odoo. Se puede repetir.

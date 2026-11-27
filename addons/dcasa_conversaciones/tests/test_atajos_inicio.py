@@ -74,6 +74,10 @@ class TestAtajosEnElNavegador(PanelUiCase):
 
     def test_el_inicio_ofrece_productos_y_conversaciones_y_cada_uno_abre_su_pantalla(self):
         self.datos_de_ejemplo()
+        # El panel de categorías solo lista las que tienen productos: el catálogo de fábrica está vacío.
+        self.env['product.template'].create({
+            'name': 'ZZ atajo de productos', 'type': 'consu', 'sale_ok': True,
+            'public_categ_ids': [(6, 0, self.env.ref('website_dcasa.public_category_hogar').ids)]})
         self.navegador("""
 (async () => {
             const atajo = (clave) => document.querySelector(".o_dcasa_atajo_" + clave);

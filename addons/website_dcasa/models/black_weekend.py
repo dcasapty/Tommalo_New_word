@@ -1,10 +1,12 @@
-"""Campaña del sitio (Black Weekend, Black Friday…): productos marcados y ventana (portada, /promociones y la tienda del borde).
+"""Campaña del sitio (Black Weekend, Black Friday…): productos marcados y ventana (portada, /promociones y la tienda
+del borde).
 
 * Productos: ``product.template.dcasa_black_weekend`` (los marca la migración de dcasa_catalogo,
   ``marcar_black_weekend``), con su orden y, si el producto tiene colores, la variante que se
   muestra (``dcasa_bw_variante_id``, p. ej. el color negro).
 * Precio: el de la tienda (tarifa del visitante), nunca escrito en una plantilla. La línea del
-  combo sale del texto guardado del Excel (``dcasa_combo``, «Combo con colchón <nombre> $X», formato del catálogo de origen que lee ``leer_combo``).
+  combo sale del texto guardado del Excel (``dcasa_combo``, «Combo con colchón <nombre> $X», formato del
+  catálogo de origen que lee ``leer_combo``).
 * Ventana (``ir.config_parameter``), evaluada en hora de Panamá (America/Panama):
 
   - ``dcasa_black_weekend.activo`` = ``1``: visible ya, sin mirar fechas (vista previa de staging).
@@ -35,9 +37,9 @@ PARAM_ACTIVO = 'dcasa_black_weekend.activo'
 PARAM_INICIO = 'dcasa_black_weekend.inicio'
 PARAM_FIN = 'dcasa_black_weekend.fin'
 PARAMS = (PARAM_ACTIVO, PARAM_INICIO, PARAM_FIN)
-# Ventana por defecto: apagada (activo = 0). Las fechas son solo un valor de arranque; la campaña real la fijan
-# DCASA_BLACK_WEEKEND(_INICIO/_FIN) o Sitio web › Campaña del sitio. PENDIENTE: fechas de la primera campaña de Tommalo.
-VENTANA_POR_DEFECTO = {PARAM_ACTIVO: '0', PARAM_INICIO: '2026-10-02', PARAM_FIN: '2026-10-11'}
+# Ventana por defecto: apagada y sin fechas. La campaña real la fijan DCASA_BLACK_WEEKEND(_INICIO/_FIN) o Sitio web ›
+# Campaña del sitio. PENDIENTE: fechas de la primera campaña de Tommalo.
+VENTANA_POR_DEFECTO = {PARAM_ACTIVO: '0', PARAM_INICIO: '', PARAM_FIN: ''}
 ZONA = pytz.timezone('America/Panama')
 RUTA = '/black-weekend'
 # La página de cualquier campaña (Black Friday, …); /black-weekend lleva aquí (controllers/main.py).
@@ -75,7 +77,7 @@ def leer_fecha(valor):
 
 
 def leer_combo(texto):
-    """«Combo con colchón First Class $469.99» → {'texto': 'Combo con colchón First Class', 'colchon':
+    """«Combo con colchón de Prueba $469.99» → {'texto': 'Combo con colchón de Prueba', 'colchon':
     'First Class', 'precio': 469.99}; None si el texto no es un combo con su cifra."""
     m = _COMBO.match(texto or '')
     if not m:

@@ -4,7 +4,7 @@ from odoo.addons.dcasa_conversaciones.tests.common import JuanCase
 from odoo.addons.dcasa_envios.tests.common import importar
 from odoo.tests import new_test_user
 
-# Junto a «Villa Prueba II» del fixture (Penonomé): el lugar más cercano, a unos 10 m.
+# Junto a «Villa Prueba II» del fixture (La Chorrera): el lugar más cercano, a unos 10 m.
 CERCA = (8.9012, -79.8013)
 # Lejos de todo lo del fixture (en el Caribe, dentro del recuadro de Panamá): no se acepta.
 LEJOS = (9.6, -82.8)

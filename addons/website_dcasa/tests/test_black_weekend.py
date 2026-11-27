@@ -27,7 +27,7 @@ PALABRAS_PROHIBIDAS = ('tafi', 'tiempo limitado', 'remate', 'cuotas', 'financiam
 CLASES_DE_DCASA = {'o_dcasa_kicker_light', 'o_dcasa_btn_linea', 'o_dcasa_fondo_oscuro', 'o_dcasa_anuncios',
                    'o_dcasa_band', 'o_dcasa_hero_media_velo'}
 COLORES_DE_DCASA = ('#1340b1', '#fed00f', '#0e2a6b')
-# La letra crema del titular de la campaña solo se lee sobre la banda navy: fuera de ella sería crema sobre crema.
+# La letra crema del titular de la campaña solo se lee sobre la banda oscuro: fuera de ella sería crema sobre crema.
 CLASES_DE_BANDA, FONDOS_NAVY = {'o_dcasa_bw_titulo'}, {'o_dcasa_bw'}
 
 
@@ -132,16 +132,17 @@ class TestVentanaBlackWeekend(_Base, TransactionCase):
             self._ventana('0', inicio, fin)
             self.assertFalse(self.activo(datetime(2026, 10, 8, 12, 0)), (inicio, fin))
 
-    def test_ventana_de_la_duena_por_defecto(self):
-        self.assertEqual(VENTANA_POR_DEFECTO, {
-            PARAM_ACTIVO: '0', PARAM_INICIO: '2026-10-02', PARAM_FIN: '2026-10-11'})
+    def test_ventana_por_defecto_apagada_y_sin_fechas(self):
+        self.assertEqual(VENTANA_POR_DEFECTO, {PARAM_ACTIVO: '0', PARAM_INICIO: '', PARAM_FIN: ''})
         param = self.env['ir.config_parameter'].sudo()
         param.search([('key', 'in', list(VENTANA_POR_DEFECTO))]).unlink()
         param.set_param(PARAM_ACTIVO, '1')  # lo que ya está (p. ej. staging) no se pisa
         self.website._dcasa_bw_parametros_por_defecto()
         self.assertEqual(param.get_param(PARAM_ACTIVO), '1')
-        self.assertEqual(param.get_param(PARAM_INICIO), '2026-10-02')
-        self.assertEqual(param.get_param(PARAM_FIN), '2026-10-11')
+        self.assertFalse(param.get_param(PARAM_INICIO))
+        self.assertFalse(param.get_param(PARAM_FIN))
+        param.set_param(PARAM_ACTIVO, '0')
+        self.assertFalse(self.website._dcasa_black_weekend_activo(), 'sin fechas y apagada, no hay campaña')
 
     def test_textos(self):
         from datetime import date
@@ -162,7 +163,7 @@ class TestVentanaBlackWeekend(_Base, TransactionCase):
             self.assertLessEqual(imagen.width, 1200)
             self.assertLessEqual(imagen.height, 1500)
             self.assertEqual(imagen.size, (OG_ANCHO, OG_ALTO), 'las medidas que dicen las etiquetas og:image')
-        self.assertNotIn("D'CASA", OG_ALT, 'la imagen de la campaña es de Tommalo (las cajas Nateen de su web)')
+        self.assertNotIn("D'CASA", OG_ALT, 'la imagen de la campaña es de Tommalo')
 
 
 @tagged('post_install', '-at_install')
@@ -171,6 +172,7 @@ class TestPaginasBlackWeekend(_Base, HttpCase):
     def setUp(self):
         super().setUp()
         self.website = self.env.ref('website.default_website')
+        self.website.dcasa_whatsapp_number = '+507 6000-0002'   # de fábrica va vacío (PENDIENTE)
         self.salud = self.env.ref('website_dcasa.public_category_salud')
         self.crema = self.env['product.template'].create({
             'name': 'CREMA BLACK DE PRUEBA', 'list_price': 187.99, 'is_published': True,
@@ -221,7 +223,7 @@ class TestPaginasBlackWeekend(_Base, HttpCase):
         self.assertIn('del 5 al 11 de octubre de 2026', html)
         self.assertIn('<link rel="canonical"', html)
         self.assertIn('<meta name="description" content="Black Weekend en Tommalo', html)
-        self.assertIn('Venta 100% online con entrega a domicilio — Ciudad de Panamá.', html)
+        self.assertIn('Venta 100% en línea con entrega a domicilio en Panamá.', html)
         self.assertNotIn('Ciudad de Prueba', html)
         og = re.search(r'<meta property="og:image" content="([^"]+)"', html)
         self.assertTrue(og and og.group(1).endswith(OG_IMAGEN), 'Imagen de la campaña al compartir')

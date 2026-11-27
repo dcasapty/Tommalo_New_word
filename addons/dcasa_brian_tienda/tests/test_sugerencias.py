@@ -1,5 +1,6 @@
 """Sugerencias del saludo con el catálogo («opción 2»): las dos categorías de la portada con más productos publicados,
-en la respuesta del pase (NOMBRE_SUGERENCIA, vacío en Tommalo: sale el nombre de la categoría). Con empate, el orden de la portada; sin nada publicado, ninguna (la página usa las de fábrica)."""
+en la respuesta del pase (NOMBRE_SUGERENCIA, vacío en Tommalo: sale el nombre de la categoría). Con empate, el orden
+de la portada; sin nada publicado, ninguna (la página usa las de fábrica)."""
 from odoo import Command
 from odoo.tests import tagged
 

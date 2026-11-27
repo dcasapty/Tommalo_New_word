@@ -122,8 +122,8 @@ class TestCondicionesSinBase(BaseCase):
         # Si lo que no cabe es el texto de las condiciones, no se esconden productos: hay que acortar el texto.
         self.assertEqual(ajuste(['SILLA'] * 3, ['x' * 6000]), (condiciones.ESCALA_MINIMA, 3))
         # Achicada caben más letras por renglón; un salto de renglón escrito cuenta.
-        self.assertEqual(condiciones.renglones(largo, condiciones.LETRAS_POR_RENGLON_MUEBLE), 2)
-        self.assertEqual(condiciones.renglones(largo, condiciones.LETRAS_POR_RENGLON_MUEBLE / 0.6), 1)
+        self.assertEqual(condiciones.renglones(largo, condiciones.LETRAS_POR_RENGLON_PRODUCTO), 2)
+        self.assertEqual(condiciones.renglones(largo, condiciones.LETRAS_POR_RENGLON_PRODUCTO / 0.6), 1)
         self.assertEqual(condiciones.renglones('ESPEJO\nCOLOR GRIS', 60), 2)
         self.assertEqual(condiciones.renglones('', 60), 1)
 

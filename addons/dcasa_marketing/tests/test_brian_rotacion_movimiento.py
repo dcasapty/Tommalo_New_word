@@ -32,7 +32,7 @@ class TestBrianRotacionMovimiento(MarketingCommon):
         super().setUpClass()
         cls.marketing_rol = crear_usuario(cls.env, 'zzmk_brian_rol', ['dcasa_marketing.group_marketing'])
         cls.categoria_br = cls.env['product.category'].create({'name': 'ZZBR Categoría'})
-        cls.lampara = cls.producto('ZZBR Lámpara', 'ZZBR-LÁMPARA', stock=5, categoria=cls.categoria_br)
+        cls.lampara = cls.producto('ZZBR Lámpara', 'ZZBR-LAMPARA', stock=5, categoria=cls.categoria_br)
         cls.lampara.standard_price = 40.0
         cls.repisa = cls.producto('ZZBR Repisa', 'ZZBR-REPISA', stock=8, categoria=cls.categoria_br)
         cls.repisa.standard_price = 40.0
@@ -59,7 +59,7 @@ class TestBrianRotacionMovimiento(MarketingCommon):
         r = self.llamar(self.marketing_rol, 'rotacion_de_inventario', grupo='todos', categoria='ZZBR Categoría')
         self.assertTrue(r['ok'], r)
         codigos = {p.get('codigo') for p in r['datos']['productos']}
-        self.assertEqual(codigos, {'ZZBR-LÁMPARA', 'ZZBR-REPISA'})
+        self.assertEqual(codigos, {'ZZBR-LAMPARA', 'ZZBR-REPISA'})
         dinero = [k for k in claves(r['datos']) if any(d in k.lower().split('.')[-1] for d in CLAVES_DE_DINERO)]
         self.assertEqual(dinero, [], 'Marketing no recibe ni una cifra de dinero por Brian')
 
@@ -80,7 +80,7 @@ class TestBrianRotacionMovimiento(MarketingCommon):
                         categoria='ZZBR Categoría')
         self.assertTrue(r['ok'], r)
         codigos = {p.get('codigo') for p in r['datos']['productos']}
-        self.assertIn('ZZBR-LÁMPARA', codigos)
+        self.assertIn('ZZBR-LAMPARA', codigos)
         dinero = [k for k in claves(r['datos']) if any(d in k.lower().split('.')[-1] for d in CLAVES_DE_DINERO)]
         self.assertEqual(dinero, [], 'Marketing no recibe dinero al comparar periodos')
 

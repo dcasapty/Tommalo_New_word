@@ -13,7 +13,7 @@ from odoo.tests import HttpCase, new_test_user, tagged
 
 from .common import BrianCase
 
-PRINCIPAL = '#262626'   # verde oscuro: solo de prueba, no es la marca de nadie
+PRINCIPAL = '#173A2B'   # verde oscuro: solo de prueba, no es la marca de nadie
 ACENTO = '#F2C14E'      # amarillo: solo de prueba
 HERRAMIENTAS = {'ver_marca_del_panel': 'lectura', 'cambiar_colores_del_panel': 'construccion',
                 'poner_imagen_del_panel': 'construccion', 'volver_a_la_marca_de_fabrica': 'sensible'}
@@ -21,7 +21,7 @@ HERRAMIENTAS = {'ver_marca_del_panel': 'lectura', 'cambiar_colores_del_panel': '
 
 def png(ancho=300, alto=120):
     salida = io.BytesIO()
-    Image.new('RGBA', (ancho, alto), (27, 50, 70, 255)).save(salida, 'PNG')
+    Image.new('RGBA', (ancho, alto), (38, 38, 38, 255)).save(salida, 'PNG')
     return salida.getvalue()
 
 

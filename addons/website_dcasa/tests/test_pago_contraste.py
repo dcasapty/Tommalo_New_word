@@ -1,7 +1,8 @@
 """Los pares de color del pago, con la fórmula WCAG (la misma de los informes de Feuxui): texto ≥ 4.5:1, borde de un
 campo y ícono ≥ 3:1. Los colores se leen del propio ``pago.scss`` y de los tokens de la marca de ``dcasa.scss`` (no se
 copian aquí): si alguien cambia un tono y el par deja de cumplir, esta prueba lo dice. Y la marca provisional
-neutra de Tommalo: el pago no usa nada de las tiendas de origen (azul, amarillo, Anton, Oswald, Inter), la letra sobre el
+neutra de Tommalo: el pago no usa nada de las tiendas de origen (azul, amarillo, Anton, Oswald, Inter), la letra sobre
+el
 acento es la oscura, y no hay degradados ni sombras."""
 import re
 from pathlib import Path
@@ -96,7 +97,7 @@ class TestContrasteDelPago(TransactionCase):
             ('texto del botón de pagar bajo el puntero', c['pago-en-accion'], c['pago-accion-encima']),
             ('cantidad oscuro en la insignia suave', c['pago-tinta'], c['pago-insignia']),
             ('«Modo de prueba» oscuro sobre el fondo', c['pago-tinta'], c['pago-elegida']),
-            ('antetítulo de la entrega (salvia fuerte) sobre la superficie', c['pago-icono'], c['pago-panel']),
+            ('antetítulo de la entrega (suave fuerte) sobre la superficie', c['pago-icono'], c['pago-panel']),
             ('«El pago no se completó» sobre el fondo', c['pago-error'], c['bc-bg']),
             ('«El pago no se completó» sobre la superficie', c['pago-error'], c['pago-panel']),
             ('botón de pagar sin método elegido', c['pago-apagado-letra'], c['pago-apagado']),
@@ -143,7 +144,8 @@ class TestContrasteDelPago(TransactionCase):
         pago = (SCSS / 'pago.scss').read_text()
         # Los titulares van como frase: la única caja alta del pago es el antetítulo de la entrega (12 px, .14em).
         self.assertEqual(pago.count('text-transform: uppercase'), 1)
-        # La letra blanca nunca va sobre el acento: en el pago, lo que va sobre $pago-accion es $pago-en-accion (oscuro).
+        # La letra blanca nunca va sobre el acento: en el pago, lo que va sobre $pago-accion es $pago-en-accion
+        # (oscuro).
         for bloque in re.findall(r'background: \$pago-accion;[^}]*', pago):
             self.assertNotIn('#fff', bloque.lower())
             self.assertNotIn('$bc-blanco', bloque)

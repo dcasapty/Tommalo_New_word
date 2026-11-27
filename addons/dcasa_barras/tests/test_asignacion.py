@@ -32,11 +32,11 @@ class TestPlan(BarrasCommon):
              'repetida', 'repetida', 'usada'])
 
     def test_el_codigo_es_la_referencia_sin_espacios_de_los_lados(self):
-        plan = planear_codigos([{'id': 1, 'default_code': '  ZZT-LÁMPARA-1 ', 'barcode': False}])
-        self.assertEqual(plan[1], ('asignar', 'ZZT-LÁMPARA-1'))
+        plan = planear_codigos([{'id': 1, 'default_code': '  ZZT-LAMPARA-1 ', 'barcode': False}])
+        self.assertEqual(plan[1], ('asignar', 'ZZT-LAMPARA-1'))
 
     def test_las_variantes_con_su_propia_referencia_quedan_distintas(self):
-        decision = planear_codigos([{'id': i, 'default_code': f'LÁMPARA-{t}', 'barcode': False}
+        decision = planear_codigos([{'id': i, 'default_code': f'LAMPARA-{t}', 'barcode': False}
                                     for i, t in enumerate(('TWIN', 'FULL', 'GRANDE', 'CHICA'), 1)])
         self.assertEqual({d for d, _c in decision.values()}, {'asignar'})
         self.assertEqual(len({c for _d, c in decision.values()}), 4)
@@ -79,7 +79,7 @@ class TestAsignacion(BarrasCommon):
         asignacion = self.asignar()
         asignacion.action_aplicar()
         self.assertEqual(asignacion.estado, 'aplicada')
-        self.assertEqual((self.lampara.barcode, self.nuevo.barcode), ('ZZT-LÁMPARA-1', 'NUE-1'))
+        self.assertEqual((self.lampara.barcode, self.nuevo.barcode), ('ZZT-LAMPARA-1', 'NUE-1'))
         self.assertEqual(self.zapatera.barcode, '7501234567890', 'el que ya tenía código sigue igual')
         self.assertFalse(self.rep_a.barcode or self.rep_b.barcode or self.sin_ref.barcode or self.raro.barcode)
         self.assertEqual(asignacion.n_asignados, 2)
@@ -98,7 +98,7 @@ class TestAsignacion(BarrasCommon):
         """Entre revisar y aplicar alguien le puso un código al producto: no se pisa."""
         asignacion = self.asignar()
         self.nuevo.barcode = 'OTRO-CODIGO'
-        self.producto('Otro con ese código', 'XXX-1', barcode='ZZT-LÁMPARA-1')   # y otro ya usó el de la lámpara
+        self.producto('Otro con ese código', 'XXX-1', barcode='ZZT-LAMPARA-1')   # y otro ya usó el de la lámpara
         asignacion.action_aplicar()
         self.assertEqual(self.nuevo.barcode, 'OTRO-CODIGO')
         self.assertFalse(self.lampara.barcode)
@@ -150,7 +150,7 @@ class TestAsignacion(BarrasCommon):
 
     def test_si_le_cambian_la_referencia_despues_de_revisar_no_se_asigna(self):
         asignacion = self.asignar()
-        self.lampara.default_code = 'ZZT-LÁMPARA-OTRA'
+        self.lampara.default_code = 'ZZT-LAMPARA-OTRA'
         asignacion.action_aplicar()
         self.assertFalse(self.lampara.barcode)
         self.assertEqual(self.decisiones(asignacion)[self.lampara], 'error')

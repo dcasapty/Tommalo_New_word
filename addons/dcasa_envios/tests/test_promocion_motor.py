@@ -1,7 +1,7 @@
 """La cuenta de la promoción de envío, sin base de datos (``motor/promocion.py``).
 
 La promoción de noviembre con las decisiones de la dueña: más de $200 SIN ITBMS (estrictamente mayor), gratis en toda
-la provincia de Panamá y en Coclé, $20 de abono en Colón y el resto, no aplica con colchón, del 1 al 30 de
+la provincia de Panamá y en Panamá Oeste, $20 de abono en Colón y el resto, no aplica con colchón, del 1 al 30 de
 noviembre de 2026 (ambos incluidos)."""
 from datetime import date
 
@@ -11,7 +11,7 @@ from ..motor import promocion as P
 
 NOVIEMBRE = {
     'nombre': 'Envío Gratis Todo Noviembre', 'desde': date(2026, 11, 1), 'hasta': date(2026, 11, 30),
-    'minimo': 200.0, 'mide': 'sin_itbms', 'provincias_gratis': ['Panamá', 'Coclé'], 'distritos_gratis': [],
+    'minimo': 200.0, 'mide': 'sin_itbms', 'provincias_gratis': ['Panamá', 'Panamá Oeste'], 'distritos_gratis': [],
     'abono': 20.0, 'excluye_colchon': True,
 }
 HOY = date(2026, 11, 12)
@@ -103,7 +103,7 @@ class TestPromocionDeEnvio(BaseCase):
     # --- Zonas: gratis o abono -------------------------------------------------------------------------------------
     def test_gratis_en_toda_la_provincia_de_panama_y_en_panama_oeste(self):
         for prov, dist in (('Panamá', 'Panamá'), ('Panamá', 'Chepo'), ('Panamá', 'San Miguelito'),
-                           ('Coclé', 'Penonomé'), ('COCLE', 'Arraiján'), ('panama', 'Taboga')):
+                           ('Panamá Oeste', 'La Chorrera'), ('PANAMA OESTE', 'Arraiján'), ('panama', 'Taboga')):
             with self.subTest(prov=prov, dist=dist):
                 resultado = self.aplicar(precio=35.0, prov=prov, dist=dist, datos=compra(250.0))
                 self.assertEqual((resultado['motivo'], resultado['precio_final'], resultado['ahorro']),
@@ -136,9 +136,9 @@ class TestPromocionDeEnvio(BaseCase):
 
     def test_distritos_gratis_ademas_de_las_provincias(self):
         promocion = dict(NOVIEMBRE, provincias_gratis=['Panamá'], distritos_gratis=['Arraiján'])
-        self.assertEqual(self.aplicar(precio=35.0, prov='Coclé', dist='Arraiján', datos=compra(300),
+        self.assertEqual(self.aplicar(precio=35.0, prov='Panamá Oeste', dist='Arraiján', datos=compra(300),
                                       promocion=promocion)['motivo'], P.GRATIS)
-        self.assertEqual(self.aplicar(precio=35.0, prov='Coclé', dist='Penonomé', datos=compra(300),
+        self.assertEqual(self.aplicar(precio=35.0, prov='Panamá Oeste', dist='La Chorrera', datos=compra(300),
                                       promocion=promocion)['motivo'], P.ABONO)
 
     def test_sin_abono_fuera_de_las_zonas_gratis_no_hay_beneficio(self):

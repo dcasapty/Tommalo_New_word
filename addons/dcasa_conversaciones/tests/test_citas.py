@@ -612,7 +612,8 @@ class TestRevisionDeCitas(CitasCase):
 
     def test_s4_solo_se_copia_lo_citado_que_no_esta_en_odoo(self):
         """Telegram manda el texto citado: si ese mensaje no está en el historial, es lo único que hay."""
-        _conv, fuera, _ = self.entrante('ese', 'wamid.C5', cita={'id_canal': 'tg:1:9', 'texto': 'Una lámpara de 2 metros'})
+        _conv, fuera, _ = self.entrante('ese', 'wamid.C5', cita={'id_canal': 'tg:1:9',
+            'texto': 'Una lámpara de 2 metros'})
         self.assertEqual(fuera.cita_texto, 'Una lámpara de 2 metros')
         self.assertEqual(fuera._como_dict()['cita']['texto'], 'Una lámpara de 2 metros')
         _conv, bot, _ = self.del_bot('Tenemos la Lámpara Roble.', [

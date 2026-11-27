@@ -21,8 +21,8 @@ dejada genérica):
 * Contacto, horario y opiniones de productos de quien los compró y pagó, publicadas solo si Gerencia las aprueba.
 * Campaña del sitio (Black Weekend, Black Friday…): banda en la portada, página /promociones y etiqueta en las
   tarjetas de los productos marcados, solo dentro de la ventana de la campaña (models/black_weekend.py).
-* Carrusel del hero con productos propios que Gerencia elige y ordena en Sitio web › Carrusel de la portada (vacío = hero
-  de solo texto) (models/portada.py).
+* Carrusel del hero con productos propios que Gerencia elige y ordena en Sitio web › Carrusel de la portada (vacío =
+  hero de solo texto) (models/portada.py).
 * Páginas legales (privacidad y términos): texto provisional que revisa la asesoría legal de Tommalo.
 
 Todo el contenido de las páginas es editable con el constructor de Odoo

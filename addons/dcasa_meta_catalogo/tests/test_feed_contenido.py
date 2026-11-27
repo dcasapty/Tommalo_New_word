@@ -20,7 +20,8 @@ class TestFeedContenido(MetaComun, TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.lampara = cls._producto('Lampara de noche prueba Meta', 120.0, description_sale='Lampara de noche con dos gavetas.')
+        cls.lampara = cls._producto('Lampara de noche prueba Meta', 120.0,
+                                    description_sale='Lampara de noche con dos gavetas.')
         cls.oculto = cls._producto('Lampara que no se anuncia', 80.0, dcasa_meta_no_anunciar=True)
         cls.archivado = cls._producto('Lampara archivada', 80.0)
         cls.archivado.active = False

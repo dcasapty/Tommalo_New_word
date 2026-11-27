@@ -136,7 +136,7 @@ class TestEscanerDocumentos(BarrasCommon):
     # --- Lo demás se escanea como siempre --------------------------------------------------------------
 
     def test_lo_que_no_es_un_documento_sigue_igual(self):
-        for texto, forma in (('ZZT-LÁMPARA-1', 'referencia'), (self.lampara.dcasa_codigo_publico, 'codigo_publico')):
+        for texto, forma in (('ZZT-LAMPARA-1', 'referencia'), (self.lampara.dcasa_codigo_publico, 'codigo_publico')):
             r = self.Barras.buscar(texto)
             self.assertEqual((r['resultado'], r['forma'], r['productos'][0]['id']),
                              ('ok', forma, self.lampara.id), texto)

@@ -27,7 +27,7 @@ class PromocionComun(EnviosComun):
         # Tommalo no trae ninguna promoción de fábrica: esta es de PRUEBA (inventada) y se crea aquí.
         cls.noviembre = cls.env['dcasa.envio.promocion'].create({
             'name': 'Envío Gratis Todo Noviembre', 'desde': date(2026, 11, 1), 'hasta': date(2026, 11, 30),
-            'minimo': 200, 'mide': 'sin_itbms', 'provincias_gratis': 'Panamá\nCoclé', 'abono': 20,
+            'minimo': 200, 'mide': 'sin_itbms', 'provincias_gratis': 'Panamá\nPanamá Oeste', 'abono': 20,
             'excluye_colchon': True, 'active': True})
         impuesto = cls.env.company.account_sale_tax_id
         base = {'type': 'consu', 'sale_ok': True, 'taxes_id': [Command.set(impuesto.ids)]}
@@ -90,7 +90,7 @@ class TestPromocionDeEnvio(PromocionComun):
                           promocion.abono, promocion.excluye_colchon, promocion.active),
                          ('Envío Gratis Todo Noviembre', date(2026, 11, 1), date(2026, 11, 30), 200.0, 'sin_itbms',
                           20.0, True, True))
-        self.assertEqual(promocion._como_motor()['provincias_gratis'], ['Panamá', 'Coclé'])
+        self.assertEqual(promocion._como_motor()['provincias_gratis'], ['Panamá', 'Panamá Oeste'])
         self.assertEqual(self.env['dcasa.envio.promocion']._vigente(date(2026, 11, 30)), promocion)
         self.assertFalse(self.env['dcasa.envio.promocion']._vigente(date(2026, 12, 1)))
         self.assertIn("El envío a ese lugar cuesta normalmente $100. Con la promoción de noviembre, en compras de más "
@@ -132,11 +132,11 @@ class TestPromocionDeEnvio(PromocionComun):
                 'mide': 'sin_itbms', 'provincias_gratis': 'Panamá'}
         for malo in ({'hasta': date(2027, 1, 1)}, {'minimo': -1}, {'abono': -5},
                      {'provincias_gratis': False, 'distritos_gratis': False, 'abono': 0},
-                     {'provincias_gratis': 'Panamá Oste'}, {'distritos_gratis': 'Penonomé Vieja'}):
+                     {'provincias_gratis': 'Panamá Oste'}, {'distritos_gratis': 'Chorrera Vieja'}):
             with self.subTest(malo=malo), self.assertRaises(ValidationError):
                 Promocion.create(dict(base, **malo))
-        buena = Promocion.create(dict(base, provincias_gratis='cocle\nPANAMÁ', distritos_gratis='Colón'))
-        self.assertEqual(buena._como_motor()['provincias_gratis'], ['cocle', 'PANAMÁ'])
+        buena = Promocion.create(dict(base, provincias_gratis='panama oeste\nPANAMÁ', distritos_gratis='Colón'))
+        self.assertEqual(buena._como_motor()['provincias_gratis'], ['panama oeste', 'PANAMÁ'])
 
     def test_la_calculadora_y_brian_siguen_dando_el_precio_normal(self):
         lugar = self.lugar('Costa Inventada')

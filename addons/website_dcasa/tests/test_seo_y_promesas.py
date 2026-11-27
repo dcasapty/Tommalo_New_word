@@ -3,7 +3,6 @@ import base64
 import io
 import json
 import re
-
 from unittest.mock import patch
 
 from markupsafe import Markup
@@ -56,7 +55,7 @@ class TestSitioFase0(HttpCase):
         self.crema.image_1920 = self._foto('gray')
         self.env['dcasa.portada.diapositiva'].create({'website_id': self.website.id, 'product_tmpl_id': self.crema.id})
         con = self.url_open('/').text
-        img = re.search(r'<div class="o_dcasa_vitrina_foto is-activa"[^>]*>.*?(<img[^>]*>)', con, re.S)
+        img = re.search(r'<div[^>]*class="o_dcasa_vitrina_foto is-activa"[^>]*>.*?(<img[^>]*>)', con, re.S)
         self.assertTrue(img, 'la primera foto del carrusel')
         etiqueta = img.group(1)
         self.assertIn('loading="eager"', etiqueta)
@@ -75,8 +74,8 @@ class TestSitioFase0(HttpCase):
         return self.url_open(enlace.group(1)).text
 
     def test_fuentes_autoalojadas_sin_google(self):
-        """Montserrat (letra provisional neutra) sale del módulo: ni @import ni preconnect a Google Fonts. Anton, Oswald e
-        Inter no se cargan en el sitio."""
+        """Montserrat (letra provisional neutra) sale del módulo: ni @import ni preconnect a Google Fonts. Anton,
+        Oswald e Inter no se cargan en el sitio."""
         for ruta in ('/', '/shop'):
             html = self.url_open(ruta).text
             self.assertNotIn('fonts.googleapis.com', html, ruta)
@@ -261,7 +260,8 @@ class TestSitioFase0(HttpCase):
         pagina = self.env['website.page'].search([('url', '=', '/')], limit=1)
         pagina.with_context(lang='es_419').website_meta_description = 'Texto propio escrito en el editor'
         self.env['website']._dcasa_seo_portada()
-        self.assertEqual(pagina.with_context(lang='es_419').website_meta_description, 'Texto propio escrito en el editor')
+        self.assertEqual(pagina.with_context(lang='es_419').website_meta_description,
+                         'Texto propio escrito en el editor')
 
     # -- SW-03: promesas sin respaldo -------------------------------------------------------------
 
@@ -281,7 +281,7 @@ class TestSitioFase0(HttpCase):
     # -- SW-07 --------------------------------------------------------------------------------
 
     def test_enlace_activo_del_menu_en_accent_strong(self):
-        """El enlace de la página donde se está va en accent-strong (#595959), nunca en el acento de relleno (#D4D4D4)."""
+        """El enlace de la página donde se está va en accent-strong (#595959), nunca en el acento de relleno."""
         html = self.url_open('/').text
         css_link = re.search(r'href="([^"]*web\.assets_frontend[^"]*\.css)"', html).group(1)
         css = self.url_open(css_link).text
@@ -307,12 +307,12 @@ class TestRetirarPromesas(TransactionCase):
         vista = self.env['ir.ui.view'].create({
             'name': 'Copia vieja', 'type': 'qweb', 'key': 'website_dcasa.prueba_copia_vieja',
             'website_id': website.id,
-            'arch_db': '<t t-name="website_dcasa.prueba_copia_vieja"><div>%s<p>financiamiento de prueba: %s</p></div></t>'
-                       % (self.PROMESAS[0][0], self.PROMESAS[1][0]),
+            'arch_db': ('<t t-name="website_dcasa.prueba_copia_vieja"><div>'
+                        f'{self.PROMESAS[0][0]}<p>financiamiento de prueba: {self.PROMESAS[1][0]}</p></div></t>'),
         })
         cod = self.env.ref('delivery.payment_provider_cod')
         cod.with_context(lang='es_419').pending_msg = Markup(
-            '<p>%s Te escribimos por WhatsApp para confirmar la fecha.</p>' % self.PROMESAS[1][0])
+            f'<p>{self.PROMESAS[1][0]} Te escribimos por WhatsApp para confirmar la fecha.</p>')
 
         with patch.object(modulo_website, 'PROMESAS_RETIRADAS', self.PROMESAS):
             self.assertGreaterEqual(self.env['website']._dcasa_retirar_promesas(), 2)

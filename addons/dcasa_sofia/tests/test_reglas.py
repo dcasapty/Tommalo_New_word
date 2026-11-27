@@ -63,7 +63,7 @@ class TestReglasDeSofia(BaseCase):
         self.assertEqual(R.que_falta(False, False), '')
 
     def test_rellenar_no_deja_huecos_ni_claves(self):
-        texto = R.rellenar('¡Hola {nombre}! Soy {vendedora} de D\'CASA.', {'nombre': '', 'vendedora': 'Ana'})
+        texto = R.rellenar('¡Hola {nombre}! Soy {vendedora} de Tommalo.', {'nombre': '', 'vendedora': 'Ana'})
         self.assertEqual(texto, "¡Hola! Soy Ana de Tommalo.")
         self.assertEqual(R.rellenar('¿Me regalas {que_falta} ?', {'que_falta': 'tu correo'}), '¿Me regalas tu correo?')
         self.assertNotIn('{', R.rellenar('{nombre} {interes}', {}))

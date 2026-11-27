@@ -27,6 +27,7 @@ class MiCuentaComun:
             self.premios = premios_de_prueba(self.env)
         self.env = self.env(context=dict(self.env.context, tracking_disable=True))
         self.website = self.env.ref('website.default_website')
+        self.website.dcasa_whatsapp_number = '+507 6000-0002'   # de fábrica va vacío (PENDIENTE)
         itbms = self.env.ref('base.main_company').account_sale_tax_id
         self.crema = self.env['product.product'].create({
             'name': 'CREMA MILÁN DE PRUEBA', 'type': 'consu', 'invoice_policy': 'order', 'list_price': 1000.0,

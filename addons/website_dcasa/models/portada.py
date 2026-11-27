@@ -1,9 +1,10 @@
 """Portada: el carrusel del hero con productos propios (pedido de la dueña, 2026-11-16).
 
-* **Carrusel del hero** (``dcasa.portada.diapositiva``): la dueña quiere fotos propias que «se vean muy bien», en
+* **Carrusel del hero** (``dcasa.portada.diapositiva``): se quieren fotos propias que «se vean muy bien», en
   carrusel («algo dinámico, interactivo, que cambie»). Qué productos salen y en qué orden se elige en el panel
-  (Sitio web › Carrusel de la portada, Gerencia y administradores), sin tocar código. Vacío = el hero de solo texto. Cada diapositiva es la foto principal del producto, su nombre de cliente y un enlace a
-  su ficha; solo salen los productos que un visitante puede comprar (publicados y a la venta en el sitio) y con foto.
+  (Sitio web › Carrusel de la portada, Gerencia y administradores), sin tocar código. Vacío = el hero de solo texto.
+  Cada diapositiva es la foto principal del producto, su nombre de cliente y un enlace a su ficha; solo salen los
+  productos que un visitante puede comprar (publicados y a la venta en el sitio) y con foto.
 
 Las fotos se funden en el marco redondeado del hero, al lado del texto.
 
@@ -35,8 +36,8 @@ _MEMO = '_dcasa_hero_carrusel'
 SEGUNDOS_HERO_FABRICA = 3.0
 SEGUNDOS_HERO_MINIMO = 2.0
 SEGUNDOS_HERO_MAXIMO = 15.0
-# Productos con que nace el carrusel, por su código público («DC-…», el que sale en la ficha), en este orden. Vacío en la
-# base de Tommalo: Gerencia elige y ordena los suyos en Sitio web › Carrusel de la portada. El carrusel nace UNA sola vez
+# Productos con que nace el carrusel, por su código público («DC-…», el que sale en la ficha), en este orden. Vacío
+# en la base de Tommalo: Gerencia elige y ordena los suyos en Sitio web › Carrusel de la portada. Nace UNA sola vez
 # (``_dcasa_sembrar``); lo que no exista en la base se salta.
 CARRUSEL_INICIAL = ()
 # Ya se sembró (fecha): no se vuelve a hacer aunque Gerencia vacíe la lista después.

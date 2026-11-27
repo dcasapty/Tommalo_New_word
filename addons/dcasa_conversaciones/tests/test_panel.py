@@ -831,7 +831,7 @@ class TestFicha(PanelCase):
         self.conv.etiqueta_ids = etiqueta
         Acciones = self.env['brian.accion'].sudo().with_context(brian_accion_sistema=True)
         for herramienta, argumentos in (('juan_buscar_productos', '{"consulta": "lámpara grande"}'),
-                                        ('juan_ver_producto', '{"codigo": "ZZ-LÁMPARA"}'),
+                                        ('juan_ver_producto', '{"codigo": "ZZ-LAMPARA"}'),
                                         ('juan_buscar_productos', '{"consulta": "Lámpara Grande"}'),
                                         ('juan_horario_y_tienda', '{}')):
             Acciones.create({'herramienta': herramienta, 'argumentos': argumentos, 'estado': 'hecha',
@@ -839,7 +839,7 @@ class TestFicha(PanelCase):
         Acciones.create({'herramienta': 'juan_buscar_productos', 'argumentos': '{"consulta": "de otra conversación"}',
                          'estado': 'hecha', 'dcasa_conversacion_id': self.cliente(2).id})
         sabe = self.ficha()['bot_sabe']
-        self.assertEqual(sorted(p.lower() for p in sabe['productos_preguntados']), ['lámpara grande', 'zz-lámpara'])
+        self.assertEqual(sorted(p.lower() for p in sabe['productos_preguntados']), ['lámpara grande', 'zz-lampara'])
         self.assertEqual(sabe['nombre'], 'Karen')
         self.assertEqual(sabe['etiquetas'], ['Zzsabe'])
         self.assertFalse(sabe['es_socio'])

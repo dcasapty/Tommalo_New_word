@@ -76,7 +76,8 @@ class TestPermisosMeta(MetaComun, TransactionCase):
         feed.action_dcasa_meta_nueva_direccion()
         self.assertEqual(feed.action_dcasa_meta_ver_fuera()['res_model'], 'product.template')
         campana = self.env['dcasa.meta.campana'].with_user(self.gerencia).create({'name': 'De Gerencia'})
-        self.lampara.with_user(self.gerencia).write({'dcasa_meta_campana_id': campana.id, 'dcasa_meta_no_anunciar': True})
+        self.lampara.with_user(self.gerencia).write({'dcasa_meta_campana_id': campana.id,
+                                                     'dcasa_meta_no_anunciar': True})
         campana.unlink()
         # Gerencia no crea ni borra catálogos (eso es del administrador).
         with self.assertRaises(AccessError):

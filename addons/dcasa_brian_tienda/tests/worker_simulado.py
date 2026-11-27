@@ -257,8 +257,8 @@ class WorkerSimulado:
              'nombre': linea['nombre']}])
 
     def _buscar(self, estado, t, texto):
-        consulta = ('jabón' if 'jab' in t else 'crema' if 'crema' in t else 'lámpara' if 'lámpara' in t or 'lampara' in t
-                    else texto)
+        consulta = ('jabón' if 'jab' in t else 'crema' if 'crema' in t
+                    else 'lámpara' if 'lámpara' in t or 'lampara' in t else texto)
         productos = [self._tarjeta(p) for p in self.herramienta('buscar_productos', {'consulta': consulta}).get(
             'productos') or []]
         for p in productos:
@@ -317,7 +317,8 @@ class WorkerSimulado:
         if 'pago' in t:
             return self._ok('bolsita', [{'tipo': 'texto', 'texto': 'Las formas de pago te las confirma una vendedora '
                                                                    'por WhatsApp.'}], ['Hablar con una persona'])
-        return self._ok('saludando', [{'tipo': 'texto', 'texto': 'Gracias por escribirme. ¿Buscas un producto, el costo '
+        return self._ok('saludando', [{'tipo': 'texto', 'texto': 'Gracias por escribirme. ¿Buscas un producto, '
+                                                                 'el costo '
                                                                  'del envío o las formas de pago?'}],
                         ['Jabones', 'Lámparas', '¿Cuánto cuesta el envío?'])
 

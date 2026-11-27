@@ -161,7 +161,7 @@ class TestRutas(HttpCase):
     def test_la_vista_previa_del_checkout(self):
         datos = self.make_jsonrpc_request('/tienda/ubicacion/zona', {'lat': CERCA[0], 'lon': CERCA[1],
                                                                      'texto': 'Calle 3, Arraiján'})
-        self.assertEqual(datos['distrito'], 'Penonomé')
+        self.assertEqual(datos['distrito'], 'La Chorrera')
         self.assertIn('escribió Arraiján', datos['aviso'])
         self.assertTrue(datos['precio'])
         lugares = self.make_jsonrpc_request('/tienda/ubicacion/buscar', {'texto': 'villa prueba'})['lugares']

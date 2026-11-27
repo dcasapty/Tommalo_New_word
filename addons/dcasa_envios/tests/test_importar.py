@@ -20,7 +20,7 @@ class TestImportar(EnviosComun):
         self.assertFalse(asistente.archivo, 'el archivo no se queda guardado en el asistente')
         villa = self.lugar('Villa Prueba')
         self.assertEqual((villa.tipo, villa.corr, villa.dist, villa.prov, villa.km, villa.km_medido),
-                         ('barrio', 'Barrio Prueba', 'Penonomé', 'Coclé', 1.2, True))
+                         ('barrio', 'Barrio Prueba', 'La Chorrera', 'Panamá Oeste', 1.2, True))
         self.assertTrue(villa.llave)
         finca = self.lugar('Finca Agregada')
         self.assertTrue(finca.agregado, 'los agregados a mano del archivo se marcan')
@@ -99,7 +99,7 @@ class TestImportar(EnviosComun):
         self.importar()
         Lugar = self.env['dcasa.envio.lugar']
         propio = Lugar.with_user(self.vendedora).create({'name': 'Casa de la Vendedora', 'tipo': 'barrio',
-                                                         'dist': 'Penonomé', 'km': 4.2})
+                                                         'dist': 'La Chorrera', 'km': 4.2})
         villa, isla = self.lugar('Villa Prueba'), self.lugar('Isla Inventada')
         villa.with_user(self.gerencia).write({'km': 1.9})
         isla.with_user(self.gerencia).write({'active': False})

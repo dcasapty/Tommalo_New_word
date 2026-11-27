@@ -6,7 +6,7 @@ from odoo.tests import HttpCase, tagged
 
 @tagged('post_install', '-at_install')
 class TestPrecioMasItbms(HttpCase):
-    """Los precios de D'CASA son sin ITBMS: la web dice «$39.99 + ITBMS» y el carrito suma el 7 %."""
+    """Los precios del sitio son sin ITBMS: la web dice «$39.99 + ITBMS» y el carrito suma el 7 %."""
 
     def setUp(self):
         super().setUp()

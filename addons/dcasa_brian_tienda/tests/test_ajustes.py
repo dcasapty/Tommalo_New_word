@@ -9,6 +9,7 @@ from unittest.mock import patch
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import new_test_user, tagged
 
+from ..controllers.main import FECHA_PRIVACIDAD, _fecha
 from ..models.juan import tienda_de_costos
 from .common import TiendaCase
 
@@ -248,7 +249,10 @@ class TestLaPagina(TiendaCase):
                       'no se usa para imitar tu voz', 'chats, mensajes y notas de voz'):
             self.assertIn(frase, html)
         self.assertIn('Andrés, el chat de la tienda', html)
-        self.assertIn('16 de noviembre de 2026', html)
+        # La fecha de la política nunca es anterior a la de este módulo (si la base ya es más nueva, manda la base).
+        fecha = re.search(r'Última actualización: (\d+ de \w+ de \d{4})', html)
+        self.assertTrue(fecha, 'la política dice cuándo se actualizó')
+        self.assertGreaterEqual(_fecha(fecha.group(1)), _fecha(FECHA_PRIVACIDAD))
 
     def test_el_js_no_anida_plantillas_de_texto(self):
         """El minificador de Odoo (rjsmin) no entiende `…${`…`}…`: se come los espacios de la de adentro."""

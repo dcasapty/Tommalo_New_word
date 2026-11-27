@@ -80,6 +80,6 @@ class TestAccesibilidadTienda(HttpCase):
                       r'\.o_dcasa_icono\s*\{[^}]*width: ?1\.5rem[^}]*height: ?1\.5rem'):
             with self.subTest(regla=regla):
                 self.assertRegex(css, regla)
-        # La talla elegida: relleno verde con borde verde de bordes (nunca el naranja de texto).
+        # La talla elegida: relleno verde con borde verde de bordes (nunca el de acento de texto).
         self.assertRegex(css, r'(?i):has\(\.form-check-input:checked\) \.form-check\s*\{[^}]*background:\s*#BDBDBD',
-                         'la talla elegida, en verde salvia')
+                         'la talla elegida, en suave')

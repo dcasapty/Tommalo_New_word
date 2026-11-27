@@ -21,16 +21,16 @@
         <xpath expr="//t[@t-call='website.website_search_box_input']" position="attributes">
             <attribute name="search_type.f">products</attribute>
             <attribute name="action.f">/shop</attribute>
-            <attribute name="placeholder.f">Escribe lo que buscas</attribute>
+            <attribute name="placeholder.f">¿Qué buscas?</attribute>
         </xpath>
     </template>
 
     <!-- La barra de /shop dice lo mismo que la caja de la cabecera (en una categoría, Odoo dice «Buscar en <categoría>»).
-         Lote «legibilidad», arreglo 5: el texto es corto para que no se corte en el celular: «Escribe lo que buscas»
+         Lote «legibilidad», arreglo 5: el texto es corto para que no se corte en el celular: «¿Qué buscas?»
          (test_legibilidad mide que cabe entero). -->
     <template id="tienda_buscador_texto" inherit_id="website_sale.search" name="Tommalo: texto de ayuda de la barra de la tienda">
         <xpath expr="//t[@t-call='website.website_search_box_input']" position="inside">
-            <t t-set="placeholder" t-value="placeholder or 'Escribe lo que buscas'"/>
+            <t t-set="placeholder" t-value="placeholder or '¿Qué buscas?'"/>
         </xpath>
     </template>
 

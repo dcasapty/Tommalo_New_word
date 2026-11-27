@@ -14,7 +14,7 @@ from .test_cotizacion_automatica import CotizarCase
 class TestOrigenChatbot(CotizarCase):
 
     def test_la_cotizacion_de_juan_y_su_factura_son_del_chatbot(self):
-        self.cotizar({'codigo': 'ZZ-LÁMPARA'})
+        self.cotizar({'codigo': 'ZZ-LAMPARA'})
         (orden,) = self.ordenes()
         self.assertEqual(orden.dcasa_origen, 'chatbot')
         # Una vendedora la toma, la cambia y la confirma: sigue siendo del chatbot.
@@ -31,7 +31,7 @@ class TestOrigenChatbot(CotizarCase):
 
     def test_al_actualizar_se_marcan_las_de_antes(self):
         """Las cotizaciones que Juan armó antes de que existiera el origen quedan «Chatbot» al actualizar el módulo."""
-        self.cotizar({'codigo': 'ZZ-LÁMPARA'})
+        self.cotizar({'codigo': 'ZZ-LAMPARA'})
         (orden,) = self.ordenes()
         self.env.cr.execute("UPDATE sale_order SET dcasa_origen = 'vendedora' WHERE id = %s", [orden.id])
         orden.invalidate_recordset(['dcasa_origen'])
@@ -41,7 +41,7 @@ class TestOrigenChatbot(CotizarCase):
         self.assertEqual(orden.dcasa_origen, 'chatbot')
 
     def test_el_inicio_pone_la_cotizacion_del_chatbot_en_su_panel_y_dice_chatbot(self):
-        self.cotizar({'codigo': 'ZZ-LÁMPARA'})
+        self.cotizar({'codigo': 'ZZ-LAMPARA'})
         (orden,) = self.ordenes()
         orden.date_order = '2020-01-01 12:00:00'   # la más antigua: sale primero en la lista del Inicio
         hoy = self.env['dcasa.tablero']._ahora_en_panama().date()
@@ -71,7 +71,7 @@ class TestCotizacionesQueVencen(CotizarCase):
     def notas(orden):
         return ' '.join(str(m.body or '') for m in orden.message_ids)
 
-    def de_juan(self, codigo='ZZ-LÁMPARA'):
+    def de_juan(self, codigo='ZZ-LAMPARA'):
         self.cotizar({'codigo': codigo})
         return self.ordenes()[-1:]
 

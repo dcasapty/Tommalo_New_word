@@ -41,13 +41,13 @@ from odoo.tools import file_path
 from .test_inicio_por_rol import ESPERAR_JS
 from .test_modo_oscuro import pares_que_no_se_leen
 
-PRINCIPAL = '#262626'
+PRINCIPAL = '#173A2B'
 ACENTO = '#F2C14E'
 FABRICA_APPLE = '/dcasa_base/static/img/icono/apple-touch-icon.png'
 FABRICA_FAVICON = '/dcasa_base/static/img/icono/logo-192.png'
 LOGO_DE_FABRICA = '/dcasa_base/static/img/logo.png'
 # La escala del navy de tokens.scss (del más oscuro al principal y los dos más claros): lo que gira con el principal.
-ESCALA = ('#0C171F', '#151515', '#1A1A1A', '#1F1F1F', '#262626', '#24405A', '#2B4A66')
+ESCALA = ('#0F0F0F', '#151515', '#1A1A1A', '#1F1F1F', '#262626', '#333333', '#3D3D3D')
 # Los tonos del naranja de la marca: el relleno, el del puntero, el apretado, el de letra y el de los bordes.
 NARANJAS = ('#D4D4D4', '#E5E5E5', '#BDBDBD', '#595959', '#8A8A8A')
 CREMA = '#FAFAFA'
@@ -55,7 +55,7 @@ NAVY = '#262626'
 NARANJA = '#D4D4D4'
 
 
-def imagen(ancho, alto, color=(27, 50, 70, 255), formato='PNG'):
+def imagen(ancho, alto, color=(38, 38, 38, 255), formato='PNG'):
     """Un dibujo de prueba: un rectángulo de color con margen transparente alrededor."""
     lienzo = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
     ImageDraw.Draw(lienzo).rectangle((ancho // 10, alto // 10, ancho - ancho // 10 - 1, alto - alto // 10 - 1),
@@ -80,11 +80,11 @@ class TestColoresDeLaMarca(TransactionCase):
 
     def test_un_color_se_escribe_como_numeral_y_seis_cifras(self):
         self.assertEqual(C.normalizar('#262626'), '#262626')
-        self.assertEqual(C.normalizar(' 1B3246 '), '#262626')
+        self.assertEqual(C.normalizar(' 262626 '), '#262626')
         self.assertEqual(C.normalizar('#13b'), '#1133BB')
         self.assertIsNone(C.normalizar(''))
         self.assertIsNone(C.normalizar(False))
-        for malo in ('azul', '#12345', '#GGGGGG', 'rgb(1,2,3)', '#1B3246FF', '##262626'):
+        for malo in ('azul', '#12345', '#GGGGGG', 'rgb(1,2,3)', '#262626FF', '##262626'):
             with self.subTest(malo=malo), self.assertRaisesRegex(ValueError, 'no es un color'):
                 C.normalizar(malo)
 
@@ -92,9 +92,9 @@ class TestColoresDeLaMarca(TransactionCase):
         self.assertAlmostEqual(C.contraste('#FFFFFF', '#000000'), 21, places=1)
         self.assertAlmostEqual(C.contraste('#262626', '#262626'), 1)
         # Las medidas de Tommalo/brand.json (2026-11-09).
-        self.assertAlmostEqual(C.contraste(NAVY, CREMA), 12.21, places=2)
-        self.assertAlmostEqual(C.contraste(NAVY, NARANJA), 5.56, places=2)
-        self.assertAlmostEqual(C.contraste(NARANJA, CREMA), 2.20, places=2)
+        self.assertAlmostEqual(C.contraste(NAVY, CREMA), 14.50, places=2)
+        self.assertAlmostEqual(C.contraste(NAVY, NARANJA), 10.21, places=2)
+        self.assertAlmostEqual(C.contraste(NARANJA, CREMA), 1.42, places=2)
 
     def test_la_fabrica_es_tommalo_y_se_lee(self):
         """El principal de fábrica es el navy (la tinta) y el acento el naranja (el relleno, con letra navy)."""
@@ -196,34 +196,36 @@ class TestTinteDeLaHoja(TransactionCase):
         tinte = Tinte(PRINCIPAL, ACENTO)
         hoja = ('.a{color: #262626; border-color: #262626}'
                 '.b{background: rgba(38, 38, 38, 0.25); box-shadow: 0 0 0 1px rgb(38, 38, 38)}'
-                '.c{background-color: #1B324680}'
-                '.d{--primary-rgb: 27, 50, 70; --btn-focus-shadow-rgb: 27, 50, 70}'
-                ".e{--fondo: url(\"data:image/svg+xml,%3csvg fill='%231B3246'/%3e\")}"
+                '.c{background-color: #26262680}'
+                '.d{--primary-rgb: 38, 38, 38; --btn-focus-shadow-rgb: 38, 38, 38}'
+                ".e{--fondo: url(\"data:image/svg+xml,%3csvg fill='%23262626'/%3e\")}"
                 '.f{background: #D4D4D4; color: #262626; border-color: rgba(212, 212, 212, .5)}'
                 '@media (max-width: 767.98px){.g{color: #262626 !important}}')
         pintada = tinte.css(hoja)
-        self.assertNotRegex(pintada.lower(), r'1b3246|27, ?50, ?70|ee924a|238, 146, 74')
-        self.assertIn('.a{color: #262626; border-color: #262626}', pintada)
+        self.assertNotRegex(pintada.lower(), r'262626|27, ?50, ?70|d4d4d4|212, 212, 212')
+        self.assertIn('.a{color: #173A2B; border-color: #173A2B}', pintada)
         self.assertIn('rgba(23, 58, 43, 0.25)', pintada)
         self.assertIn('rgb(23, 58, 43)', pintada)
         self.assertIn('#173A2B80', pintada, 'la transparencia del #hex de 8 cifras se queda')
         self.assertIn('--primary-rgb: 23, 58, 43', pintada)
         self.assertIn("fill='%23173A2B'", pintada)
-        self.assertIn('.f{background: #F2C14E; color: #262626; border-color: rgba(242, 193, 78, .5)}', pintada,
+        self.assertIn('.f{background: #F2C14E; color: #173A2B; border-color: rgba(242, 193, 78, .5)}', pintada,
                       'el botón principal: el acento de relleno con la letra del principal')
-        self.assertIn('@media (max-width: 767.98px){.g{color: #262626 !important}}', pintada, 'el @media intacto')
+        self.assertIn('@media (max-width: 767.98px){.g{color: #173A2B !important}}', pintada, 'el @media pintado')
 
     def test_los_tonos_del_naranja_giran_con_el_acento(self):
         """El puntero, lo apretado, la letra naranja y los bordes naranja siguen al acento de la empresa, y cada uno
         sigue haciendo su trabajo: la letra se lee sobre el crema y los rellenos llevan la letra del principal."""
         tinte = Tinte(PRINCIPAL, ACENTO)
-        puntero, apretado, letra, borde = (C.a_rgb(tinte.color(C.a_rgb(c))) for c in NARANJAS[1:])
-        for color in (puntero, apretado, letra, borde):
+        # De la paleta gris provisional solo el puntero y la letra son exclusivos del acento: el apretado (#BDBDBD) y
+        # el filo (#8A8A8A) comparten valor con el salvia y con los bordes de los campos, y esos no giran.
+        puntero, letra = (C.a_rgb(tinte.color(C.a_rgb(c))) for c in (NARANJAS[1], NARANJAS[3]))
+        for color in (puntero, letra):
             self.assertLess(C.distancia_de_tono(C.hsl(color)[0], C.hsl(ACENTO)[0]), 4, 'el tono del acento')
         self.assertGreaterEqual(C.contraste(letra, C.SUPERFICIE), C.MINIMO_TEXTO)
-        self.assertGreaterEqual(C.contraste(borde, C.SUPERFICIE), C.MINIMO_DETALLE)
-        for relleno in (puntero, apretado):
-            self.assertGreaterEqual(C.contraste(relleno, PRINCIPAL), C.MINIMO_TEXTO)
+        self.assertGreaterEqual(C.contraste(puntero, PRINCIPAL), C.MINIMO_TEXTO)
+        for neutro in (NARANJAS[2], NARANJAS[4]):
+            self.assertIsNone(tinte.color(C.a_rgb(neutro)), 'los grises neutros no giran')
         # Solo con otro principal (el acento de fábrica): el naranja se queda, sus rellenos siguen leyéndose.
         solo_principal = Tinte(PRINCIPAL, C.FABRICA_ACENTO)
         self.assertFalse(solo_principal.de_fabrica)
@@ -239,12 +241,12 @@ class TestTinteDeLaHoja(TransactionCase):
         self.assertIn('.o_calendar_color_45{background: #262626}', pintada)
         self.assertIn('.o_kanban_color_3::after{background-color: #D4D4D4}', pintada)
         self.assertIn('.o_cc1 a:not(.btn){color: #262626}', pintada)
-        self.assertIn(':root{--o-color-1: #262626; --o-cc1-link: #262626; --dc-azul-600: #262626}', pintada)
+        self.assertIn(':root{--o-color-1: #262626; --o-cc1-link: #262626; --dc-azul-600: #173A2B}', pintada)
 
     def test_los_iconos_svg_de_las_apps(self):
         svg = '<svg><rect fill="#262626"/><path stroke="#FAFAFA"/><circle fill="#D4D4D4"/></svg>'
         self.assertEqual(Tinte(PRINCIPAL, ACENTO).svg(svg),
-                         '<svg><rect fill="#262626"/><path stroke="#FAFAFA"/><circle fill="#F2C14E"/></svg>')
+                         '<svg><rect fill="#173A2B"/><path stroke="#FAFAFA"/><circle fill="#F2C14E"/></svg>')
 
 
 # --- La empresa: guardar, validar, permisos ----------------------------------------------------------------------
@@ -483,7 +485,7 @@ class TestMigracionDeLaFabrica(TransactionCase):
         self.migrar()
         self.assertEqual((empresa.dcasa_panel_color_principal, empresa.dcasa_panel_color_acento), (PRINCIPAL, NARANJA))
         # Si con el cambio el par dejara de leerse, la empresa vuelve entera a la fábrica.
-        self.guardado(empresa, '#595959', C.DCASA_ACENTO)
+        self.guardado(empresa, '#767676', C.DCASA_ACENTO)
         self.migrar()
         self.assertEqual((empresa.dcasa_panel_color_principal, empresa.dcasa_panel_color_acento), (NAVY, NARANJA))
 
@@ -657,11 +659,11 @@ class TestMarcaEnLaPagina(HttpCase):
         self.assertEqual(self.url_open(f'{base}/otro.png').status_code, 404)
 
     def test_el_icono_propio_manda_sobre_el_logo(self):
-        self.poner(dcasa_panel_logo=b64(imagen(600, 240, color=(27, 50, 70, 255))),
-                   dcasa_panel_icono=b64(imagen(300, 300, color=(238, 146, 74, 255))))
+        self.poner(dcasa_panel_logo=b64(imagen(600, 240, color=(38, 38, 38, 255))),
+                   dcasa_panel_icono=b64(imagen(300, 300, color=(212, 212, 212, 255))))
         base = f'/dcasa_interfaz/marca/icono/{self.empresa.id}/{self.empresa.dcasa_panel_version}'
         dibujo, _caja = self.assertIcono(f'{base}/icono-192.png', 192, False)
-        self.assertEqual(dibujo.getpixel((96, 96))[:3], (238, 146, 74), 'el centro es el ícono, no el logo')
+        self.assertEqual(dibujo.getpixel((96, 96))[:3], (212, 212, 212), 'el centro es el ícono, no el logo')
 
     def test_sin_imagen_propia_los_iconos_son_los_de_fabrica(self):
         respuesta = self.url_open(f'/dcasa_interfaz/marca/icono/{self.empresa.id}/0/apple-touch-icon.png',

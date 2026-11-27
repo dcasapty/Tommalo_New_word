@@ -190,7 +190,7 @@ class TestPaginaDePago(PagoVisualComun):
         self.assertEqual(len(set(propios.values())), len(propios), f'cada método con un ícono distinto: {propios}')
         for nombre, imagenes in propios.items():
             self.assertTrue(imagenes[0].startswith('/website_dcasa/static/src/img/pago/'), nombre)
-            self.assertNotIn('bank.png', imagenes[0], 'ya no es el ícono naranja de Odoo')
+            self.assertNotIn('bank.png', imagenes[0], 'ya no es el ícono de acento de Odoo')
         for icono in ICONOS:
             self.assertEqual(self.url_open(f'/website_dcasa/static/src/img/pago/{icono}.svg').status_code, 200)
 

@@ -21,7 +21,7 @@ class TestPrecioDeCampanaEnLaFicha(TransactionCase):
         cls.campana.write({'name': 'Black Friday', 'fecha_inicio': False, 'fecha_fin': False})
         cls.lampara = cls.env['product.template'].create({
             'name': 'LÁMPARA FICHA CAMPAÑA', 'list_price': 200.0, 'is_published': True, 'sale_ok': True,
-            'dcasa_combo': 'Combo con jabón First Class $469.99',
+            'dcasa_combo': 'Combo con colchón First Class $469.99',
             'public_categ_ids': [Command.set(cls.env.ref('website_dcasa.public_category_hogar').ids)],
         })
         cls.herramientas = cls.env['brian.herramientas'].sudo()

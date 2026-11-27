@@ -78,8 +78,8 @@ MAX_CLAVES_CACHE_VITRINA = 64
 def limpiar_cache_vitrina():
     """Vacía las fichas guardadas de «Lo más buscado» (para las pruebas y para quien cambie la tienda a mano)."""
     _CACHE_VITRINA.clear()
-# Las sugerencias del saludo dicen la categoría con la palabra que escribiría un cliente, si es distinta del nombre de la
-# categoría de la portada (clave → palabra). Vacío: se usa el nombre de la categoría (Belleza, Hogar, Salud, Otros).
+# Las sugerencias del saludo dicen la categoría con la palabra que escribiría un cliente, si es distinta del nombre
+# de la categoría de la portada (clave → palabra). Vacío: se usa el nombre (Belleza, Hogar, Salud, Otros).
 NOMBRE_SUGERENCIA = {}
 # Lo que la página necesita de cada producto para pintar su tarjeta (lo mismo que valida `productoValido` en el JS).
 CAMPOS_TARJETA = ('producto_id', 'plantilla_id', 'nombre', 'precio_texto', 'disponibilidad', 'imagen', 'ruta',

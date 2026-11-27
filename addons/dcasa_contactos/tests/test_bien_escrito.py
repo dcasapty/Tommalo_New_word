@@ -68,8 +68,8 @@ class TestBienEscrito(BaseCase):
                 self.assertEqual(B.telefono_para_guardar(texto), guardado)
         mal = {
             '6000-00019': 'largo',
-            '507 7831191': 'corto',
-            '7831-191': 'corto',
+            '507 6999191': 'corto',
+            '6999-191': 'corto',
             '2345678': 'fijo',
             '602-6191': 'corto',
             '60000001 / 2345678': 'varios',

@@ -12,7 +12,7 @@ from odoo.addons.dcasa_socios.tests.common import ConReglasDePrueba
 from odoo.exceptions import UserError
 from odoo.tests import new_test_user, tagged
 
-from .common import RAIZ, TiendaCase
+from .common import RAIZ, TiendaCase, promocion_de_prueba
 
 HOY = 'odoo.addons.dcasa_envios.models.promocion.EnvioPromocion._hoy'
 PIN = '482915'
@@ -30,6 +30,7 @@ class TestRevisionVendedor(ConReglasDePrueba, TiendaCase):
                                      groups='base.group_user,dcasa_base.group_gerencia')
         importar(cls.env, cls.gerencia)
         cls.env['dcasa.envio.tarifa'].search([], limit=1).with_user(cls.gerencia).action_aprobar()
+        promocion_de_prueba(cls.env)
         Lugar = cls.env['dcasa.envio.lugar']
         cls.costa = Lugar.search([('name', '=', 'Costa Inventada')])     # $45; gratis con la promoción
         cls.colon = Lugar.search([('name', '=', 'Barrio Simulado')])     # $105

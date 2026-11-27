@@ -157,7 +157,7 @@ AUDITAR = """
             ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.') : '');
         const AMARILLO = [254, 208, 15];
         const esAmarillo = (c) => Math.abs(c[0] - AMARILLO[0]) < 8 && Math.abs(c[1] - AMARILLO[1]) < 12 && Math.abs(c[2] - AMARILLO[2]) < 30;
-        const NARANJA = [238, 146, 74];
+        const NARANJA = [212, 212, 212];
         const esNaranja = (c) => Math.abs(c[0] - NARANJA[0]) < 10 && Math.abs(c[1] - NARANJA[1]) < 26 && Math.abs(c[2] - NARANJA[2]) < 30;
         const faltas = [];
         const elementos = [raiz, ...raiz.querySelectorAll('*')];

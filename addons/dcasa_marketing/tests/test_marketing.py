@@ -16,11 +16,11 @@ class TestMarketing(MarketingCommon):
     def setUpClass(cls):
         super().setUpClass()
         p = cls.producto
-        cls.lampara = p('ZZMK Lámpara vendida', 'ZZMK-LÁMPARA', stock=20, con_foto=True, extras=2)
+        cls.lampara = p('ZZMK Lámpara vendida', 'ZZMK-LAMPARA', stock=20, con_foto=True, extras=2)
         cls.mesa = p('ZZMK Mesa entregada', 'ZZMK-MESA', stock=9, con_foto=True)
         cls.silla = p('ZZMK Silla de las dos', 'ZZMK-SILLA', stock=15)
         cls.quieta_nunca = p('ZZMK Repisa nunca vendida', 'ZZMK-REPISA', stock=4)
-        cls.quieta_vieja = p('ZZMK Lámpara de hace tiempo', 'ZZMK-LAMPARA', stock=30, con_foto=True, extras=1)
+        cls.quieta_vieja = p('ZZMK Linterna de hace tiempo', 'ZZMK-LINTERNA', stock=30, con_foto=True, extras=1)
         cls.quieta_menos_vieja = p('ZZMK Banco de hace poco', 'ZZMK-BANCO', stock=2)
         cls.agotada = p('ZZMK Cómoda agotada', 'ZZMK-COMODA', stock=0)
         cls.de_otra = p('ZZMK Puff de otra categoría', 'ZZMK-PUFF', stock=50, categoria=cls.otra_categoria)
@@ -181,7 +181,7 @@ class TestMarketing(MarketingCommon):
                          [self.mesa.id])
         sin = Marketing.buscar_fotos(filtro='sin_foto', categoria=self.categoria.id)['productos']
         self.assertTrue(all(f['fotos'] == 0 and not f['con_foto'] for f in sin))
-        for texto, esperado in (('lámpara tiempo', self.quieta_vieja), ('ZZMK-LÁMPARA', self.lampara),
+        for texto, esperado in (('linterna tiempo', self.quieta_vieja), ('ZZMK-LAMPARA', self.lampara),
                                 ('ZZMK7750001', self.mesa), ('zzmk mesa', self.mesa)):
             with self.subTest(texto=texto):
                 encontrados = Marketing.buscar_fotos(texto=texto, filtro='todos')['productos']
@@ -237,7 +237,7 @@ class TestBrianMarketing(MarketingCommon):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.lampara = cls.producto('ZZMK Lámpara de Brian', 'ZZMK-BR-LÁMPARA', stock=5, con_foto=True)
+        cls.lampara = cls.producto('ZZMK Lámpara de Brian', 'ZZMK-BR-LAMPARA', stock=5, con_foto=True)
         cls.quieta = cls.producto('ZZMK Repisa de Brian', 'ZZMK-BR-REPISA', stock=8)
 
     def herramientas(self, usuario):
@@ -258,9 +258,9 @@ class TestBrianMarketing(MarketingCommon):
             'movimiento_de_productos', {'periodo': 'semana', 'que': 'todo', 'categoria': 'ZZMK Categoría de prueba'})
         self.assertTrue(r['ok'], r)
         datos = r['datos']
-        self.assertEqual([f['codigo'] for f in datos['mas_vendidos']], ['ZZMK-BR-LÁMPARA'])
+        self.assertEqual([f['codigo'] for f in datos['mas_vendidos']], ['ZZMK-BR-LAMPARA'])
         self.assertEqual(datos['mas_vendidos'][0]['unidades'], 3)
-        self.assertEqual([f['codigo'] for f in datos['mas_movimiento']], ['ZZMK-BR-LÁMPARA'])
+        self.assertEqual([f['codigo'] for f in datos['mas_movimiento']], ['ZZMK-BR-LAMPARA'])
         self.assertEqual([f['codigo'] for f in datos['quietos']], ['ZZMK-BR-REPISA'])
         self.assertIn('nunca', datos['quietos'][0]['ultima_venta'])
         self.assertIn('Últimos 7 días', datos['periodo'])
@@ -298,7 +298,7 @@ class TestRolMarketing(MarketingCommon):
     def setUpClass(cls):
         super().setUpClass()
         cls.marketing_rol = crear_usuario(cls.env, 'zzmk_marketing', ['dcasa_marketing.group_marketing'])
-        cls.lampara = cls.producto('ZZMK Lámpara del rol', 'ZZMK-ROL-LÁMPARA', stock=7, con_foto=True)
+        cls.lampara = cls.producto('ZZMK Lámpara del rol', 'ZZMK-ROL-LAMPARA', stock=7, con_foto=True)
         cls.repisa = cls.producto('ZZMK Repisa del rol', 'ZZMK-ROL-REPISA', stock=3)
 
     def test_el_rol_esta_en_dcasa_y_no_trae_dinero_ni_gerencia(self):
@@ -368,4 +368,4 @@ class TestRolMarketing(MarketingCommon):
         self.assertLessEqual({'movimiento_de_productos', 'fotos_que_faltan'}, nombres)
         r = Brian.ejecutar('movimiento_de_productos', {'que': 'quietos', 'categoria': 'ZZMK Categoría de prueba'})
         self.assertTrue(r['ok'], r)
-        self.assertEqual({f['codigo'] for f in r['datos']['quietos']}, {'ZZMK-ROL-LÁMPARA', 'ZZMK-ROL-REPISA'})
+        self.assertEqual({f['codigo'] for f in r['datos']['quietos']}, {'ZZMK-ROL-LAMPARA', 'ZZMK-ROL-REPISA'})

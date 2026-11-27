@@ -117,7 +117,8 @@ class TestCalculos(BaseCase):
         buenas = ('https://tommalo.example', 'https://www.tommalo.example/x', 'https://subdominio-pendiente.workers.dev',
                   'https://tommalo-chatbot.subdominio-pendiente.workers.dev/a', 'https://tommalo.example:443/a')
         malas = ('http://tommalo.example', 'https://tommalo.example.evil.com', 'https://evil.com/tommalo.example',
-                 'https://eviltommalo.example', 'https://user@tommalo.example', 'https://tommalo.example:8443/', '', None,
+                 'https://eviltommalo.example', 'https://user@tommalo.example', 'https://tommalo.example:8443/', '',
+                 None,
                  'ftp://tommalo.example', 'https://127.0.0.1', 'https://tommalo.example:abc/')
         for url in buenas:
             with self.subTest(url=url):

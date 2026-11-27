@@ -39,7 +39,7 @@ def mensaje(para='Ana <ana@example.com>', copia=None, adjunto=True, clase='factu
 
 
 def sesion(a_clientes=True, entorno='produccion', internos=('duena@example.com',)):
-    return SesionResend(CLAVE, {'remitente': 'ventas@tommalo.example', 'nombre': "D'CASA Panamá",
+    return SesionResend(CLAVE, {'remitente': 'ventas@tommalo.example', 'nombre': "Tienda D'Prueba",
                                 'responder_a': 'info@tommalo.example', 'a_clientes': a_clientes,
                                 'entorno': entorno}, internos)
 
@@ -60,9 +60,9 @@ def falla(estado, mensaje_resend='Algo pasó'):
 class TestMensajeAResend(BaseCase):
 
     def test_from_y_reply_to_siempre_los_de_ajustes(self):
-        datos = resend.mensaje_a_resend(mensaje(), ['ana@example.com'], 'ventas@tommalo.example', "D'CASA Panamá",
+        datos = resend.mensaje_a_resend(mensaje(), ['ana@example.com'], 'ventas@tommalo.example', "Tienda D'Prueba",
                                         'info@tommalo.example')
-        self.assertEqual(datos['from'], '"D\'CASA Panamá" <ventas@tommalo.example>')
+        self.assertEqual(datos['from'], '"Tienda D\'Prueba" <ventas@tommalo.example>')
         self.assertEqual(datos['reply_to'], ['info@tommalo.example'])
         self.assertEqual(datos['subject'], 'Recibimos tu abono · Factura INV/2026/00007')
         self.assertEqual(datos['to'], ['ana@example.com'])

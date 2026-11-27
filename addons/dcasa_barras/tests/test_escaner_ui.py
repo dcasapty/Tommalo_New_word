@@ -25,7 +25,7 @@ CODIGO = """
     if (document.activeElement !== campo) { falla("el cuadro debe tener el foco al abrir"); }
 
     // Consultar: el lector escribe el código y termina con Enter.
-    escribir(campo, "ZZT-LÁMPARA-1");
+    escribir(campo, "ZZT-LAMPARA-1");
     campo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     const nombre = await esperar(() => document.querySelector(".o_dcasa_ficha_nombre"), "la tarjeta del producto");
     if (!nombre.textContent.includes("ZZCAMA DE PRUEBA")) { falla("producto equivocado " + nombre.textContent); }
@@ -42,7 +42,7 @@ CODIGO = """
     if (!aviso.textContent.includes("NO-EXISTE-999")) { falla("aviso " + aviso.textContent); }
 
     // Contar: se escribe lo contado, se ve la diferencia y se confirma.
-    escribir(campo, "ZZT-LÁMPARA-1");
+    escribir(campo, "ZZT-LAMPARA-1");
     campo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     await esperar(() => document.querySelector(".o_dcasa_ficha_nombre"), "la tarjeta otra vez");
     boton("Contar").click();
@@ -106,7 +106,7 @@ CODIGO_PARECIDO = """
     const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
     // Dos escaneos seguidos, sin esperar la respuesta del primero: gana el último y ninguno se pierde sin avisar.
-    escribir(campo, "ZZT-LÁMPARA-1");
+    escribir(campo, "ZZT-LAMPARA-1");
     enter();
     escribir(campo, "ZZT-ZAP-1");
     enter();
@@ -359,7 +359,7 @@ CODIGO_DOCUMENTO = """
         if (document.body.textContent.includes("__NOMBRE__")) { falla("salió el número del documento"); }
         if (document.querySelector(".o_form_view")) { falla("no debía abrir nada"); }
         // Y un producto se sigue escaneando como siempre.
-        leer("ZZT-LÁMPARA-1");
+        leer("ZZT-LAMPARA-1");
         await esperar(() => document.querySelector(".o_dcasa_ficha_nombre"), "la tarjeta del producto");
     }
     console.log("test successful");

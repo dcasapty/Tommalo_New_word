@@ -3,8 +3,8 @@
 La tarjeta y Yappy en línea los ofrece Tilopay (módulo ``dcasa_pago_tilopay``, apagado de fábrica: solo sale con las
 claves cargadas en Cloudflare y encendido por Gerencia; docs/TILOPAY.md) y esta configuración nunca lo enciende. Sin él,
 se cobra con Yappy o transferencia (los datos se mandan por WhatsApp; nunca se escriben aquí números de cuenta) o en la
-tienda. No hay pago contra entrega; «Pago en la tienda» aparta el pedido por la página web los días de apartado (models/sale_order.py) para que
-pase a pagarlo.
+tienda. No hay pago contra entrega; «Pago en la tienda» aparta el pedido por la página web los días de apartado
+(models/sale_order.py) para que pase a pagarlo.
 La entrega a domicilio se cotiza por WhatsApp, como promete el sitio; no hay «envío gratis».
 """
 from markupsafe import Markup
@@ -110,8 +110,8 @@ class Website(models.Model):
 
     @api.model
     def _dcasa_sin_restos_de_dcasa(self):
-        """Lo que una base ya instalada (staging) guardó con textos de una versión anterior y el cliente ve: el menú y el
-        nombre de la entrega. Solo eso: no enciende ni apaga pagos ni entregas (lo que Gerencia haya cambiado se
+        """Lo que una base ya instalada (staging) guardó con textos de una versión anterior y el cliente ve: el menú y
+        el nombre de la entrega. Solo eso: no enciende ni apaga pagos ni entregas (lo que Gerencia haya cambiado se
         respeta). Se puede volver a correr. La llama la migración 19.0.1.19.0."""
         self._dcasa_armar_menu_principal()
         self._dcasa_renombrar_entregas()

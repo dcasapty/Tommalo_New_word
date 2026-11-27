@@ -63,7 +63,7 @@ class TestCheckoutHttp(_SinClaves, HttpCase):
         cls.usuario = new_test_user(cls.env, login='aud_clienta_ck', name='Ana Checkout', groups='base.group_portal',
                                     email='ana.checkout.clienta@example.com')
         cls.partner = cls.usuario.partner_id
-        cls.partner.write({'phone': '+507 6123-4500', 'street': 'Calle 1', 'city': 'Penonomé',
+        cls.partner.write({'phone': '+507 6123-4500', 'street': 'Calle 1', 'city': 'La Chorrera',
                            'country_id': cls.env.ref('base.pa').id})
         cls.villa = cls.env['dcasa.envio.lugar'].search([('name', '=', 'Villa Prueba II')], limit=1)
 
@@ -82,7 +82,7 @@ class TestCheckoutHttp(_SinClaves, HttpCase):
 
     def enviar(self, token, **campos):
         datos = {'csrf_token': token, 'name': 'Ana Checkout', 'email': 'ana.checkout.clienta@example.com',
-                 'phone': '+507 6123-4500', 'street': 'Villa Prueba II, casa 1', 'city': 'Penonomé',
+                 'phone': '+507 6123-4500', 'street': 'Villa Prueba II, casa 1', 'city': 'La Chorrera',
                  'country_id': str(self.env.ref('base.pa').id)}
         datos.update(campos)
         respuesta = self.url_open('/shop/address/submit', data=datos)
@@ -188,7 +188,7 @@ class TestCheckoutHttp(_SinClaves, HttpCase):
         self.assertIn('data-origen="gps"', html)
         self.assertIn('Casa nueva 7', html)
         self.assertNotIn('Casa vieja', html)
-        # Lo escrito (Penonomé) no es el distrito de ese lugar: en la página sale el aviso de cruce y ella toca
+        # Lo escrito (La Chorrera) no es el distrito de ese lugar: en la página sale el aviso de cruce y ella toca
         # «📍 Es aquí» (auditoría 2: sin eso, el servidor no lo guarda).
         r = self.mapa(token, pendiente['lat'], pendiente['lon'], 'gps', referencia='Casa nueva 7',
                       dcasa_ubic_precision='8', dcasa_ubic_cruce_ok='1')
@@ -464,7 +464,7 @@ CHECKOUT = """
         for (let i = 0; i < 100 && $('.o_dcasa_ubic_si').disabled; i++) await espera(50);
         salida.zona = $('.o_dcasa_ubic_zona').textContent;
     } else {
-        poner('street', 'Calle 3'); poner('city', 'Penonomé');
+        poner('street', 'Calle 3'); poner('city', 'La Chorrera');
     }
     poner('dcasa_referencia', casa);
     salida.confirmada_antes = $('[name=dcasa_ubic_confirmada]').value;

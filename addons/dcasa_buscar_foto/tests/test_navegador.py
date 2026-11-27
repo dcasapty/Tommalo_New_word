@@ -1,7 +1,7 @@
 """«Busca con una foto» en el navegador (static/src/js/buscar_foto.js): la foto se achica antes de subirla (lado mayor
 de 1024 px, JPEG), se ve «Buscando productos parecidos…», va con un token CSRF y el input no se queda con la foto.
-Y el botón de la cámara lleva la marca Tommalo (docs/MARCA_TOMMALO.md): en la página, la pastilla naranja con
-letra navy (5.56); en la caja de búsqueda, el ícono navy."""
+Y el botón de la cámara lleva la marca Tommalo (docs/MARCA_TOMMALO.md): en la página, la pastilla de acento con
+letra oscuro (5.56); en la caja de búsqueda, el ícono oscuro."""
 from odoo.tests import HttpCase, tagged
 
 # Una «foto» de 3000 × 2000 en PNG (como una captura grande, en los colores de la marca); se intercepta el envío para
@@ -15,18 +15,19 @@ ELEGIR_UNA_FOTO = """
     if (input.type !== 'file' || input.accept !== 'image/*' || input.name) {
         throw new Error('El input no es el esperado');
     }
-    // La marca: naranja #D4D4D4 de relleno y navy #262626 encima (nunca blanco); en la caja, el ícono navy. Montserrat.
+    // La marca: acento #D4D4D4 de relleno y oscuro #262626 encima (nunca blanco); en la caja, el ícono oscuro.
+    // Montserrat.
     const boton = input.closest('label');
     const estilo = getComputedStyle(boton);
     if (boton.classList.contains('o_dcasa_foto_boton_grande')) {
         if (estilo.backgroundColor !== 'rgb(212, 212, 212)' || estilo.color !== 'rgb(38, 38, 38)') {
-            throw new Error('No es el naranja con letra navy: ' + estilo.backgroundColor + ' / ' + estilo.color);
+            throw new Error('No es el de acento con letra oscuro: ' + estilo.backgroundColor + ' / ' + estilo.color);
         }
         if (estilo.borderTopLeftRadius !== '999px') {
             throw new Error('El botón no es una pastilla: ' + estilo.borderTopLeftRadius);
         }
     } else if (estilo.color !== 'rgb(38, 38, 38)') {
-        throw new Error('El ícono de la cámara no es navy: ' + estilo.color);
+        throw new Error('El ícono de la cámara no es oscuro: ' + estilo.color);
     }
     if (!estilo.fontFamily.startsWith('Montserrat')) {
         throw new Error('La letra no es Montserrat: ' + estilo.fontFamily);

@@ -73,7 +73,7 @@ class TestPermisos(EnviosComun):
         lugar = Lugar.create({'name': '  Casa   Azul ', 'alias': 'La azul\n\nCasa del árbol', 'tipo': 'edificio',
                               'dist': 'Arraiján', 'corr': 'Vista Inventada', 'km': 18.04, 'peaje': True})
         self.assertEqual((lugar.name, lugar.origen, lugar.agregado, lugar.agregado_por, lugar.cat, lugar.prov),
-                         ('Casa Azul', 'mano', True, self.vendedora, 'edificio o PH', 'Coclé'))
+                         ('Casa Azul', 'mano', True, self.vendedora, 'edificio o PH', 'Panamá Oeste'))
         self.assertEqual((lugar.km, lugar.fuente_km, lugar.estado, lugar.alias), (18.0, 'a mano (Google Maps)', 'ok',
                                                                                   'La azul\nCasa del árbol'))
         self.assertTrue(lugar.agregado_el)
@@ -94,7 +94,7 @@ class TestPermisos(EnviosComun):
     def test_la_vendedora_no_edita_ni_archiva_lugares(self):
         villa = self.lugar('Villa Prueba').with_user(self.vendedora)
         propio = self.env['dcasa.envio.lugar'].with_user(self.vendedora).create(
-            {'name': 'Lo mío', 'tipo': 'barrio', 'dist': 'Penonomé', 'km': 1})
+            {'name': 'Lo mío', 'tipo': 'barrio', 'dist': 'La Chorrera', 'km': 1})
         for registro in (villa, propio):
             with self.assertRaises(AccessError):
                 registro.write({'km': 99})
@@ -123,7 +123,7 @@ class TestPermisos(EnviosComun):
         with self.assertRaises(UserError):
             falsa.write({'agregado_por': self.vendedora.id})
         with self.assertRaises(UserError):
-            falsa.env['dcasa.envio.lugar'].create({'name': 'Falso', 'tipo': 'barrio', 'dist': 'Penonomé', 'km': 2,
+            falsa.env['dcasa.envio.lugar'].create({'name': 'Falso', 'tipo': 'barrio', 'dist': 'La Chorrera', 'km': 2,
                                                    'origen': 'archivo', 'llave': 'x'})
         corregimiento = self.env['dcasa.envio.lugar'].with_user(self.gerencia).create(
             {'name': 'Corregimiento Nuevo', 'tipo': 'corregimiento', 'dist': 'Distrito Lejano', 'km': 80,
@@ -206,9 +206,9 @@ class TestPermisos(EnviosComun):
         """Segunda vuelta (M-6): el rol de HOY no dice quién lo agregó ni si se revisó; Gerencia los revisa una vez."""
         Lugar = self.env['dcasa.envio.lugar']
         propio = Lugar.with_user(self.vendedora).create({'name': 'Viejo Del Equipo', 'tipo': 'barrio',
-                                                        'dist': 'Penonomé', 'km': 3})
+                                                        'dist': 'La Chorrera', 'km': 3})
         de_gerencia = Lugar.with_user(self.gerencia).create({'name': 'Viejo De Gerencia', 'tipo': 'barrio',
-                                                            'dist': 'Penonomé', 'km': 4})
+                                                            'dist': 'La Chorrera', 'km': 4})
         self.env.flush_all()
         self.env.cr.execute('UPDATE dcasa_envio_lugar SET revisado = TRUE, revisado_por = NULL')  # la columna nueva
         Lugar.invalidate_model()

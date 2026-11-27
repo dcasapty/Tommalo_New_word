@@ -10,11 +10,11 @@ from .comun import BarrasCommon
 class TestBusqueda(BarrasCommon):
 
     def test_ayudantes(self):
-        self.assertEqual(limpiar_codigo('\r\n ZZT-LÁMPARA-1 \t\n'), 'ZZT-LÁMPARA-1')
+        self.assertEqual(limpiar_codigo('\r\n ZZT-LAMPARA-1 \t\n'), 'ZZT-LAMPARA-1')
         self.assertEqual(limpiar_codigo('A\x00B\x1fC'), 'ABC')
         self.assertEqual(limpiar_codigo('x' * 500), 'x' * 64)
         self.assertEqual((limpiar_codigo(None), limpiar_codigo(123), limpiar_codigo(['a'])), ('', '', ''))
-        self.assertEqual(clave_tolerante('zzt_lámpara/1'), clave_tolerante('ZZT-LÁMPARA-1'))
+        self.assertEqual(clave_tolerante('zzt_lampara/1'), clave_tolerante('ZZT-LAMPARA-1'))
         self.assertEqual(precio_texto(349.99), '$349.99 + ITBMS')
         self.assertEqual(precio_texto(1234.5), '$1,234.50 + ITBMS')
 
@@ -33,17 +33,17 @@ class TestBusqueda(BarrasCommon):
 
     def test_por_referencia_aunque_aun_no_tenga_codigo(self):
         """Hoy ningún producto tiene código de barras: la referencia ya sirve para empezar a escanear."""
-        r = self.Barras.buscar('ZZT-LÁMPARA-1')
+        r = self.Barras.buscar('ZZT-LAMPARA-1')
         self.assertEqual((r['resultado'], r['forma']), ('ok', 'referencia'))
         self.assertEqual(r['productos'][0]['id'], self.lampara.id)
-        self.assertEqual(self.Barras.buscar('zzt-lámpara-1')['productos'][0]['id'], self.lampara.id,
+        self.assertEqual(self.Barras.buscar('zzt-lampara-1')['productos'][0]['id'], self.lampara.id,
                          'sin mirar mayúsculas')
 
     def test_lo_que_escribe_el_lector_llega_con_saltos_de_linea(self):
-        self.assertEqual(self.Barras.buscar('\r\nZZT-LÁMPARA-1\n')['productos'][0]['id'], self.lampara.id)
+        self.assertEqual(self.Barras.buscar('\r\nZZT-LAMPARA-1\n')['productos'][0]['id'], self.lampara.id)
 
     def test_tolera_los_simbolos_que_cambia_el_teclado_del_lector(self):
-        for escrito in ('ZZT_LÁMPARA_1', 'zzt/lámpara/1', 'ZZT-LÁMPARA1', 'zzt lámpara 1'):
+        for escrito in ('ZZT_LAMPARA_1', 'zzt/lampara/1', 'ZZT-LAMPARA1', 'zzt lampara 1'):
             r = self.Barras.buscar(escrito)
             self.assertEqual((r['resultado'], r['forma']), ('ok', 'parecido'), escrito)
             self.assertEqual(r['productos'][0]['id'], self.lampara.id, escrito)
@@ -53,7 +53,7 @@ class TestBusqueda(BarrasCommon):
         self.assertEqual(self.Barras.buscar('a_b_c')['resultado'], 'no_encontrado')
 
     def test_comodines_de_busqueda_no_encuentran_todo(self):
-        for escrito in ('%', '_', 'ZZT%', '%LÁMPARA%', 'ZZT-LÁMPARA-_'):
+        for escrito in ('%', '_', 'ZZT%', '%LAMPARA%', 'ZZT-LAMPARA-_'):
             self.assertEqual(self.Barras.buscar(escrito)['resultado'], 'no_encontrado', escrito)
 
     def test_por_el_codigo_del_empaque(self):
@@ -80,9 +80,9 @@ class TestBusqueda(BarrasCommon):
         self.assertEqual(self.Barras.buscar('OLD-1000')['resultado'], 'no_encontrado')
 
     def test_la_tarjeta_trae_precio_existencias_y_ubicacion_pero_nunca_el_costo(self):
-        ficha = self.Barras.buscar('ZZT-LÁMPARA-1')['productos'][0]
+        ficha = self.Barras.buscar('ZZT-LAMPARA-1')['productos'][0]
         self.assertEqual(ficha['nombre'], self.lampara.display_name)
-        self.assertEqual(ficha['referencia'], 'ZZT-LÁMPARA-1')
+        self.assertEqual(ficha['referencia'], 'ZZT-LAMPARA-1')
         self.assertEqual(ficha['precio_texto'], '$349.99 + ITBMS')
         self.assertEqual(ficha['unidades'], 12)
         self.assertEqual(ficha['etiqueta'], 'disponible')
@@ -112,7 +112,7 @@ class TestBusqueda(BarrasCommon):
         encontrados = self.Barras.buscar_por_nombre('zzcama prueba')
         self.assertIn(self.lampara.id, [p['id'] for p in encontrados])
         self.assertEqual(self.Barras.buscar_por_nombre('x'), [], 'una sola letra no busca')
-        self.assertEqual(self.Barras.ficha(self.lampara.id)['referencia'], 'ZZT-LÁMPARA-1')
+        self.assertEqual(self.Barras.ficha(self.lampara.id)['referencia'], 'ZZT-LAMPARA-1')
 
     def test_ficha_con_un_dato_que_no_es_un_producto(self):
         for malo in (True, 'abc', None, -1, 99999999):
@@ -122,8 +122,8 @@ class TestBusqueda(BarrasCommon):
     def test_solo_quien_trabaja_con_inventario_puede_consultar(self):
         portal = new_test_user(self.env, login='barras_portal', groups='base.group_portal')
         for usuario in (self.sin_inventario, portal):
-            for llamada in (lambda b: b.buscar('ZZT-LÁMPARA-1'), lambda b: b.buscar_por_nombre('lámpara'),
+            for llamada in (lambda b: b.buscar('ZZT-LAMPARA-1'), lambda b: b.buscar_por_nombre('lámpara'),
                             lambda b: b.ficha(self.lampara.id)):
                 with self.assertRaises(AccessError, msg=usuario.login):
                     llamada(self.como(usuario))
-        self.assertEqual(self.como(self.vendedora).buscar('ZZT-LÁMPARA-1')['resultado'], 'ok')
+        self.assertEqual(self.como(self.vendedora).buscar('ZZT-LAMPARA-1')['resultado'], 'ok')

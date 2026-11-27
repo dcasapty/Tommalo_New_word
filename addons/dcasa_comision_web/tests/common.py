@@ -23,7 +23,8 @@ class ComisionCommon(NominaCommon):
         cls.itbms = cls.company.account_sale_tax_id
         cls.website = cls.env['website'].search([], limit=1)
         Producto = cls.env['product.product']
-        cls.articulo = Producto.create({'name': 'ARTICULO DE PRUEBA COMISION', 'type': 'consu', 'invoice_policy': 'order',
+        cls.articulo = Producto.create({'name': 'ARTICULO DE PRUEBA COMISION', 'type': 'consu',
+                                        'invoice_policy': 'order',
                                       'list_price': 1000.0, 'taxes_id': [Command.set(cls.itbms.ids)]})
         cls.premio = Producto.create({'name': 'PREMIO DE PRUEBA COMISION', 'type': 'service',
                                       'invoice_policy': 'order', 'list_price': 0.0,

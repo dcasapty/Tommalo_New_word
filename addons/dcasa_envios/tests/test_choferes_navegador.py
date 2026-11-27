@@ -107,7 +107,7 @@ class TestChoferesEnElNavegador(ChoferesComun, HttpCase):
                         precio: l.querySelector('.precio').textContent, mapa: l.querySelector('a.mapa').textContent,
                         rel: l.querySelector('a.mapa').rel};
             })()""")
-            self.assertEqual(villa, {'nombre': 'Villa Prueba', 'zona': 'Barrio Prueba · Penonomé', 'precio': '$15',
+            self.assertEqual(villa, {'nombre': 'Villa Prueba', 'zona': 'Barrio Prueba · La Chorrera', 'precio': '$15',
                                      'mapa': 'Ver en Google Maps', 'rel': 'noopener noreferrer'})
             leido = self._buscar_muchos(browser)
             self.assertNotRegex(leido['texto'], r'(?i)\bkm\b|kil[oó]metro', 'el chofer no ve kilómetros')

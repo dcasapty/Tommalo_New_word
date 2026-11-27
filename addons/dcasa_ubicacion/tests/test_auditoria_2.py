@@ -159,9 +159,9 @@ class TestAuditoria2(UbicacionCase):
 
     def test_h9_escribir_otra_calle_no_conserva_el_punto_viejo(self):
         self.clienta._dcasa_poner_ubicacion(*CERCA, 'whatsapp', confirmada=True)
-        self.clienta.write({'street': 'Calle 2, casa 5', 'city': 'Penonomé'})
+        self.clienta.write({'street': 'Calle 2, casa 5', 'city': 'La Chorrera'})
         antes = checkout._calle(self.clienta)
-        formulario = {'street': 'Calle 8, casa 77', 'street2': '', 'city': 'Penonomé'}
+        formulario = {'street': 'Calle 8, casa 77', 'street2': '', 'city': 'La Chorrera'}
         with patch.object(checkout, 'request', SimpleNamespace(env=self.env)):
             self.assertTrue(checkout.conservar_punto_al_escribir(self.clienta, formulario, antes),
                             'misma calle: el punto bueno se queda')

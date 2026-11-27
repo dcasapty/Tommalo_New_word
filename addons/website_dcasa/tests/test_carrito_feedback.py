@@ -177,5 +177,5 @@ class TestCarritoFeedback(ChromeMovilCase):
             if nombre == 'barra':
                 continue
             self.assertEqual(abre, nombre in nuevas, f'enlace «{nombre}»')
-        # La barra fina de arriba: el naranja de Tommalo (relleno: una barra, nunca texto).
+        # La barra fina de arriba: el de acento de Tommalo (relleno: una barra, nunca texto).
         self.assertEqual(r['barra'], {'posicion': 'fixed', 'alto': '3px', 'fondo': 'rgb(212, 212, 212)'})

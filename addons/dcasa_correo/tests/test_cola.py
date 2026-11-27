@@ -68,7 +68,8 @@ class TestCola(CorreoCase):
     def test_sin_correo_en_la_direccion_usa_el_de_la_ficha(self):
         self.encender()
         empresa = self.env['res.partner'].create({
-            'name': 'Articulos Beto S.A.', 'is_company': True, 'phone': '6000-0012', 'email': 'empresa.beto@example.com'})
+            'name': 'Articulos Beto S.A.', 'is_company': True, 'phone': '6000-0012',
+            'email': 'empresa.beto@example.com'})
         contacto = self.env['res.partner'].create({'name': 'Beto Compras', 'parent_id': empresa.id, 'type': 'invoice'})
         factura = self.pagada(contacto)
         self.procesar()

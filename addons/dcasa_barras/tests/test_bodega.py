@@ -261,7 +261,7 @@ class TestBodegaAbrirYLeer(BodegaCommon):
         lampara = lineas[self.lampara.id]
         self.assertEqual((lampara['pedida'], lampara['pedida_texto'], lampara['apartada'], lampara['unidad']),
                          (2.0, '2', 2.0, ''))
-        self.assertEqual(lampara['codigo'], 'ZZT-LÁMPARA-1')
+        self.assertEqual(lampara['codigo'], 'ZZT-LAMPARA-1')
         self.assertEqual(lampara['foto'], f'/web/image/product.product/{self.lampara.id}/image_128')
         self.assertEqual(detalle['imprimir']['report_name'], 'stock.report_deliveryslip')
         self.assertNotIn('50.0', str(detalle), 'bodega no ve precios')
@@ -340,7 +340,7 @@ class TestBodegaAbrirYLeer(BodegaCommon):
         self.assertEqual(self.leer(self.pedido_sin.name)['entrega']['id'], self.entrega_sin.id)
 
     def test_el_codigo_de_un_producto_lo_dice(self):
-        r = self.leer('ZZT-LÁMPARA-1')
+        r = self.leer('ZZT-LAMPARA-1')
         self.assertEqual((r['resultado'], r['producto_ids'], r['nombre']),
                          ('producto', [self.lampara.id], 'ZZCAMA DE PRUEBA'))
         r = self.leer('ZZT-MESA-9-BAR')

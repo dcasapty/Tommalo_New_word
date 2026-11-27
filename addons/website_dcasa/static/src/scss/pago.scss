@@ -20,14 +20,14 @@
 // (#o_payment_form, [name=o_payment_option], input[name=o_payment_radio], button[name=o_payment_submit_button]).
 
 $pago-tinta: $bc-fg;                       // #262626 oscuro: la letra, los titulares y el radio elegido
-$pago-gris: #5C5C5C;                       // muted (oscuro al 70 %) ya mezclado sobre el claro: 4.94 claro · 4.64 superficie
+$pago-gris: #666666;                       // muted (oscuro al 70 %) ya mezclado sobre el claro: 5.4 claro · 5.7 superficie
 $pago-enlace: $bc-accent-strong;           // #595959: enlaces de acción y el precio del premio (4.93 claro · 4.63 superficie)
 $pago-accion: $bc-accent;                  // #D4D4D4: RELLENO del botón de pagar. Nunca texto ni borde
 $pago-en-accion: $bc-accent-fg;            // #262626: la letra sobre el de acento (5.56)
 $pago-accion-encima: #D9D9D9;              // $bc-accent-hover (el de acento mezclado al 88 % con el claro): oscuro 6.11
 $pago-filo: $bc-accent-edge;               // #8A8A8A: el borde de la fila elegida (3.20 claro · 3.00 superficie)
-$pago-borde: #E0E0E0;                      // line (oscuro al 12 % sobre el claro): los filos que separan
-$pago-borde-campo: #8A8A8A;                // control (oscuro al 55 % sobre el claro): campos y radios (3.07 a 3.53)
+$pago-borde: #E1E1E1;                      // line (oscuro al 12 % sobre el claro): los filos que separan
+$pago-borde-campo: #858585;                // control (oscuro al 55 % sobre el claro): campos y radios (3.5 a 3.8)
 $pago-elegida: $bc-bg;                     // #FAFAFA: la fila elegida, el claro sobre la superficie de la lista
 $pago-encima: #FCFCFC;                     // la fila bajo el puntero: mitad superficie, mitad claro
 $pago-panel: $bc-surface;                  // #FFFFFF: la lista de métodos, el resumen y las tarjetas

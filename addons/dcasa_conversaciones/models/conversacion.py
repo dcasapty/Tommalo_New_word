@@ -572,7 +572,8 @@ class DcasaConversacion(models.Model):
     def _con_intencion_de_compra(self):
         """¿Mostró intención de compra? Hay una oportunidad de CRM viva (ni ganada ni perdida) ligada a la conversación.
 
-        El asistente la crea cuando el cliente muestra interés concreto (un producto puntual, un presupuesto, quiere ir a
+        El asistente la crea cuando el cliente muestra interés concreto (un producto puntual, un presupuesto,
+            quiere ir a
         la tienda) y una vendedora puede crearla con un botón. Sin oportunidad, el seguimiento no corre.
         """
         self.ensure_one()
@@ -793,7 +794,8 @@ class DcasaConversacion(models.Model):
         self.ensure_one()
         if self.oportunidad_id:
             nombre = self.oportunidad_id.name or ''
-            prefijo = f'{dict(CANALES).get(self.canal, self.canal)}: '   # «WhatsApp (QR): lámpara grande» → «lámpara grande»
+            prefijo = f'{dict(CANALES).get(self.canal,
+                self.canal)}: '   # «WhatsApp (QR): lámpara grande» → «lámpara grande»
             return (nombre[len(prefijo):] if nombre.startswith(prefijo) else nombre)[:200]
         ultimo = self.env['dcasa.mensaje'].search([('conversacion_id', '=', self.id), ('autor', '=', 'cliente')],
                                                   order='ts desc, id desc', limit=1)

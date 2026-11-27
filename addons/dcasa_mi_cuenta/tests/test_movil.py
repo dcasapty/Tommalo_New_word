@@ -81,7 +81,7 @@ class TestMiCuentaMovil(MiCuentaComun, ChromeMovilCase):
         self._sin_desborde('/mi-cuenta', medida)
         self.assertIsNone(medida['nav'], 'Sin sesión no hay barra de secciones')
         self.assertEqual(medida['camposChicos'], [], 'Campos de menos de 16 px: el iPhone acerca la pantalla')
-        # La marca Tommalo: el fondo crema y «Entrar» en el naranja con letra navy (5.56), en Montserrat.
+        # La marca Tommalo: el fondo crema y «Entrar» en el de acento con letra oscuro (5.56), en Montserrat.
         self.assertEqual(medida['marca']['fondo'], 'rgb(250, 250, 250)')
         self.assertEqual(medida['marca']['principal'], ['rgb(212, 212, 212)', 'rgb(38, 38, 38)', 'Montserrat'])
 
@@ -98,5 +98,5 @@ class TestMiCuentaMovil(MiCuentaComun, ChromeMovilCase):
                 for texto, alto, ancho in medida['botones']:
                     self.assertGreaterEqual(min(alto, ancho), 48, f'{ruta}: «{texto}» mide {ancho}x{alto}')
                 self.assertEqual(medida['flotante'], 'none', f'{ruta}: el WhatsApp flotante taparía la barra')
-                # La sección abierta, en la píldora verde salvia con letra navy (6.96), nunca el azul de D'CASA.
+                # La sección abierta, en la píldora suave con letra oscuro (6.96), nunca el azul de D'CASA.
                 self.assertEqual(medida['marca']['abierta'][:2], ['rgb(189, 189, 189)', 'rgb(38, 38, 38)'], ruta)

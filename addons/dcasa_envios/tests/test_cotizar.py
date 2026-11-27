@@ -44,7 +44,7 @@ class TestCotizar(EnviosComun):
         for como in (villa, villa.id, villa._como_motor()):
             datos = Tarifa.cotizar_lugar(como)
             self.assertEqual((datos['total'], datos['texto_cliente']),
-                             (15.0, 'Envío a Villa Prueba (Barrio Prueba, Penonomé): $15.'))
+                             (15.0, 'Envío a Villa Prueba (Barrio Prueba, La Chorrera): $15.'))
         lejano = Tarifa.cotizar_lugar(self.lugar('Pueblo Lejano'))
         self.assertEqual((lejano['con_precio'], lejano['motivo']), (False, 'aparte'))
         self.assertFalse(Tarifa.cotizar_lugar(self.lugar('Monte Sin Camino'))['con_precio'])
@@ -57,7 +57,7 @@ class TestCotizar(EnviosComun):
         primero = de_vendedora['resultados'][0]
         self.assertEqual((primero['nombre'], primero['total_txt'], primero['id']),
                          ('Villa Prueba', '$15', self.lugar('Villa Prueba').id))
-        self.assertEqual(primero['url_mapa'], 'https://www.google.com/maps/dir/?api=1&origin=8.9500000,-79.5500000'
+        self.assertEqual(primero['url_mapa'], 'https://www.google.com/maps/dir/?api=1&origin=8.95,-79.55'
                                               '&destination=8.9011%2C-79.8011&travelmode=driving')
         self.assertEqual(de_vendedora['total'], 2)
         vacio = self.env['dcasa.envio.lugar'].buscar_para_cotizar('pruebaxx zzz')
@@ -65,9 +65,9 @@ class TestCotizar(EnviosComun):
         self.assertIn('Villa Prueba', [s['nombre'] for s in vacio['sugerencias']])
         filtrado = self.env['dcasa.envio.lugar'].buscar_para_cotizar('prueba', tipo='corregimiento')
         self.assertEqual({r['tipo'] for r in filtrado['resultados']}, {'corregimiento'})
-        de_la_zona = self.env['dcasa.envio.lugar'].buscar_para_cotizar('ensayo', distrito='Coclé')
+        de_la_zona = self.env['dcasa.envio.lugar'].buscar_para_cotizar('ensayo', distrito='Panamá Oeste')
         self.assertTrue(de_la_zona['total'])
-        self.assertEqual({r['prov'] for r in de_la_zona['resultados']}, {'Coclé'})
+        self.assertEqual({r['prov'] for r in de_la_zona['resultados']}, {'Panamá Oeste'})
         largo = self.env['dcasa.envio.lugar'].buscar_para_cotizar('prueba ' * 100, tipo='otra cosa', limite=10 ** 6)
         self.assertEqual(largo['texto'], ('prueba ' * 100)[:120])
         self.assertLessEqual(len(largo['resultados']), 200)
@@ -84,9 +84,9 @@ class TestCotizar(EnviosComun):
     def test_lo_que_necesita_la_pantalla(self):
         datos = self.env['dcasa.envio.lugar'].with_user(self.vendedora).datos_de_la_calculadora()
         self.assertEqual(datos['total_lugares'], 39)
-        self.assertIn('Penonomé', datos['distritos'])
-        self.assertIn('Coclé', datos['provincias'])
-        self.assertEqual(datos['corregimientos']['Penonomé'], ['Barrio Prueba', 'Cerro Ficticio', 'Los Ensayos'])
+        self.assertIn('La Chorrera', datos['distritos'])
+        self.assertIn('Panamá Oeste', datos['provincias'])
+        self.assertEqual(datos['corregimientos']['La Chorrera'], ['Barrio Prueba', 'Cerro Ficticio', 'Los Ensayos'])
         self.assertFalse(datos['es_gerencia'])
         tarifa = datos['tarifa']
         self.assertEqual([f['texto'] for f in tarifa['regla'] if f['clase'] == 'ficha'],
@@ -99,7 +99,7 @@ class TestCotizar(EnviosComun):
     def test_un_lugar_nuevo_sale_en_la_busqueda_al_momento(self):
         Lugar = self.env['dcasa.envio.lugar'].with_user(self.vendedora)
         self.assertEqual(Lugar.buscar_para_cotizar('casa del mango')['total'], 0)
-        nuevo = Lugar.create({'name': 'Casa del Mango', 'tipo': 'barrio', 'dist': 'Penonomé', 'km': 3.3})
+        nuevo = Lugar.create({'name': 'Casa del Mango', 'tipo': 'barrio', 'dist': 'La Chorrera', 'km': 3.3})
         datos = Lugar.buscar_para_cotizar('casa del mango')
         self.assertEqual(datos['resultados'][0]['id'], nuevo.id)
         self.assertIn({'texto': 'agregado a mano', 'clase': 'mano'}, datos['resultados'][0]['chips'])
@@ -145,7 +145,7 @@ class TestCotizar(EnviosComun):
         self.assertEqual(r['datos']['lugares'][0]['lugar'], 'Villa Prueba')
         self.assertEqual(r['datos']['lugares'][0]['total'], '$15')
         self.assertEqual(r['datos']['lugares'][0]['texto_para_el_cliente'],
-                         'Envío a Villa Prueba (Barrio Prueba, Penonomé): $15.')
+                         'Envío a Villa Prueba (Barrio Prueba, La Chorrera): $15.')
         km = Brian.ejecutar('cotizar_envio', {'km': '15', 'peaje': 'no'})
         self.assertEqual((km['datos']['total'], km['datos']['desglose']), ('$25', 'Tarifa base $25'))
         nada = Brian.ejecutar('cotizar_envio', {'lugar': 'pruebaxx zzz'})

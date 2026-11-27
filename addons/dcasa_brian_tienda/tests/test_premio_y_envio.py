@@ -20,7 +20,7 @@ from odoo.addons.dcasa_socios.tests.common import ConReglasDePrueba
 from odoo.exceptions import UserError
 from odoo.tests import new_test_user, tagged
 
-from .common import RAIZ, TiendaCase
+from .common import RAIZ, TiendaCase, promocion_de_prueba
 
 HOY = 'odoo.addons.dcasa_envios.models.promocion.EnvioPromocion._hoy'
 PIN = '913772'
@@ -38,6 +38,7 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
                                      groups='base.group_user,dcasa_base.group_gerencia')
         importar(cls.env, cls.gerencia)
         cls.env['dcasa.envio.tarifa'].search([], limit=1).with_user(cls.gerencia).action_aprobar()
+        promocion_de_prueba(cls.env)
         Lugar = cls.env['dcasa.envio.lugar']
         cls.costa = Lugar.search([('name', '=', 'Costa Inventada')])     # $45 normal; gratis con la promoción
         cls.colon = Lugar.search([('name', '=', 'Barrio Simulado')])     # $105 normal; abono de $20
@@ -55,7 +56,8 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
 
     def setUp(self):
         super().setUp()
-        # Un día dentro de la promoción de noviembre de 2026 (viene cargada: más de $200, Costa gratis, Colón $20).
+        # Un día dentro de la promoción de noviembre de 2026 (la de promocion_de_prueba: más de $200, Costa gratis,
+        # Colón $20).
         self.startPatcher(patch(HOY, return_value=date(2026, 11, 16)))
         self.startPatcher(patch.dict(os.environ, {'DCASA_PIN_PEPPER': 'pimienta-de-prueba'}))
 

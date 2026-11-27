@@ -131,6 +131,7 @@ class TestBuscarComoElCatalogo(HttpCase):
     def setUp(self):
         super().setUp()
         self.website = self.env.ref('website.default_website')
+        self.website.dcasa_whatsapp_number = '+507 6000-0002'   # de fábrica va vacío (PENDIENTE)
         self.salud = self.env.ref('website_dcasa.public_category_salud')
         self.jabon = self.env['product.template'].create({
             'name': 'ZZSOFÁ DE PRUEBA DEL BUSCADOR', 'list_price': 189.99, 'is_published': True,
@@ -143,7 +144,7 @@ class TestBuscarComoElCatalogo(HttpCase):
         modal = self._modal(self.url_open('/').text)
         self.assertIn('action="/shop"', modal)
         self.assertIn('data-search-type="products"', modal, 'la lista mientras se escribe se queda (solo productos)')
-        self.assertIn('placeholder="Escribe lo que buscas"', modal)
+        self.assertIn('placeholder="¿Qué buscas?"', modal)
         self.assertNotIn('/website/search', modal)
 
     def test_lupa_a_la_vista_en_el_celular(self):
@@ -158,7 +159,7 @@ class TestBuscarComoElCatalogo(HttpCase):
 
     def test_la_busqueda_general_lleva_al_catalogo(self):
         for ruta, destino in (('/website/search?search=jabon', '/shop?search=jabon'),
-                              ('/website/search?search=colch%C3%B3n+grande', '/shop?search=colch%C3%B3n+grande'),
+                              ('/website/search?search=loci%C3%B3n+grande', '/shop?search=loci%C3%B3n+grande'),
                               ('/website/search', '/shop'),
                               ('/website/search/products?search=lampara', '/shop?search=lampara')):
             with self.subTest(ruta=ruta):
@@ -266,7 +267,7 @@ class TestBuscarComoElCatalogo(HttpCase):
     def test_la_barra_de_la_tienda_dice_lo_mismo(self):
         tienda = self.url_open('/shop').text
         barra = re.search(r'<form[^>]*o_wsale_products_searchbar_form.*?</form>', tienda, re.S).group(0)
-        self.assertIn('placeholder="Escribe lo que buscas"', barra)
+        self.assertIn('placeholder="¿Qué buscas?"', barra)
         categoria = self.url_open(self.website._dcasa_categoria_url('salud')).text
         barra = re.search(r'<form[^>]*o_wsale_products_searchbar_form.*?</form>', categoria, re.S).group(0)
-        self.assertNotIn('placeholder="Escribe lo que buscas"', barra, 'en una categoría, el «Buscar en …» de Odoo')
+        self.assertNotIn('placeholder="¿Qué buscas?"', barra, 'en una categoría, el «Buscar en …» de Odoo')

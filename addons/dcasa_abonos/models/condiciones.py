@@ -82,9 +82,9 @@ def sin_referencia(descripcion, referencia):
 ALTO_DISPONIBLE = 600
 ALTO_FIJO = 205
 ALTO_ENCABEZADO_TABLA = (8, 10)
-ALTO_FILA_ESTANTE = (4, 17)
+ALTO_FILA_PRODUCTO = (4, 17)
 ALTO_RENGLON_DE_MAS = 12
-LETRAS_POR_RENGLON_ESTANTE = 60
+LETRAS_POR_RENGLON_PRODUCTO = 60
 ALTO_TITULO_CONDICIONES = 16
 ALTO_ENTRE_CONDICIONES = 2
 ALTO_RENGLON_CONDICION = 12
@@ -113,8 +113,8 @@ def alto_condiciones(condiciones):
 def alto_tabla(descripciones, escala=1.0, fila_extra=False):
     """Lo que ocupa la tabla de los productos achicada a ``escala`` (achicada caben más letras por renglón), con la fila
     de «y N productos más» si va."""
-    letras = LETRAS_POR_RENGLON_ESTANTE / escala
-    fila = ALTO_FILA_ESTANTE[0] + ALTO_FILA_ESTANTE[1] * escala
+    letras = LETRAS_POR_RENGLON_PRODUCTO / escala
+    fila = ALTO_FILA_PRODUCTO[0] + ALTO_FILA_PRODUCTO[1] * escala
     de_mas = ALTO_RENGLON_DE_MAS * escala
     filas = [fila + de_mas * (renglones(descripcion, letras) - 1) for descripcion in descripciones]
     if fila_extra:
@@ -146,10 +146,10 @@ def ajuste_a_una_hoja(descripciones, condiciones):
 
 # Con menos lugar que esto para la tabla, la dueña ve un aviso en Ajustes: con estas condiciones ya no caben ni cinco
 # productos sin achicar la lista.
-ESTANTES_SIN_ACHICAR_MINIMOS = 5
+PRODUCTOS_SIN_ACHICAR_MINIMOS = 5
 
 
 def demasiado_largas(condiciones):
     """True si las condiciones dejan tan poco lugar que con pocos productos la lista ya se achica o se corta."""
     lugar = ALTO_DISPONIBLE - ALTO_FIJO - alto_condiciones(condiciones)
-    return lugar < alto_tabla([''] * ESTANTES_SIN_ACHICAR_MINIMOS)
+    return lugar < alto_tabla([''] * PRODUCTOS_SIN_ACHICAR_MINIMOS)

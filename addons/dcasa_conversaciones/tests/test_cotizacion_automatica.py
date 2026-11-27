@@ -47,7 +47,7 @@ class TestCotizarAutomatica(CotizarCase):
         self.assertEqual(esquema['properties']['lineas']['items']['required'], ['codigo'])
 
     def test_arma_la_cotizacion_con_los_totales_que_calcula_odoo(self):
-        datos = self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 2}, {'codigo': 'zz-lámpara'})
+        datos = self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 2}, {'codigo': 'zz-lampara'})
         (orden,) = self.ordenes()
         self.assertTrue(datos['creada'])
         self.assertFalse(datos['reutilizada'])
@@ -103,7 +103,7 @@ class TestCotizarAutomatica(CotizarCase):
         self.assertEqual(self.ordenes(otra).user_id, self.vendedora)
 
     def test_el_pdf_queda_en_un_aviso_del_hilo_con_url_firmada_de_vida_corta(self):
-        datos = self.cotizar({'codigo': 'ZZ-LÁMPARA'})
+        datos = self.cotizar({'codigo': 'ZZ-LAMPARA'})
         (orden,) = self.ordenes()
         documento = datos['documento']
         self.assertEqual((documento['tipo'], documento['mime']), ('documento', 'application/pdf'))
@@ -123,13 +123,14 @@ class TestCotizarAutomatica(CotizarCase):
 
     def test_no_habla_con_el_canal_ni_manda_nada_por_si_sola(self):
         with patch('odoo.addons.dcasa_conversaciones.models.cliente_worker.JuanCliente.enviar') as enviar:
-            self.cotizar({'codigo': 'ZZ-LÁMPARA'})
+            self.cotizar({'codigo': 'ZZ-LAMPARA'})
         enviar.assert_not_called()
 
     def test_la_misma_cotizacion_pedida_otra_vez_se_reutiliza(self):
-        primera = self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 2}, {'codigo': 'ZZ-LÁMPARA'})
+        primera = self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 2}, {'codigo': 'ZZ-LAMPARA'})
         # Mismas líneas aunque lleguen en otro orden o repartidas: es la misma cotización.
-        segunda = self.cotizar({'codigo': 'ZZ-LÁMPARA'}, {'codigo': 'ZZ-ESPEJO', 'cantidad': 1}, {'codigo': 'ZZ-ESPEJO'})
+        segunda = self.cotizar({'codigo': 'ZZ-LAMPARA'}, {'codigo': 'ZZ-ESPEJO', 'cantidad': 1},
+            {'codigo': 'ZZ-ESPEJO'})
         self.assertEqual(len(self.ordenes()), 1)
         self.assertTrue(segunda['reutilizada'])
         self.assertEqual(segunda['cotizacion']['numero'], primera['cotizacion']['numero'])
@@ -299,7 +300,7 @@ class TestCotizarPdfDeVerdad(HttpCase, HerramientasCase):
     @skipUnless(shutil.which('wkhtmltopdf') and _pypdf2_compatible(),
                 'Falta wkhtmltopdf, o el PyPDF2 instalado no es el que pide Odoo (< 3)')
     def test_el_documento_se_baja_con_la_url_firmada_y_es_un_pdf(self):
-        datos = self.salida('cotizar', {'lineas': [{'codigo': 'ZZ-LÁMPARA'}]})
+        datos = self.salida('cotizar', {'lineas': [{'codigo': 'ZZ-LAMPARA'}]})
         ruta = re.sub(r'^https?://[^/]+', '', datos['documento']['url'])
         respuesta = self.url_open(ruta)
         self.assertEqual(respuesta.status_code, 200)

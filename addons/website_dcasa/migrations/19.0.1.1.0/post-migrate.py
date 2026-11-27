@@ -19,7 +19,7 @@ def migrate(cr, version):
     website = env.ref('website.default_website', raise_if_not_found=False)
     if website:
         website.write({'shop_ppr': 4, 'shop_ppg': 24, 'shop_opt_products_design_classes': DISENO_TIENDA})
-    # El título y la descripción de la portada los pone ``_dcasa_seo_portada`` (data/seo_data.xml) en cada actualización.
+    # El título y la descripción de la portada los pone ``_dcasa_seo_portada`` (data/seo_data.xml) al actualizar.
     texto_cabecera = env.ref('website.header_text_element', raise_if_not_found=False)
     if texto_cabecera:
         texto_cabecera.active = False

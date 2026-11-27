@@ -30,7 +30,7 @@ MARCA = 'Tommalo'
 
 # Tommalo vende 100% en línea, sin tienda física: en lugar de una dirección y un mapa, el sitio dice esta frase. La usan
 # «Contacto» (/visitanos), el pie y la portada. PENDIENTE (lo decide Tommalo): las zonas de entrega reales.
-COBERTURA = 'Venta 100% online con entrega a domicilio en Panamá'
+COBERTURA = 'Venta 100% en línea con entrega a domicilio en Panamá'
 
 DEFAULT_WHATSAPP_MESSAGE = f'Hola {MARCA}, quiero información'
 
@@ -510,6 +510,8 @@ class Website(models.Model):
     def _dcasa_corregir_textos(self):
         """Corrige TEXTOS_CORREGIDOS en las copias por sitio de la portada (todas las lenguas). Devuelve cuántas
         vistas cambió; se puede volver a correr."""
+        if not TEXTOS_CORREGIDOS:
+            return 0
         idiomas = list(dict.fromkeys(['en_US', *(c for c, _n in self.env['res.lang'].get_installed())]))
         self.env['ir.ui.view'].flush_model(['arch_db', 'website_id', 'type'])
         condiciones = ' OR '.join(['arch_db::text ILIKE %s'] * len(TEXTOS_CORREGIDOS))

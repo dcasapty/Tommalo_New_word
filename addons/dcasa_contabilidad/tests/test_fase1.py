@@ -313,8 +313,8 @@ class TestFase1(ContabilidadCommon):
         datos = self.reportes.obtener('balance_comprobacion', DESDE, HASTA)
         with zipfile.ZipFile(io.BytesIO(libro_excel(datos))) as archivo:
             estilos = archivo.read('xl/styles.xml').decode().upper()
-        self.assertIn('FF91C9A2', estilos, 'la cabecera en el verde salvia')
-        self.assertIn('FF1B3246', estilos, 'la letra en navy')
+        self.assertIn('FFBDBDBD', estilos, 'la cabecera en el verde salvia')
+        self.assertIn('FF262626', estilos, 'la letra en navy')
         self.assertNotIn('FF1340B1', estilos, "nada del azul de Tommalo")
         self.assertNotIn('<COLOR RGB="FFFFFFFF"/>', estilos, 'nada de letra blanca')
 

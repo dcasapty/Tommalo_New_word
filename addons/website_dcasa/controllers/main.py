@@ -172,9 +172,9 @@ class DcasaTienda(http.Controller):
 
     @http.route(['/catalogo', '/tienda'], type='http', auth='public', website=True, sitemap=False)
     def catalogo(self, **kwargs):
-        """Direcciones que la gente escribe o comparte («tommalo.example/catalogo» (dominio provisional)): llevan al catálogo para siempre (301).
-        Lo que traiga después del «?» (una búsqueda, una campaña) se conserva. Solo a /shop: no es una redirección
-        abierta."""
+        """Direcciones que la gente escribe o comparte («tommalo.example/catalogo», dominio provisional): llevan al
+        catálogo para siempre (301). Lo que traiga después del «?» (una búsqueda, una campaña) se conserva. Solo a
+        /shop: no es una redirección abierta."""
         consulta = request.httprequest.query_string.decode('utf-8', 'replace')
         return request.redirect(f'/shop?{consulta}' if consulta else '/shop', code=301, local=True)
 

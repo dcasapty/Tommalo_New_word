@@ -88,7 +88,7 @@ TABLET = """
                                  "el foco en el cuadro de productos");
 
     // Escanear un producto lo marca; uno que no es de la entrega avisa.
-    escribir(lector, "ZZT-LÁMPARA-1");
+    escribir(lector, "ZZT-LAMPARA-1");
     enter(lector);
     await esperar(() => linea("ZZCAMA").querySelector(".o_dcasa_bodega_cifra")?.textContent.includes("1 de 2"),
                   "la lámpara marcada con el lector");

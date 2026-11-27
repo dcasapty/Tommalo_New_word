@@ -7,14 +7,14 @@ from odoo.tests import BaseCase, tagged
 from ..motor import enlaces_mapa, geo
 
 LUGARES = [
-    {'nombre': 'Barrio Prueba', 'tipo': 'corregimiento', 'corr': 'Barrio Prueba', 'dist': 'Penonomé',
-     'prov': 'Coclé', 'lat': 8.9001, 'lon': -79.8001},
-    {'nombre': 'Villa Prueba', 'tipo': 'barrio', 'corr': 'Barrio Prueba', 'dist': 'Penonomé',
-     'prov': 'Coclé', 'lat': 8.9011, 'lon': -79.8011},
-    {'nombre': 'Hospital del Ejemplo', 'tipo': 'referencia', 'corr': 'Barrio Prueba', 'dist': 'Penonomé',
-     'prov': 'Coclé', 'lat': 8.9021, 'lon': -79.8021},
+    {'nombre': 'Barrio Prueba', 'tipo': 'corregimiento', 'corr': 'Barrio Prueba', 'dist': 'La Chorrera',
+     'prov': 'Panamá Oeste', 'lat': 8.9001, 'lon': -79.8001},
+    {'nombre': 'Villa Prueba', 'tipo': 'barrio', 'corr': 'Barrio Prueba', 'dist': 'La Chorrera',
+     'prov': 'Panamá Oeste', 'lat': 8.9011, 'lon': -79.8011},
+    {'nombre': 'Hospital del Ejemplo', 'tipo': 'referencia', 'corr': 'Barrio Prueba', 'dist': 'La Chorrera',
+     'prov': 'Panamá Oeste', 'lat': 8.9021, 'lon': -79.8021},
     {'nombre': 'Vista Inventada', 'tipo': 'corregimiento', 'corr': 'Vista Inventada', 'dist': 'Arraiján',
-     'prov': 'Coclé', 'lat': 8.9304, 'lon': -79.8304},
+     'prov': 'Panamá Oeste', 'lat': 8.9304, 'lon': -79.8304},
     {'nombre': 'Sin coordenadas', 'tipo': 'barrio', 'corr': 'X', 'dist': 'Y', 'prov': 'Z', 'lat': None, 'lon': None},
 ]
 
@@ -53,8 +53,8 @@ class TestGeo(BaseCase):
         self.assertEqual(LUGARES[zona['precio']]['nombre'], 'Villa Prueba')
         self.assertLess(zona['precio_m'], 50)
         self.assertEqual((zona['barriada'], zona['corregimiento'], zona['distrito'], zona['provincia']),
-                         ('Villa Prueba', 'Barrio Prueba', 'Penonomé', 'Coclé'))
-        self.assertEqual(geo.zona_texto(zona), 'Villa Prueba · Barrio Prueba · Penonomé · Coclé')
+                         ('Villa Prueba', 'Barrio Prueba', 'La Chorrera', 'Panamá Oeste'))
+        self.assertEqual(geo.zona_texto(zona), 'Villa Prueba · Barrio Prueba · La Chorrera · Panamá Oeste')
         self.assertTrue(geo.en_cobertura(zona))
 
     def test_lejos_de_todo_no_hay_precio_ni_cobertura(self):
@@ -72,12 +72,12 @@ class TestGeo(BaseCase):
         self.assertTrue(geo.en_cobertura(geo.deducir_zona([], 9.6, -82.8)))
 
     def test_lo_escrito_contra_el_punto(self):
-        zona = {'distrito': 'Penonomé'}
-        distritos = ['Penonomé', 'Arraiján', 'San Miguelito']
+        zona = {'distrito': 'La Chorrera'}
+        distritos = ['La Chorrera', 'Arraiján', 'San Miguelito']
         aviso = geo.aviso_de_cruce('Calle 5, casa 12, Arraijan', zona, distritos)
-        self.assertIn('está en Penonomé', aviso)
+        self.assertIn('está en La Chorrera', aviso)
         self.assertIn('escribió Arraiján', aviso)
-        self.assertEqual(geo.aviso_de_cruce('Calle 5, PENONOMÉ', zona, distritos), '')
+        self.assertEqual(geo.aviso_de_cruce('Calle 5, LA CHORRERA', zona, distritos), '')
         self.assertEqual(geo.aviso_de_cruce('Calle 5, casa 12', zona, distritos), '',
                          'sin distrito escrito no hay aviso')
         self.assertEqual(geo.aviso_de_cruce('Arraiján', {'distrito': ''}, distritos), '')

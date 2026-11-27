@@ -102,7 +102,7 @@ class TestQrDocumentos(DocumentosDePrueba):
         }
         for texto, esperado in validas.items():
             self.assertEqual(documento.leer_url(texto), esperado, texto)
-        for texto in ('', 'DC0001', 'DC-K7M4PX', 'ZZT-LÁMPARA-1', '7501234567890', f'{BASE}/dcasa/doc/',
+        for texto in ('', 'DC0001', 'DC-K7M4PX', 'ZZT-LAMPARA-1', '7501234567890', f'{BASE}/dcasa/doc/',
                       f'{BASE}/dcasa/doc/FAC', f'{BASE}/dcasa/doc/FAC/', f'{BASE}/dcasa/doc/XXX/S00007',
                       f'{BASE}/otra/ruta/FAC/S00007', 'una frase /dcasa/doc/FAC/INV/1',
                       f'{BASE}/dcasa/doc/FAC/' + 'X' * 100, f'{BASE}/' + 'a' * 500, None, 7, ['x']):

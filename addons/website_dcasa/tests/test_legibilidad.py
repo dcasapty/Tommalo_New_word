@@ -10,9 +10,9 @@ Chrome, con el teléfono emulado, lo que la persona ve:
 * Arreglo 7: el botón del hero no queda pegado a la burbuja de Andrés en el celular, y los botones de categoría de «no
   encontramos» se apartan de la burbuja con el gancho que el chat ya tiene.
 
-Viene de D'CASA (2026-11-19) y se puso al día con la marca de Tommalo (docs/MARCA_TOMMALO.md): el gris es `muted`
-(el navy al 70 %), el texto de ayuda del buscador sigue siendo «Escribe lo que buscas» (el menú del celular de Baby
-Caleb ocupa la pantalla: se mide que quepa) y el botón del hero es «Ver el catálogo» (su hero no lleva WhatsApp).
+Viene de la plantilla de origen y se puso al día con la marca provisional de Tommalo: el gris es `muted`
+(el texto al 70 %), el texto de ayuda del buscador es «¿Qué buscas?» (el menú del celular ocupa la
+pantalla: se mide que quepa) y el botón del hero es «Ver el catálogo» (su hero no lleva WhatsApp).
 """
 import json
 import re
@@ -68,7 +68,7 @@ class TestLegibilidadColor(ChromeMovilCase):
                     with self.subTest(ruta=ruta, ancho=ancho):
                         self._abrir(browser, ruta)
                         medida = self._medir(browser, selector, '::placeholder')
-                        self.assertEqual(medida['color'], 'rgba(38, 38, 38, 0.7)', '`muted`: el navy al 70 %')
+                        self.assertEqual(medida['color'], 'rgba(38, 38, 38, 0.7)', '`muted`: el oscuro al 70 %')
                         self.assertEqual(medida['opacidad'], 1, 'sin la opacidad que Odoo le baja al placeholder')
                         razon = razon_del_texto(medida)
                         self.assertGreaterEqual(razon, MINIMO, f'placeholder de {ruta}: {razon:.2f}:1 sobre '
@@ -160,9 +160,9 @@ class TestLegibilidadZonasTactiles(ChromeMovilCase):
                 '#contactus_form .s_website_form_send'])
 
 
-# En D'CASA es «Busca un mueble» (16 letras, para su cajón). En Tommalo el texto es el de siempre y lo que se exige
-# es lo que de verdad importa: que quepa entero en el campo del menú del celular (TestLegibilidadBuscadorMovil).
-PLACEHOLDER = 'Escribe lo que buscas'
+# Texto corto de ayuda: lo que se exige es que quepa entero en el campo del menú del celular, con la cámara de
+# «Busca con una foto» dentro (TestLegibilidadBuscadorMovil).
+PLACEHOLDER = '¿Qué buscas?'
 
 
 @tagged('post_install', '-at_install')
@@ -299,7 +299,8 @@ class TestLegibilidadBurbuja(ChromeMovilCase):
     """
 
     def test_el_boton_del_hero_no_pega_con_la_burbuja(self):
-        # En D'CASA el botón de WhatsApp del hero quedaba a 8 px de la burbuja, al lado: se medía su orilla derecha.
+        # En la plantilla de origen el botón de WhatsApp del hero quedaba a 8 px de la burbuja, al lado: se medía su
+        # orilla derecha.
         # El de Tommalo es una pastilla a lo ancho (como en tommalo.example), arriba de la burbuja: lo que se exige es
         # que entre los dos queden 16 px o más (por el lado o por arriba), es decir, que no se toquen.
         aire = 16

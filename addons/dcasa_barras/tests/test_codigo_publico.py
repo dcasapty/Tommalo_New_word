@@ -17,7 +17,7 @@ class TestBuscarPorCodigoPublico(BarrasCommon):
             self.assertEqual((r['resultado'], r['forma']), ('ok', 'codigo_publico'), escrito)
             self.assertEqual(r['productos'][0]['id'], self.lampara.id, escrito)
             self.assertEqual(r['productos'][0]['codigo_publico'], codigo)
-            self.assertEqual(r['productos'][0]['referencia'], 'ZZT-LÁMPARA-1', 'la referencia interna sigue a la vista')
+            self.assertEqual(r['productos'][0]['referencia'], 'ZZT-LAMPARA-1', 'la referencia interna sigue a la vista')
 
     def test_un_producto_con_medidas_sale_con_todas_para_elegir(self):
         talla = self.env['product.attribute'].create({'name': 'Zztalla', 'create_variant': 'always', 'value_ids': [

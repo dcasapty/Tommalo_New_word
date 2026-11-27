@@ -81,8 +81,8 @@ class TestTiendaConfigurada(TransactionCase):
         vista = self.env['ir.ui.view'].create({
             'name': 'Copia vieja de prueba', 'type': 'qweb', 'key': 'website_dcasa.prueba_portada_vieja_uno',
             'website_id': self.website.id,
-            'arch_db': '<t t-name="website_dcasa.prueba_portada_vieja_uno"><div><p>%s</p><p>%s</p></div></t>'
-                       % (pares[0][0], pares[1][0]),
+            'arch_db': ('<t t-name="website_dcasa.prueba_portada_vieja_uno"><div>'
+                        f'<p>{pares[0][0]}</p><p>{pares[1][0]}</p></div></t>'),
         })
         with patch.object(modulo_website, 'TEXTOS_CORREGIDOS', pares):
             self.assertEqual(self.env['website']._dcasa_corregir_textos(), 1)
@@ -97,7 +97,8 @@ class TestTiendaConfigurada(TransactionCase):
 
     def test_no_promete_entregas_a_todo_panama(self):
         """Ni la portada ni el pie prometen «todo Panamá» ni zonas de otro negocio: dicen su cobertura (venta en línea,
-        entrega a domicilio en Panamá) y las zonas reales son PENDIENTE (lo decide Tommalo). Lo dicen el pie (en todas las
+        entrega a domicilio en Panamá) y las zonas reales son PENDIENTE (lo decide Tommalo). Lo dicen el pie (en todas
+        las
         páginas) y la cobertura de la portada (website_dcasa.seccion_visitanos)."""
         cobertura = {'website.layout': 'Venta 100% en línea con entrega a domicilio en Panamá.',
                      'website.homepage': 'Lo más buscado',
@@ -148,7 +149,8 @@ class TestTiendaConfigurada(TransactionCase):
 class TestCheckoutEnLaWeb(HttpCase):
 
     def test_ficha_con_whatsapp_primero(self):
-        producto = self.env['product.template'].create({'name': 'Lampara prueba', 'list_price': 50, 'is_published': True})
+        producto = self.env['product.template'].create(
+            {'name': 'Lampara prueba', 'list_price': 50, 'is_published': True})
         html = self.url_open(producto.website_url).text
         self.assertLess(html.index('o_dcasa_wa_producto'), html.index('id="add_to_cart"'))
         self.assertIn('lang="es', html)

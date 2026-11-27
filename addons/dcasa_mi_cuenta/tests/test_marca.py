@@ -1,5 +1,6 @@
-"""Mi cuenta con la marca Tommalo (docs/MARCA_TOMMALO.md): crema, navy, el naranja de relleno con letra navy y
-el verde salvia; Montserrat; nada del azul, el amarillo, el Anton ni el Oswald de D'CASA, ni la foto del sofá."""
+"""Mi cuenta con la marca provisional neutra de Tommalo: fondo claro, letra oscura, el acento de relleno con letra
+oscura y el gris suave; Montserrat; nada del azul, el amarillo, el Anton ni el Oswald de D'CASA, ni fotos de
+otro negocio."""
 import re
 from pathlib import Path
 
@@ -8,10 +9,10 @@ from PIL import Image
 from odoo.tests import HttpCase, tagged
 
 MODULO = Path(__file__).resolve().parents[1]
-# Lo de D'CASA que no puede quedar en las hojas de estilo (docs/MARCA_TOMMALO.md › De D'CASA a Tommalo).
+# Lo de D'CASA que no puede quedar en las hojas de estilo (marca provisional neutra de Tommalo).
 DE_DCASA = re.compile(r'#1340B1|#FED00F|#0E2A6B|#0F3591|#0B2A6F|#0B2160|rgba?\(\s*19,\s*64,\s*177|\bAnton\b'
                       r'|\bOswald\b|\bInter\b', re.I)
-# El naranja y el verde de Tommalo son RELLENO (2.20 y 1.75 sobre el crema): nunca color de letra, borde ni aro.
+# El acento y el gris suave de Tommalo son RELLENO: nunca color de letra, borde ni aro.
 RELLENO_COMO_LETRA = re.compile(r'(?<![-\w])(?:color|border(?:-[a-z]+)*|outline(?:-color)?)\s*:[^;{]*'
                                 r'(?:#D4D4D4|#BDBDBD|var\(--o-dcbt-(?:accent|sage)\)|var\(--dcc-acento\)'
                                 r'|\$[a-z]+-(?:accent|sage)\b(?!-))', re.I)
@@ -27,7 +28,7 @@ def revisar_hoja(caso, ruta, de_tommalo=('#D4D4D4', '#262626', 'Montserrat')):
     caso.assertEqual(DE_DCASA.findall(texto), [], f'{ruta}: queda la marca de D’CASA')
     for valor in de_tommalo:
         caso.assertIn(valor.lower(), texto.lower(), f'{ruta}: falta {valor} de la marca Tommalo')
-    caso.assertEqual(RELLENO_COMO_LETRA.findall(texto), [], f'{ruta}: el naranja o el verde como letra o borde')
+    caso.assertEqual(RELLENO_COMO_LETRA.findall(texto), [], f'{ruta}: el acento o el gris suave como letra o borde')
 
 
 @tagged('post_install', '-at_install')
@@ -39,7 +40,7 @@ class TestMarcaMiCuenta(HttpCase):
     def test_la_cabecera_ya_no_lleva_la_foto_del_sofa(self):
         html = self.url_open('/mi-cuenta').text
         self.assertIn('o_dcasa_mc', html)
-        self.assertNotIn('split-hoy', html, 'la foto de la sala (D’CASA) se fue de Mi cuenta')
+        self.assertNotIn('split-hoy', html, 'la foto de la sala (D’CASA) no sale en Mi cuenta')
 
     def test_el_nombre_del_modulo_no_es_el_de_la_plantilla_de_origen(self):
         modulo = self.env['ir.module.module'].search([('name', '=', MODULO.name)])
@@ -49,6 +50,6 @@ class TestMarcaMiCuenta(HttpCase):
     def test_el_icono_del_modulo_con_los_colores_de_la_marca(self):
         icono = Image.open(MODULO / 'static/description/icon.png').convert('RGB')
         colores = {color for _n, color in icono.getcolors(2 ** 20)}
-        self.assertIn((27, 50, 70), colores, 'el navy')
-        self.assertIn((238, 146, 74), colores, 'el naranja')
+        self.assertIn((38, 38, 38), colores, 'el oscuro')
+        self.assertIn((212, 212, 212), colores, 'el acento')
         self.assertFalse(colores & {(19, 64, 177), (254, 208, 15)}, 'ni el azul ni el amarillo de D’CASA')

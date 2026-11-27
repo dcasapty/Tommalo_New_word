@@ -1,5 +1,5 @@
 """El correo con la marca Tommalo (docs/MARCA_TOMMALO.md) y lo que pidió la dueña el 17/10/2026: limpio, un
-solo botón en pastilla naranja con la letra navy, WhatsApp como enlace de texto, nada de D'CASA (ni su azul, ni su
+solo botón en pastilla de acento con la letra oscuro, WhatsApp como enlace de texto, nada de D'CASA (ni su azul, ni su
 amarillo, ni sus letras), Montserrat con respaldo Arial/Helvetica, estilos en línea, sistema plano, el logo con la
 dirección pública del sitio y un pie corto que sale de la empresa (nada escrito a mano)."""
 from unittest.mock import patch
@@ -26,7 +26,7 @@ class TestLayout(CorreoCase):
         return self.correos_de(registro)[-1].body_html
 
     def botones(self, arbol):
-        """Las celdas con el relleno naranja que hacen de botón."""
+        """Las celdas con el relleno de acento que hacen de botón."""
         return marca.botones_naranja(arbol)
 
     def test_la_marca_de_tommalo_sin_rastro_de_dcasa_y_sistema_plano(self):
@@ -42,10 +42,10 @@ class TestLayout(CorreoCase):
                 self.assertIn('name="color-scheme" content="light"', cuerpo)
                 # La página crema y la tarjeta en la superficie, con su radio grande (24 px).
                 cuerpo_html = arbol.find('.//body')
-                self.assertIn('background-color:#FAFAFA', estilo(cuerpo_html))
-                (tarjeta,) = [t for t in arbol.iter('table') if 'background-color:#FFFFFF' in estilo(t)]
+                self.assertIn('background-color:#fafafa', estilo(cuerpo_html).lower())
+                (tarjeta,) = [t for t in arbol.iter('table') if 'background-color:#ffffff' in estilo(t).lower()]
                 self.assertIn('border-radius:24px', estilo(tarjeta))
-                # El texto del correo en navy y con Montserrat.
+                # El texto del correo en oscuro y con Montserrat.
                 (texto,) = [td for td in arbol.iter('td') if 'line-height:1.6' in estilo(td)
                             and 'font-size:16px' in estilo(td) and td.find('.//table') is None]
                 self.assertIn(f'color:#{marca.NAVY}', estilo(texto))
@@ -63,7 +63,7 @@ class TestLayout(CorreoCase):
                         whatsapp.get('href'))
         self.assertFalse([a for a in whatsapp.iterancestors() if f'bgcolor:#{marca.NARANJA}' in estilo(a)],
                          'Es texto, no botón')
-        # El enlace de acción va en el naranja de letra (#595959: 4.60 sobre la superficie), subrayado.
+        # El enlace de acción va en el de acento de letra (#595959: 4.60 sobre la superficie), subrayado.
         self.assertIn(f'color:#{marca.NARANJA_TEXTO}', estilo(whatsapp))
         self.assertIn('text-decoration:underline', estilo(whatsapp))
         for enlace in arbol.iter('a'):
@@ -98,7 +98,7 @@ class TestLayout(CorreoCase):
         website.domain = 'https://tommalo.example'
         (logo,) = html.fromstring(self.cuerpo(self.beto)).iter('img')
         self.assertEqual(logo.get('src'), 'https://tommalo.example/dcasa_base/static/img/logo.png')
-        self.assertEqual(logo.get('alt'), 'Tommalo Panamá', 'el nombre de la empresa')
+        self.assertEqual(logo.get('alt'), 'Tommalo', 'el nombre de la empresa')
 
     def test_el_pie_corto_sale_de_la_empresa_y_del_sitio(self):
         website = self.env['website'].search([], order='sequence, id', limit=1)

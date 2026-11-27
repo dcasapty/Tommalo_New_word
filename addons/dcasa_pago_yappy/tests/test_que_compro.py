@@ -33,7 +33,7 @@ class BaseCompra(ComunYappy, TransactionCase):
         almacen = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1)
         for variante in cls.variantes:
             cls.env['stock.quant']._update_available_quantity(variante, almacen.lot_stock_id, 20.0)
-        cls.entrega = cls.env['delivery.carrier'].search([('name', '=', 'Retiro en tienda (Ciudad de Prueba)')], limit=1)
+        cls.entrega = cls.env['delivery.carrier'].search([('name', '=', 'Retiro en tienda')], limit=1)
 
     def valores(self, variante, atributo):
         return variante.product_template_attribute_value_ids.filtered(lambda v: v.attribute_id.name == atributo).name

@@ -19,7 +19,7 @@ class TestZonaYFicha(UbicacionCase):
         Ubicacion = self.env['dcasa.ubicacion']
         _lat, _lon, zona = Ubicacion._validar(*CERCA)
         self.assertEqual(zona['lugar'], self.villa)
-        self.assertEqual(zona['texto'], 'Villa Prueba II · Barrio Prueba · Penonomé · Coclé')
+        self.assertEqual(zona['texto'], 'Villa Prueba II · Barrio Prueba · La Chorrera · Panamá Oeste')
         precio = Ubicacion._precio(zona['lugar'])
         self.assertTrue(precio['con_precio'])
         self.assertEqual(precio['total_txt'], self.precio_de(self.villa))
@@ -45,9 +45,9 @@ class TestZonaYFicha(UbicacionCase):
         self.assertEqual((c.partner_latitude, c.partner_longitude), CERCA)
         self.assertEqual((c.dcasa_ubic_origen, c.dcasa_ubic_precision_m, c.dcasa_ubic_confirmada), ('gps', 15, True))
         self.assertEqual(c.dcasa_ubic_lugar_id, self.villa)
-        self.assertEqual((c.dcasa_barriada, c.dcasa_distrito), ('Villa Prueba II', 'Penonomé'))
+        self.assertEqual((c.dcasa_barriada, c.dcasa_distrito), ('Villa Prueba II', 'La Chorrera'))
         self.assertEqual(c.dcasa_referencia, 'Casa verde, portón negro')
-        self.assertEqual(c.city, 'Penonomé', 'sin ciudad escrita, se llena con el distrito')
+        self.assertEqual(c.city, 'La Chorrera', 'sin ciudad escrita, se llena con el distrito')
         self.assertEqual(c.dcasa_ubic_etiqueta, 'Ubicación del teléfono (±15 m)')
         resumen = c._dcasa_ubic_resumen()
         self.assertTrue(resumen['tiene_punto'] and resumen['confiable'])
@@ -69,11 +69,11 @@ class TestZonaYFicha(UbicacionCase):
         with patch.dict('os.environ', {'GOOGLE_MAPS_CLAVE_SERVIDOR': ''}):
             self.assertEqual(self.env['dcasa.ubicacion']._calle_de_google(*CERCA), '')
         respuesta = type('R', (), {'ok': True, 'json': lambda self: {'status': 'OK', 'results': [
-            {'formatted_address': '7Q2F+3X Penonomé'}, {'formatted_address': 'Calle 5, Penonomé, Panamá'}]}})()
+            {'formatted_address': '7Q2F+3X La Chorrera'}, {'formatted_address': 'Calle 5, La Chorrera, Panamá'}]}})()
         with patch.dict('os.environ', {'GOOGLE_MAPS_CLAVE_SERVIDOR': 'A' * 39}), \
                 patch('odoo.addons.dcasa_ubicacion.models.zona.requests.get', return_value=respuesta) as pedido:
-            self.assertEqual(self.env['dcasa.ubicacion']._calle_de_google(8.91, -79.81), 'Calle 5, Penonomé, Panamá')
-            self.assertEqual(self.env['dcasa.ubicacion']._calle_de_google(8.91, -79.81), 'Calle 5, Penonomé, Panamá')
+            self.assertEqual(self.env['dcasa.ubicacion']._calle_de_google(8.91, -79.81), 'Calle 5, La Chorrera, Panamá')
+            self.assertEqual(self.env['dcasa.ubicacion']._calle_de_google(8.91, -79.81), 'Calle 5, La Chorrera, Panamá')
         self.assertEqual(pedido.call_count, 1, 'el mismo punto no se le pregunta dos veces a Google')
 
 
@@ -102,7 +102,7 @@ class TestEnlaceDelChat(UbicacionCase):
         mensaje = self.env['dcasa.mensaje'].sudo().search([('conversacion_id', '=', conv.id), ('origen', '=', 'odoo'),
                                                            ('tipo', '=', 'mensaje')], order='id desc', limit=1)
         self.assertEqual(mensaje.autor, 'bot', 'lo escribe el asistente: Juan sigue atendiendo')
-        self.assertIn('Recibimos su ubicación: Villa Prueba II, Penonomé.', mensaje.texto)
+        self.assertIn('Recibimos su ubicación: Villa Prueba II, La Chorrera.', mensaje.texto)
         self.assertIn('🚚 Envío', mensaje.texto)
         self.assertIn(self.precio_de(self.villa), mensaje.texto)
         self.assertNotIn('8.9012', mensaje.texto, 'nunca las coordenadas en el chat')

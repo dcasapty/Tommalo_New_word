@@ -672,7 +672,7 @@ class TestMenoresDeLaSegundaRevision(ComisionReloj):
         self.nota_con_producto(con, self.envio, 50.0)
         self.assertEqual(self.venta(con).base_centavos, 100000, 'cuenta el envío (1,050) y se devolvieron los 50')
 
-    def test_devolver_un_mueble_sigue_restando_aunque_vaya_con_el_envio_en_la_misma_nota(self):
+    def test_devolver_un_articulo_sigue_restando_aunque_vaya_con_el_envio_en_la_misma_nota(self):
         lineas = [(self.articulo, 1000.0, 1, {}), (self.envio, 50.0, 1, {'is_delivery': True})]
         self.version(10.0)
         factura = self.venta_web(lineas=lineas)

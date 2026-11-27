@@ -134,8 +134,9 @@ def titulo(texto, largo=LARGO_TITULO, para_cliente=True):
     """Título para Meta: una sola línea de a lo sumo ``largo`` caracteres, cortado en una palabra.
 
     Meta pide no escribir los títulos en mayúsculas, y en Odoo los nombres de productos se guardan en MAYÚSCULAS (F5):
-    el título va en formato título, el mismo que ve el cliente en la tienda («CREMA HIDRATANTE (Grande)» → «Crema Hidratante
-    (Grande)»; la regla está en ``dcasa_base/nombres.py``). La marca (``para_cliente=False``) se deja como la escribió
+    el título va en formato título, el mismo que ve el cliente en la tienda («CREMA HIDRATANTE (Grande)» →
+    «Crema Hidratante (Grande)»; la regla está en ``dcasa_base/nombres.py``). La marca (``para_cliente=False``) se
+    deja como la escribió
     la tienda («Tommalo»)."""
     texto = ' '.join(str(texto or '').split())
     if para_cliente:

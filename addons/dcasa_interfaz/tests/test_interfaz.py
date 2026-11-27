@@ -224,6 +224,10 @@ class TestInterfazWeb(HttpCase):
 
     def test_filtros_rapidos_en_productos(self):
         """Productos: botones de filtro de un clic y categorías a la izquierda."""
+        # El panel de categorías solo lista las que tienen productos: el catálogo de fábrica está vacío.
+        self.env['product.template'].create({
+            'name': 'ZZ filtros rápidos', 'type': 'consu', 'sale_ok': True,
+            'public_categ_ids': [(6, 0, self.env.ref('website_dcasa.public_category_hogar').ids)]})
         codigo = """(async () => {
             const esperar = async (fn, que) => {
                 for (let i = 0; i < 100; i++) {
@@ -257,7 +261,10 @@ class TestOrdenarProductosEnElNavegador(HttpCase):
         super().setUpClass()
         categoria = cls.env['product.category'].create({'name': 'Zzordenes'})
         cls.ubicacion = cls.env['stock.warehouse'].search([], limit=1).lot_stock_id
-        base = {'type': 'consu', 'is_storable': True, 'sale_ok': True, 'categ_id': categoria.id}
+        # El panel de categorías del buscador solo lista las que tienen productos: el catálogo de fábrica está vacío.
+        publica = cls.env.ref('website_dcasa.public_category_hogar')
+        base = {'type': 'consu', 'is_storable': True, 'sale_ok': True, 'categ_id': categoria.id,
+                'public_categ_ids': [(6, 0, publica.ids)]}
         # nombre, precio, stock
         for nombre, precio, stock in (('ZZORDEN A', 300.0, 50), ('ZZORDEN B', 900.0, 20), ('ZZORDEN C', 100.0, 5),
                                       ('ZZORDEN D', 500.0, 0)):

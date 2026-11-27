@@ -1,18 +1,15 @@
 # ruff: noqa: E501  (JavaScript del navegador embebido en texto)
-"""Contrato visual de la cabecera y del hero (pedido de la dueña de la plantilla: «que este navbar nunca más se vuelva a
-dañar»), con la marca de Tommalo (docs/MARCA_TOMMALO.md, 2026-11-19). Fija, medido en Chrome y a dos anchos
-(1440 y 390), el diseño de tommalo.example:
+"""Contrato visual de la cabecera y del hero («que este navbar nunca más se vuelva a dañar»), con la marca provisional
+neutra de Tommalo (PENDIENTE: colores de Tommalo). Fija, medido en Chrome y a dos anchos (1440 y 390):
 
-* La pastilla flotante de vidrio crema (`.bc-vidrio` de Tommalo/src/styles/tokens.css, `.o_main_nav::before`):
-  desenfoque, saturación y brillo (o la refracción), tinte `surface` al 50 %, un filo casi invisible, la sombra larga
-  de su web y esquinas de 16 px; LA MISMA en todas las páginas (ya no hay vidrio ahumado: no hay fotos oscuras). La
-  marca «Tommalo» escrita en Montserrat 700 navy y el sello del logo al lado; los enlaces navy en 500, como frase;
-  la hamburguesa navy en el celular. Sin barra de anuncios encima.
-* La portada (S02Hero.tsx): crema, con las dos manchas suaves detrás; el antetítulo en píldora, el titular navy, el
-  subtítulo en `muted` y el botón naranja con letra navy; la foto del bebé con esquinas de 24 px, AL LADO del texto
-  (debajo en el celular), sin velo ni filtro.
-* La portada con los productos que elige Gerencia (models/portada.py): el mismo hero crema; las fotos se funden en el
-  marco redondeado de la derecha, sin velo, sin degradado y sin nada que el visitante maneje.
+* La pastilla flotante de vidrio (`.o_main_nav::before`): desenfoque, saturación y brillo (o la refracción), tinte
+  `surface` al 50 %, un filo casi invisible, una sombra larga y esquinas de 16 px; LA MISMA en todas las páginas (no hay
+  vidrio ahumado: no hay fotos oscuras). La marca «Tommalo» escrita en Montserrat 700; los enlaces en 500, como frase; la
+  hamburguesa oscura en el celular. Sin barra de anuncios encima.
+* La portada: fondo claro, con las dos manchas suaves detrás; el antetítulo en píldora, el titular oscuro, el subtítulo
+  en `muted` y el botón de acento con letra oscura; SIN foto (hero de solo texto).
+* La portada con los productos que elige Gerencia (models/portada.py): el mismo hero; las fotos se funden en el marco
+  redondeado de la derecha, sin velo, sin degradado y sin nada que el visitante maneje.
 * Capturas de referencia («golden») en tests/referencia/, comparadas con tolerancia.
 
 Dos niveles:
@@ -20,8 +17,8 @@ Dos niveles:
 2. Píxeles contra las referencias (tolerancia `DCASA_TOLERANCIA_VISUAL`, 1.5 % por defecto, de píxeles
    con una diferencia > 40/255). Las referencias se regeneran A PROPÓSITO con
    `scripts/actualizar_referencias_visuales.sh` (ver docs/OPERACION.md). Si la comparación resulta
-   frágil en CI (otra versión de Chrome, otro rasterizado), se sube la tolerancia por variable de
-   entorno sin tocar el contrato de estilos.
+   frágil en CI (otra versión de Chrome, otro rasterizado), se sube la tolerancia por variable
+   de entorno sin tocar el contrato de estilos.
 """
 import base64
 import contextlib
@@ -67,13 +64,13 @@ REDUCCION = {'cabecera': 1, 'hero': 2}
 # Anchos: escritorio y celular (iPhone 12/13/14).
 VENTANAS = ((1440, 900), (390, 844))
 
-# El contrato: la pastilla de tommalo.example (tokens.css, `.bc-vidrio` y S01Nav.tsx).
+# El contrato: la pastilla de vidrio.
 VIDRIO = {'fondo': 'rgba(255, 255, 255, 0.5)', 'borde': 'rgba(38, 38, 38, 0.04)', 'texto': 'rgb(38, 38, 38)',
           'sombra': 'rgba(38, 38, 38, 0.1) 0px 8px 32px 0px'}
 RADIO_PILDORA = '16px'                             # rounded-2xl
 FILTRO_MATE = 'blur(16px) saturate(2.1) brightness(1.06)'
-CREMA, NAVY, MUTED = 'rgb(250, 250, 250)', 'rgb(38, 38, 38)', 'rgba(38, 38, 38, 0.7)'
-NARANJA, SAGE_STRONG = 'rgb(212, 212, 212)', 'rgb(83, 115, 92)'
+FONDO, TEXTO, MUTED = 'rgb(250, 250, 250)', 'rgb(38, 38, 38)', 'rgba(38, 38, 38, 0.7)'
+ACENTO, SUAVE_FUERTE = 'rgb(212, 212, 212)', 'rgb(89, 89, 89)'
 
 # Deja la página quieta y determinista antes de medir o capturar: sin animaciones ni transiciones,
 # entradas ya terminadas, barra de scroll oculta, fuentes e imágenes cargadas.
@@ -127,7 +124,13 @@ MEDIR = """
         // Odoo pinta dos barras (escritorio y celular, .o_header_mobile): se mide la visible.
         const nav = [...cabecera.querySelectorAll('.o_main_nav')].find(visible);
         const antes = cs(nav, '::before');
-        const enlace = document.querySelector('#top_menu .nav-link:not(.active)');
+        // Con un solo enlace en el menú (Productos), en la tienda ese enlace es el activo: se mide una copia sin «active».
+        let enlace = document.querySelector('#top_menu .nav-link:not(.active)');
+        let copia = null;
+        if (!enlace) {
+            const base = document.querySelector('#top_menu .nav-link');
+            if (base) { copia = base.cloneNode(true); copia.classList.remove('active'); base.parentNode.appendChild(copia); enlace = copia; }
+        }
         const menu = document.querySelector('#top_menu');
         // Hamburguesa: en Odoo 19 es un button.nav-link con el icono .navbar-toggler-icon.
         const icono = nav.querySelector('.navbar-toggler-icon');
@@ -214,37 +217,28 @@ MEDIR = """
             delete res.vitrina.texto;
         }
         if (hero) {
-            const img = hero.querySelector('.o_dcasa_hero_media img');
             const t = textoDelHero(hero);
-            const b = img.getBoundingClientRect();
             res.hero = {
                 ...t,
                 rect: rect(hero),
                 fondoImagen: cs(hero).backgroundImage,
-                opacidadFoto: parseFloat(cs(img).opacity),
-                filtroFoto: cs(img).filter,
-                mezclaFoto: cs(img).mixBlendMode,
-                radioFoto: cs(img).borderTopLeftRadius,
-                pildoraVerde: (() => { const p = hero.querySelector('.o_dcasa_hero_pildora');
-                    return p ? { fondo: cs(p).backgroundColor, color: cs(p).color, texto: p.textContent.trim() } : null; })(),
-                capas: ['::before', '::after'].flatMap((p) => [cs(img.parentElement, p).content]),
-                textoSobreFoto: solapan(t.texto, b),
-                fotoDebajo: b.top >= t.texto.bottom - 1,
-                fotoAlLado: b.left >= t.texto.right - 1,
+                fotos: hero.querySelectorAll('img, picture, .o_dcasa_hero_media, .o_dcasa_hero_tarjeta').length,
+                capas: ['::before', '::after'].map((p) => cs(hero, p).content),
             };
             delete res.hero.texto;
         }
+        if (copia) { copia.remove(); }
         return res;
     })()
 """
 
 
 def _caja_de_estudio(color):
-    """Foto 3:4 de una caja de pañales sobre un fondo de estudio claro, dibujada: el contrato no depende del catálogo
+    """Foto 3:4 de una caja de producto sobre un fondo de estudio claro, dibujada: el contrato no depende del catálogo
     real."""
     imagen = Image.new('RGB', (900, 1200), (226, 232, 224))
     dibujo = ImageDraw.Draw(imagen)
-    dibujo.rectangle((0, 960, 900, 1200), fill=(206, 214, 204))           # lampara
+    dibujo.rectangle((0, 960, 900, 1200), fill=(206, 214, 204))           # mesa de estudio
     dibujo.rectangle((220, 300, 680, 980), fill=color)                     # caja
     dibujo.rectangle((300, 620, 600, 900), fill=(245, 245, 243))           # paquete
     dibujo.rectangle((360, 680, 540, 800), fill=(150, 190, 210))           # la foto del paquete
@@ -277,7 +271,7 @@ class TestContratoVisual(HttpCase):
         param.set_param(PARAM_INICIO, '')
         param.set_param(PARAM_FIN, '')
         cls.producto = cls.env['product.template'].create({
-            'name': 'Pañal del contrato visual', 'list_price': 45.0, 'is_published': True,
+            'name': 'Producto del contrato visual', 'list_price': 45.0, 'is_published': True,
             'dcasa_black_weekend': True,
         })
         cls.paginas = {'portada': '/', 'portada-carrusel': '/', 'tienda': '/shop', 'ficha': cls.producto.website_url,
@@ -337,10 +331,10 @@ class TestContratoVisual(HttpCase):
         for ancho, alto in VENTANAS:
             for nombre, ruta in self.paginas.items():
                 # La campaña encendida solo para su página: con campaña, el menú suma «Promociones» en todas, y el
-                # contrato de las demás es la cabecera de todos los días (campaña del sitio, 2026-11-15).
+                # contrato de las demás es la cabecera de todos los días (campaña del sitio).
                 encendida = '1' if nombre == 'black-weekend' else '0'
                 self.env['ir.config_parameter'].sudo().set_param(PARAM_ACTIVO, encendida)
-                # El carrusel de la portada solo para su página; las demás, con el hero de siempre.
+                # El carrusel de la portada solo para su página; las demás, con el hero de solo texto.
                 self.Diapositiva.search([]).unlink()
                 if nombre == 'portada-carrusel':
                     for orden, producto in enumerate(self.cajas_carrusel, start=1):
@@ -366,7 +360,7 @@ class TestContratoVisual(HttpCase):
         return medido
 
     # ------------------------------------------------------------------ 1. estilos (bloqueante)
-    def test_01_pastilla_de_vidrio_crema_en_todas_las_paginas(self):
+    def test_01_pastilla_de_vidrio_en_todas_las_paginas(self):
         medido = self._medir_todo()
         for ancho, _alto in VENTANAS:
             firmas, tintes = {}, {}
@@ -389,7 +383,7 @@ class TestContratoVisual(HttpCase):
         """El contrato de la pastilla en una página, a un ancho."""
         p = m['pildora']
         self.assertEqual(m['ancho'], ancho, 'viewport fijo')
-        self.assertFalse(m['anuncios'], 'sin barra de anuncios encima (docs/MARCA_TOMMALO.md)')
+        self.assertFalse(m['anuncios'], 'sin barra de anuncios encima')
         self.assertNotIn(p['content'], ('none', 'normal'), 'la pastilla (::before) existe')
         self.assertEqual(p['position'], 'absolute')
         filtro = p['backdropFilter']
@@ -400,58 +394,58 @@ class TestContratoVisual(HttpCase):
             self.assertIn('blur(3px)', filtro)
         else:
             self.assertEqual(filtro, FILTRO_MATE)
-        self.assertEqual(p['fondo'], VIDRIO['fondo'], 'el vidrio crema de su web: surface al 50 %')
+        self.assertEqual(p['fondo'], VIDRIO['fondo'], 'el vidrio: surface al 50 %')
         self.assertEqual(p['fondoImagen'], 'none', 'sin degradados')
         self.assertEqual(p['borde'], VIDRIO['borde'])
         self.assertEqual(p['bordeAncho'], '1px')
         self.assertEqual(p['sombra'], VIDRIO['sombra'], 'la sombra larga de su pastilla')
         self.assertEqual(p['radio'], RADIO_PILDORA, 'esquinas del vidrio')
         self.assertEqual(p['radioNav'], RADIO_PILDORA, 'esquinas del nav')
-        self.assertFalse(m['logo'], 'solo el nombre escrito, sin el sello (S01Nav.tsx, 2026-11-24)')
+        self.assertFalse(m['logo'], 'solo el nombre escrito, sin logo')
         self.assertIsNone(m['cta'], 'sin botón «Escríbenos» en la pastilla')
         marca = m['marca']
         self.assertTrue(marca, 'la marca escrita en la pastilla')
         self.assertEqual(marca['texto'], 'Tommalo')
-        self.assertEqual((marca['color'], marca['peso']), (NAVY, '700'), 'Montserrat 700 navy')
+        self.assertEqual((marca['color'], marca['peso']), (TEXTO, '700'), 'Montserrat 700')
         self.assertIn('Montserrat', marca['fuente'])
         self.assertTrue(marca['unaLinea'], 'el nombre de la marca no se parte en dos líneas')
         if ancho >= 992:
             self.assertTrue(m['menu']['visible'], 'menú visible en escritorio')
             self.assertFalse(m['hamburguesa']['visible'], 'sin hamburguesa en escritorio')
-            self.assertEqual(m['menu']['color'], VIDRIO['texto'], 'enlaces navy')
+            self.assertEqual(m['menu']['color'], VIDRIO['texto'], 'enlaces en el color de texto')
             self.assertIn('Montserrat', m['menu']['fuente'])
             self.assertEqual(m['menu']['peso'], '500')
             self.assertEqual(m['menu']['mayusculas'], 'none', 'los enlaces como frase, no en caja alta')
         else:
             self.assertTrue(m['hamburguesa']['visible'], 'hamburguesa visible en el celular')
             self.assertFalse(m['menu']['visible'], 'en el celular el menú va plegado')
-            self.assertIn('1B3246', m['hamburguesa']['icono'] or '', 'la hamburguesa en navy')
+            self.assertIn('262626', m['hamburguesa']['icono'] or '', 'la hamburguesa en el color de texto')
             self.assertEqual(m['hamburguesa']['filtroIcono'], 'none')
 
     def _revisar_texto_del_hero(self, h, ancho):
         for cual, color in h['colores'].items():
-            esperado = {'titulo': NAVY, 'sub': MUTED, 'kicker': SAGE_STRONG}[cual]
+            esperado = {'titulo': TEXTO, 'sub': MUTED, 'kicker': SUAVE_FUERTE}[cual]
             self.assertEqual(color, esperado, f'{cual} a {ancho}px')
-        self.assertEqual(h['fondo'], CREMA, 'el hero en crema, nunca negro ni azul')
+        self.assertEqual(h['fondo'], FONDO, 'el hero en el fondo claro, nunca negro ni azul')
         self.assertEqual(h['titulo']['mayusculas'], 'none', 'el titular como frase')
         self.assertEqual(h['titulo']['peso'], '700')
         self.assertIn('Montserrat', h['titulo']['fuente'])
         self.assertTrue(h['titulo']['espaciado'].startswith('-'), 'letter-spacing negativo (-0.03em)')
-        self.assertEqual(h['halo'], 'none', 'sin halo: la letra va sobre el crema, no sobre una foto')
+        self.assertEqual(h['halo'], 'none', 'sin halo: la letra va sobre el fondo, no sobre una foto')
         self.assertEqual(h['pildora']['radio'], '999px', 'el antetítulo en píldora')
         self.assertEqual(h['pildora']['borde'], 'solid')
         self.assertEqual(h['pildora']['mayusculas'], 'uppercase')
         self.assertEqual(h['pildora']['tamano'], '12px')
-        self.assertEqual((h['boton']['fondo'], h['boton']['color'], h['boton']['peso']), (NARANJA, NAVY, '700'),
-                         'el botón principal: naranja con letra navy, en 700')
+        self.assertEqual((h['boton']['fondo'], h['boton']['color'], h['boton']['peso']), (ACENTO, TEXTO, '700'),
+                         'el botón principal: acento con letra oscura, en 700')
         self.assertTrue(h['boton']['pastilla'], 'en pastilla')
-        self.assertIn('rgb(212, 212, 212)', h['boton']['brillo'], 'con el resplandor suave del mismo naranja')
+        self.assertIn('rgb(212, 212, 212)', h['boton']['brillo'], 'con el resplandor suave del mismo acento')
         self.assertEqual(h['boton']['href'], '/shop')
         self.assertEqual(len(h['manchas']), 2, 'las dos manchas suaves de su hero')
         for filtro in h['manchas']:
             self.assertIn('blur(', filtro)
 
-    def test_02_hero_de_la_portada_en_crema_con_la_foto_del_bebe(self):
+    def test_02_hero_de_la_portada_de_solo_texto(self):
         medido = self._medir_todo()
         for ancho, _alto in VENTANAS:
             h = medido['portada', ancho]['medidas'].get('hero')
@@ -459,22 +453,12 @@ class TestContratoVisual(HttpCase):
                 self.assertTrue(h, 'la portada abre con el hero (.o_dcasa_hero)')
                 self._revisar_texto_del_hero(h, ancho)
                 self.assertEqual(h['fondoImagen'], 'none', 'sin foto de fondo ni degradado detrás del texto')
-                self.assertEqual(h['opacidadFoto'], 1.0, 'la foto sin velo')
-                self.assertEqual(h['filtroFoto'], 'none')
-                self.assertEqual(h['mezclaFoto'], 'normal')
-                self.assertEqual(h['radioFoto'], '24px', 'la foto con esquinas redondeadas (rounded-3xl)')
+                self.assertEqual(h['fotos'], 0, 'sin foto de hero ni tarjeta de producto fija')
                 for capa in h['capas']:
-                    self.assertIn(capa, ('none', 'normal'), 'ninguna capa encima de la foto')
-                self.assertFalse(h['textoSobreFoto'], 'el texto va sobre el crema, no encima de la foto')
-                if ancho >= 768:
-                    self.assertTrue(h['fotoAlLado'], 'en la computadora la foto va a la derecha del texto')
-                else:
-                    self.assertTrue(h['fotoDebajo'], 'en el celular la foto va debajo del texto')
-                self.assertEqual(h['pildoraVerde'], {'fondo': 'rgb(189, 189, 189)', 'color': NAVY,
-                                                     'texto': 'Sin cloro · Sin perfumes'}, 'la píldora verde sobre la foto')
+                    self.assertIn(capa, ('none', 'normal'), 'ninguna capa encima del texto')
 
-    def test_02b_el_hero_con_productos_es_el_mismo_hero_crema(self):
-        """Con productos elegidos (Sitio web › Carrusel de la portada) el hero es el mismo: el texto sobre el crema y las
+    def test_02b_el_hero_con_productos_es_el_mismo_hero(self):
+        """Con productos elegidos (Sitio web › Carrusel de la portada) el hero es el mismo: el texto sobre el fondo y las
         fotos fundiéndose en el marco redondeado, sin velo, sin degradado y sin nada que el visitante maneje."""
         medido = self._medir_todo()
         for ancho, _alto in VENTANAS:

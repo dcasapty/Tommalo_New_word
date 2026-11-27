@@ -33,7 +33,8 @@ class TestImagenWebp(HttpCase):
 
     def test_webp_al_ancho_pedido_y_cabeceras(self):
         url = self._url(self.lampara, 512)
-        self.assertRegex(url, rf'^/dcasa/img/product\.template/{self.lampara.id}/image_1920/512\.webp\?v=[0-9a-f]{{12}}$')
+        self.assertRegex(
+            url, rf'^/dcasa/img/product\.template/{self.lampara.id}/image_1920/512\.webp\?v=[0-9a-f]{{12}}$')
         respuesta = self._abrir(url)
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.headers['Content-Type'], 'image/webp')

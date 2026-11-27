@@ -26,7 +26,8 @@ class CrmCase(CotizarCase):
     """Una conversación con su cliente, productos publicados (Zz…) y el PDF simulado."""
 
     def lead(self, **extra):
-        datos = self.salida('crear_oportunidad', {'resumen': 'Quiere una lámpara grande', 'interes': 'Lámpara grande', **extra})
+        datos = self.salida('crear_oportunidad', {'resumen': 'Quiere una lámpara grande',
+            'interes': 'Lámpara grande', **extra})
         return self.env['crm.lead'].browse(datos['oportunidad_id'])
 
     def etapa(self, xmlid):
@@ -769,7 +770,8 @@ class TestCorreccionesDeLaAuditoria(CrmCase):
         otras = []
         for i in range(4):
             conv = self.conversacion(nombre=f'Cliente {i}', id_externo=f'5076000010{i}', texto='hola')
-            datos = self.salida('crear_oportunidad', {'resumen': 'Quiere un espejo', 'interes': f'Espejo {i}'}, conv=conv)
+            datos = self.salida('crear_oportunidad', {'resumen': 'Quiere un espejo', 'interes': f'Espejo {i}'},
+                conv=conv)
             otras.append(self.env['crm.lead'].browse(datos['oportunidad_id']))
         for lead in otras:
             self.orden_enviada(lead)

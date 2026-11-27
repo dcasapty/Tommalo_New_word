@@ -36,7 +36,7 @@ class FacturadoCommon(CompararCommon):
             if linea.repartition_type == 'tax':
                 linea.account_id = cuenta_itbms
         cls.lampara = cls.env['product.product'].create({
-            'name': 'LÁMPARA FACTURADO', 'default_code': 'LÁMPARA-FACT-01', 'list_price': 500.0,
+            'name': 'LÁMPARA FACTURADO', 'default_code': 'LAMPARA-FACT-01', 'list_price': 500.0,
             'standard_price': 300.0,
             'taxes_id': [Command.set(cls.itbms.ids)]})
         cls.sin_costo = cls.env['product.product'].create({
@@ -126,7 +126,7 @@ class TestFacturadoComoContabilidad(FacturadoCommon):
         historica = self.del_sistema_anterior('INV/2025/91001', date(2025, 3, 10), [
             {'nombre': 'Juego de sala del sistema anterior', 'codigo': '', 'cantidad': 1, 'precio': 900.0,
              'descuento': 0.0, 'impuesto': ''},
-            {'nombre': 'Lámpara del sistema anterior', 'codigo': 'LÁMPARA-FACT-01', 'cantidad': 2, 'precio': 250.0,
+            {'nombre': 'Lámpara del sistema anterior', 'codigo': 'LAMPARA-FACT-01', 'cantidad': 2, 'precio': 250.0,
              'descuento': 0.0, 'impuesto': ''}])
         self.assertTrue(historica.dcasa_historica)
         self.assertTrue(historica.invoice_user_id, 'Odoo le pone como vendedor a quien la carga…')

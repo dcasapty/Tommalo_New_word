@@ -156,7 +156,7 @@ class PanelUiCase(HttpCase):
         impuesto = self.env['brian.herramientas']._b_itbms_venta()
         categoria = self.env['product.public.category'].create({'name': 'Zzdormitorio'})
         lampara = self.env['product.template'].create({
-            'name': 'ZZCAMA ROBLE GRANDE', 'default_code': 'ZZ-LÁMPARA', 'list_price': 349.99, 'standard_price': 123.45,
+            'name': 'ZZCAMA ROBLE GRANDE', 'default_code': 'ZZ-LAMPARA', 'list_price': 349.99, 'standard_price': 123.45,
             'type': 'consu', 'is_storable': True, 'sale_ok': True, 'is_published': True,
             'taxes_id': [Command.set(impuesto.ids)], 'public_categ_ids': [Command.set(categoria.ids)],
             'dcasa_medidas': 'Ancho × Largo: 160 × 200 cm', 'image_1920': foto(),
@@ -768,7 +768,7 @@ class TestPanelEnElNavegador(PanelUiCase):
     if (!texto.includes("$349.99 + ITBMS")) { throw new Error("precio + ITBMS: " + texto); }
     if (!texto.includes("DISPONIBLE")) { throw new Error("disponibilidad como etiqueta: " + texto); }
     if (!texto.includes("160 × 200 cm") || !texto.includes("__CODIGO_PUBLICO__")) { throw new Error("medidas y código público: " + texto); }
-    if (texto.includes("ZZ-LÁMPARA")) { throw new Error("la referencia del proveedor no sale: " + texto); }
+    if (texto.includes("ZZ-LAMPARA")) { throw new Error("la referencia del proveedor no sale: " + texto); }
     if (/7777|7,777|123\\.45/.test(dialogo.textContent)) { throw new Error("jamás la cantidad ni el costo"); }
     if (!producto.querySelector("img").getAttribute("src").startsWith("/dcasa/img/")) { throw new Error("miniatura WebP al ancho justo"); }
     aqui(".o_dcj_producto button", "Enviar foto").click();
@@ -826,7 +826,7 @@ class TestPanelEnElNavegador(PanelUiCase):
 (async () => {
     await abrirConversacion("Karen");
     aqui(".o_dcj_herramienta", "Foto del catálogo").click();
-    await escribir(await esperar(() => document.querySelector(".o_dcj_hoja input[type=search]"), "el buscador"), "ZZ-LÁMPARA");
+    await escribir(await esperar(() => document.querySelector(".o_dcj_hoja input[type=search]"), "el buscador"), "ZZ-LAMPARA");
     await esperar(() => aqui(".o_dcj_producto", "ZZCAMA"), "el producto");
     aqui(".o_dcj_producto button", "Galería (3)").click();
     await esperar(() => document.querySelectorAll(".o_dcj_galeria_foto").length === 3, "las tres fotos de la galería");

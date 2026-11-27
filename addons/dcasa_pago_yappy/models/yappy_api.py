@@ -226,8 +226,9 @@ PUERTOS_POR_DEFECTO = {'http://': ('80',), 'https://': ('443',), '': ('443', '80
 
 
 def _anfitrion(dominio):
-    """``https://www.tommalo.example/tienda`` → ``tommalo.example`` (sin esquema, sin ``www``, sin ruta). Lo que se declaró en
-    Yappy Comercial, reducido al anfitrión; solo para el dominio DECLARADO por nosotros (el que llega se normaliza con
+    """``https://www.tommalo.example/tienda`` → ``tommalo.example`` (sin esquema, sin ``www``, sin ruta). Lo que
+    se declaró en Yappy Comercial, reducido al anfitrión; solo para el dominio DECLARADO por nosotros (el que llega se
+    normaliza con
     ``normalizar_dominio``, que no perdona nada raro)."""
     texto = (dominio or '').strip()
     texto = re.sub(r'^[A-Za-z][A-Za-z0-9+.-]*://', '', texto)
@@ -238,8 +239,9 @@ def _anfitrion(dominio):
 
 
 def normalizar_dominio(texto):
-    """La forma canónica de un dominio (``tommalo.example``), o ``None`` si lo que llegó no es un dominio escrito de una de
-    las maneras conocidas: con o sin ``http://`` o ``https://``, con o sin ``www.``, en mayúsculas o minúsculas, con el
+    """La forma canónica de un dominio (``tommalo.example``), o ``None`` si lo que llegó no es un dominio escrito de
+    una de las maneras conocidas: con o sin ``http://`` o ``https://``, con o sin ``www.``, en mayúsculas o
+    minúsculas, con el
     puerto por defecto (``:443``, o ``:80`` con ``http://``) y con barras al final. Cualquier otra cosa (un usuario
     antes del ``@``, un subdominio, una ruta, un espacio, otra letra) da ``None``: no se adivina."""
     if not isinstance(texto, str) or not texto or len(texto) > 253:

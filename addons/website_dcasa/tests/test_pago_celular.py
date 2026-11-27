@@ -154,7 +154,7 @@ class TestPagoEnElCelular(PagoVisualDatos, ChromeMovilCase):
             self.assertTrue(estado['elegido'])
             self.assertFalse(estado['apagado'], 'con un método elegido el botón se enciende')
             self.assertLessEqual(estado['abajo'], estado['alto'], 'el botón sigue a la vista')
-            self.assertTrue(estado['filaResaltada'], 'la fila elegida se resalta con su filo naranja')
+            self.assertTrue(estado['filaResaltada'], 'la fila elegida se resalta con su filo de acento')
 
     def test_la_linea_de_seguridad_de_tilopay_solo_sale_con_tilopay_elegido(self):
         metodo = self.env.ref('dcasa_pago_tilopay.payment_method_tilopay', raise_if_not_found=False)

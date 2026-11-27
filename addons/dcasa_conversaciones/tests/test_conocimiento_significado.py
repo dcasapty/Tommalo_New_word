@@ -181,7 +181,7 @@ class TestBusquedaPorSignificado(JuanCase):
     def test_encuentra_lo_que_las_palabras_no(self):
         self.preparar()
         self.assertEqual(self.titulos('¿Se pueden llevar mi espejo viejo? sacan?'), ['Zzretiro de lo usado'])
-        self.assertEqual(self.lotes, [['¿Se pueden llevar mi espejo viejo? sacan?']], 'Una sola llamada, con la pregunta')
+        self.assertEqual(self.lotes, [['¿Se pueden llevar mi espejo viejo? sacan?']], 'Una sola llamada')
 
     def test_devuelve_el_coseno_como_puntos_y_nunca_una_inactiva(self):
         self.preparar()
@@ -246,7 +246,8 @@ class TestBusquedaPorSignificado(JuanCase):
     def test_la_herramienta_del_asistente_lo_usa(self):
         self.preparar()
         herramientas = self.env['brian.herramientas'].with_user(self.juan)
-        resultado = herramientas.ejecutar('juan_buscar_conocimiento', {'consulta': 'sacan el espejo viejo'}, canal='juan')
+        resultado = herramientas.ejecutar('juan_buscar_conocimiento', {'consulta': 'sacan el espejo viejo'},
+            canal='juan')
         self.assertTrue(resultado.get('ok'), resultado)
         self.assertEqual([r['titulo'] for r in resultado['datos']['resultados']], ['Zzretiro de lo usado'])
         self.assertIn('Nos llevamos lo que ya no quieras', resultado['datos']['resultados'][0]['contenido'])

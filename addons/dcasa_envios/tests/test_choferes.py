@@ -22,7 +22,7 @@ from ..motor import choferes
 from .common import EnviosComun, fixture, importar
 
 # El punto de salida del fixture (ajustes.origen): de ahí salen las rutas de los esperados.
-TIENDA = '8.9500000,-79.5500000'
+TIENDA = '8.95,-79.55'
 VILLA = (8.9011, -79.8011)          # Villa Prueba en el fixture
 LEJOS = (9.3, -79.0)                # en Panamá, pero a más de 3 km de todo el fixture
 
@@ -75,13 +75,13 @@ class TestMotorDeChoferes(BaseCase):
                 self.assertEqual(choferes.distancia_txt(metros), texto)
 
     def test_de_un_lugar_solo_sale_lo_que_ve_el_chofer(self):
-        tarjeta = {'nombre': 'Villa Prueba', 'corr': 'Barrio Prueba', 'dist': 'Penonomé', 'con_precio': True,
+        tarjeta = {'nombre': 'Villa Prueba', 'corr': 'Barrio Prueba', 'dist': 'La Chorrera', 'con_precio': True,
                    'total_txt': '$15', 'km': 1.2, 'km_txt': '1.2 km', 'desglose': [{'texto': 'Tarifa base'}],
                    'texto_cliente': 'Envío a…', 'url_mapa': 'https://www.google.com/maps/dir/?api=1', 'id': 7,
                    'chips': [{'texto': 'barrio o urbanización', 'clase': 'tipo'}]}
         datos = choferes.para_chofer(tarjeta, aprobada=True)
         self.assertEqual(tuple(datos), choferes.CLAVES)
-        self.assertEqual(datos, {'nombre': 'Villa Prueba', 'zona': 'Barrio Prueba · Penonomé', 'precio': '$15',
+        self.assertEqual(datos, {'nombre': 'Villa Prueba', 'zona': 'Barrio Prueba · La Chorrera', 'precio': '$15',
                                  'aviso': '', 'mapa': 'https://www.google.com/maps/dir/?api=1'})
         self.assertEqual(choferes.para_chofer(tarjeta, aprobada=False)['precio'], '', 'en revisión, sin precio')
         self.assertEqual(choferes.para_chofer(tarjeta, aprobada=False)['aviso'], choferes.EN_REVISION)
@@ -92,7 +92,7 @@ class TestMotorDeChoferes(BaseCase):
         cerca = choferes.para_chofer(tarjeta, aprobada=True, metros=304)
         self.assertEqual((tuple(cerca), cerca['distancia']), (choferes.CLAVES_CERCA, 'a 300 m'))
         corregimiento = choferes.para_chofer(dict(tarjeta, nombre='Barrio Prueba'), aprobada=True)
-        self.assertEqual(corregimiento['zona'], 'Penonomé', 'sin repetir el nombre')
+        self.assertEqual(corregimiento['zona'], 'La Chorrera', 'sin repetir el nombre')
 
     def test_el_limite_por_ip(self):
         ruta.reiniciar_limite()
@@ -258,11 +258,11 @@ class TestRutasDeChoferes(ChoferesComun, HttpCase):
         datos = self.assertSoloLoDelChofer(self.post('buscar', {'texto': 'vla prueba'}))
         self.assertEqual(datos['aviso_tarifa'], '')
         self.assertEqual(datos['resultados'][0], {
-            'nombre': 'Villa Prueba', 'zona': 'Barrio Prueba · Penonomé', 'precio': '$15', 'aviso': '',
-            'mapa': 'https://www.google.com/maps/dir/?api=1&origin=8.9500000,-79.5500000&destination=8.9011%2C-79.8011'
+            'nombre': 'Villa Prueba', 'zona': 'Barrio Prueba · La Chorrera', 'precio': '$15', 'aviso': '',
+            'mapa': 'https://www.google.com/maps/dir/?api=1&origin=8.95,-79.55&destination=8.9011%2C-79.8011'
                     '&travelmode=driving'})
         Lugar = self.env['dcasa.envio.lugar'].with_user(self.gerencia)
-        Lugar.create([{'name': f'Ensayo Extra {n}', 'tipo': 'barrio', 'dist': 'Penonomé', 'km': 5}
+        Lugar.create([{'name': f'Ensayo Extra {n}', 'tipo': 'barrio', 'dist': 'La Chorrera', 'km': 5}
                       for n in range(4)])
         muchos = self.assertSoloLoDelChofer(self.post('buscar', {'texto': 'ensayo'}))
         self.assertEqual(len(muchos['resultados']), choferes.MAX_BUSQUEDA, 'de 12, a lo sumo 8')

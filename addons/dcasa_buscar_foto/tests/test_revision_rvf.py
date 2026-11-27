@@ -14,6 +14,10 @@ from odoo.tests.test_cursor import TestCursor
 
 from ..models import buscar_foto as B
 
+# Categorías de PRUEBA del lector (CATEGORIAS de la base de Tommalo solo trae «producto», sin palabras de búsqueda): se
+# prueba el mecanismo de «buscar por categoría y medida» con estas, parcheadas solo durante cada prueba.
+CATEGORIAS_DE_PRUEBA = {'crema': ('Cremas', ('cremas',)), 'jabon': ('Jabones', ('jabones', 'jabon'))}
+
 FOTO = base64.b64encode(b'\xff\xd8\xff\xe0' + b'foto de prueba' * 4 + b'\xff\xd9').decode()
 
 
@@ -22,6 +26,9 @@ class TestRevisionRvf(TransactionCase):
 
     def setUp(self):
         super().setUp()
+        patcher = patch.dict(B.CATEGORIAS, CATEGORIAS_DE_PRUEBA)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         # La reserva del cupo abre su propia transacción (registry.cursor()): en la prueba, dentro de la de la prueba.
         self.registry_enter_test_mode()
         self.env['dcasa.buscar.foto.uso'].sudo().search([]).unlink()
@@ -68,9 +75,9 @@ class TestRevisionRvf(TransactionCase):
     # ------------------------------------------------------------------
 
     def test_una_lectura_con_tipos_raros_no_revienta(self):
-        for raro in ({'tipo': 'producto', 'codigos': [], 'categoria': ['panal'], 'medida': None,
+        for raro in ({'tipo': 'producto', 'codigos': [], 'categoria': ['crema'], 'medida': None,
                       'parece_pago': False, 'parece_identidad': False},
-                     {'tipo': 'producto', 'codigos': [], 'categoria': 'panal', 'medida': {'m': 1},
+                     {'tipo': 'producto', 'codigos': [], 'categoria': 'crema', 'medida': {'m': 1},
                       'parece_pago': False, 'parece_identidad': False}):
             with self.subTest(raro=raro):
                 try:
@@ -84,7 +91,7 @@ class TestRevisionRvf(TransactionCase):
         deshaga la transacción de la petición lo comprueba el escenario C de scripts/revision_rvf_carrera_foto.py.)"""
         Cliente = type(self.env['dcasa.juan.cliente'])
         respuesta = {'conectado': True, 'error': None, 'cuerpo': {'ok': True, 'lectura': {
-            'tipo': 'producto', 'codigos': [], 'categoria': ['panal'], 'medida': None,
+            'tipo': 'producto', 'codigos': [], 'categoria': ['crema'], 'medida': None,
             'parece_pago': False, 'parece_identidad': False}}}
         orden = []
         confirmar = TestCursor.commit
@@ -187,7 +194,7 @@ MEDIR_CAJA = """
         const c = camara.getBoundingClientRect();
         const medir = document.createElement('span');
         medir.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:' + getComputedStyle(caja).font;
-        medir.textContent = 'colchon queen';
+        medir.textContent = 'crema grande';
         document.body.appendChild(medir);
         const texto = medir.getBoundingClientRect().width;
         const estilo = getComputedStyle(caja);
@@ -204,7 +211,7 @@ class TestRevisionRvfMovil(ChromeMovilCase):
     def test_la_caja_de_busqueda_de_la_tienda_sigue_usable_en_el_celular(self):
         """Medido en Chrome (teléfono emulado): con la cámara al lado la caja quedaba de 35 px a 360 y 55 px a 390.
         Ahora la cámara va dentro de la caja, que tiene su propia fila: a 360, 390 y 430 px se escribe cómodo (cabe
-        «colchon queen»), la cámara mide 44 px de toque y nada se sale de la pantalla."""
+        «crema grande»), la cámara mide 44 px de toque y nada se sale de la pantalla."""
         self.env['ir.config_parameter'].sudo().set_param(B.PARAM_ACTIVO, 'True')
         for ancho in (360, 390, 430):
             with self.subTest(ancho=ancho), self._chrome_movil(ancho) as browser:
@@ -212,6 +219,6 @@ class TestRevisionRvfMovil(ChromeMovilCase):
                 self.assertTrue(browser._wait_ready(), '/shop no terminó de cargar')
                 medida = self._evaluar(browser, MEDIR_CAJA)
                 self.assertGreaterEqual(medida['caja'], 60, f'A {ancho} px la caja queda casi sin espacio: {medida}')
-                self.assertGreaterEqual(medida['caja'], medida['texto'], f'A {ancho} px no cabe «colchon queen»')
+                self.assertGreaterEqual(medida['caja'], medida['texto'], f'A {ancho} px no cabe «crema grande»')
                 self.assertGreaterEqual(min(medida['camara'], medida['alto']), 44, f'Toque chico: {medida}')
                 self.assertLessEqual(medida['desborde'], 0, f'A {ancho} px algo se sale de la pantalla: {medida}')

@@ -133,7 +133,7 @@ def rellenar(plantilla, valores):
 
 
 def sin_canal(texto, canales):
-    """Lo que le interesó, sin el canal delante: «WhatsApp (QR): colchón queen» → «colchón queen» (Juan nombra así las
+    """Lo que le interesó, sin el canal delante: «WhatsApp (QR): lámpara grande» → «lámpara grande» (Juan nombra así las
     oportunidades; si el canal del chat cambió o alguien la renombró, el prefijo puede ser de otro canal)."""
     texto = (texto or '').strip()
     for canal in canales:

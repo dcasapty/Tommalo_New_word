@@ -71,7 +71,7 @@ class TestFlujoFeliz(BaseTilopay):
         self.assertTrue(pago.move_id.line_ids, 'el cobro deja asiento (el método del diario tiene su cuenta)')
         # Se factura y se publica: Odoo cruza solo el cobro, la factura queda pagada y Socios da sus puntos. En la copia
         # de Tommalo `puntos.json` está en PENDIENTE (Socios no acredita nada hasta que el dueño ponga sus cifras):
-        # con las cifras de PRUEBA de Socios la compra queda registrada como en D'CASA.
+        # con las cifras de PRUEBA de Socios la compra queda registrada igual.
         factura = pedido._create_invoices()
         con_socios = 'dcasa_compra_ids' in factura._fields
         with self._cifras_de_prueba_de_socios(con_socios):

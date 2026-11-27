@@ -29,7 +29,7 @@ class TestAtajoDelEscaner(BarrasCommon):
     def test_quien_no_tiene_inventario_no_lo_ve_porque_no_podria_usarlo(self):
         self.assertIsNone(self.escaner(self.sin_inventario))
         with self.assertRaises(AccessError):
-            self.como(self.sin_inventario).buscar('ZZT-LÁMPARA-1')
+            self.como(self.sin_inventario).buscar('ZZT-LAMPARA-1')
 
     def test_el_rol_vendedora_de_dcasa_lo_ve(self):
         rol = self.env.ref('dcasa_base.group_vendedora')

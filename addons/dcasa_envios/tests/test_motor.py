@@ -141,7 +141,7 @@ class TestMotorDetalles(BaseCase):
     def test_la_palabra_constructor_no_rompe_el_buscador(self):
         """En el HTML, buscar «constructor» se caía (``ABREV['constructor']`` es una función de JavaScript)."""
         indice = buscador.Indice([{'nombre': 'Constructor Prueba', 'tipo': 'referencia', 'cat': 'comercio',
-                                   'dist': 'Penonomé', 'prov': 'Coclé', 'km': 3, 'estado': 'ok'}])
+                                   'dist': 'La Chorrera', 'prov': 'Panamá Oeste', 'km': 3, 'estado': 'ok'}])
         self.assertEqual(indice.buscar('constructor'), [0])
 
     def test_sin_tarifa_el_lugar_dice_sin_tarifa(self):
@@ -157,7 +157,7 @@ class TestMotorDetalles(BaseCase):
         self.assertEqual(buscador.distancia('arraijan', 'arraijan', 2), 0)
         self.assertEqual(buscador.distancia('arraijan', 'arriajan', 2), 1, 'dos letras cambiadas de lugar = 1')
         self.assertEqual(buscador.distancia('golff', 'golf', 1), 1)
-        self.assertEqual(buscador.distancia('penonome', 'colon', 2), 3, 'pasado el tope dice tope + 1')
+        self.assertEqual(buscador.distancia('chorrera', 'colon', 2), 3, 'pasado el tope dice tope + 1')
 
     def test_leer_el_archivo_en_html_y_en_json(self):
         datos = fixture()
@@ -176,7 +176,7 @@ class TestMotorDetalles(BaseCase):
 
     def test_normalizar_un_lugar_del_archivo(self):
         limpio, motivo = archivo.normalizar_lugar({
-            'nombre': '  Villa   Prueba ', 'tipo': 'barrio', 'dist': 'Penonomé', 'km': 3.5, 'estado': 'ok',
+            'nombre': '  Villa   Prueba ', 'tipo': 'barrio', 'dist': 'La Chorrera', 'km': 3.5, 'estado': 'ok',
             'alias': ['Otra, S. A.', 7, ' La villa '], 'lat': 8.9, 'lon': -79.8, 'peaje': True})
         self.assertIsNone(motivo)
         self.assertEqual((limpio['name'], limpio['alias'], limpio['km'], limpio['km_medido'], limpio['peaje']),
@@ -189,9 +189,9 @@ class TestMotorDetalles(BaseCase):
                              'dist': 'D'}, 'tipo desconocido'), ({'nombre': 'X', 'tipo': 'barrio'}, 'sin distrito'),
                              ('texto', 'no es un lugar')):
             self.assertEqual(archivo.normalizar_lugar(malo), (None, motivo))
-        self.assertEqual(archivo.llave({'name': 'Villa  Prueba', 'tipo': 'barrio', 'dist': 'Penonomé',
+        self.assertEqual(archivo.llave({'name': 'Villa  Prueba', 'tipo': 'barrio', 'dist': 'La Chorrera',
                                         'corr': 'Barrio Prueba'}),
-                         archivo.llave({'name': 'VILLA PRUEBA', 'tipo': 'barrio', 'dist': 'la penonome',
+                         archivo.llave({'name': 'VILLA PRUEBA', 'tipo': 'barrio', 'dist': 'la chorrera',
                                         'corr': 'barrio prueba'}))
 
     def test_la_tarifa_del_archivo_se_revisa(self):
@@ -227,7 +227,7 @@ class TestMotorDetalles(BaseCase):
         self.assertNotIn('origin=', tarjeta.mapa_ruta(lugar), 'sin punto de salida, Google Maps sale de donde está')
         sin_origen = tarifa.Tarifa({**fixture()['ajustes'], 'origen': ''})
         self.assertNotIn('origin=', tarjeta.tarjeta(lugar | {'km': 1.2, 'estado': 'ok'}, sin_origen)['url_mapa'])
-        self.assertEqual(tarifa.Tarifa(fixture()['ajustes']).como_ajustes()['origen'], '8.9500000,-79.5500000')
+        self.assertEqual(tarifa.Tarifa(fixture()['ajustes']).como_ajustes()['origen'], '8.95,-79.55')
         valores, _cargos = archivo.normalizar_ajustes({**fixture()['ajustes'], 'origen': '8.974930, -79.543555'})
         self.assertEqual(valores['origen'], '8.97493,-79.543555')
         self.assertNotIn('origen', archivo.normalizar_ajustes({**fixture()['ajustes'], 'origen': None})[0],

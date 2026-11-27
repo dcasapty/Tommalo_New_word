@@ -21,6 +21,7 @@ class TestCodigoPublicoEnLaWeb(HttpCase):
     def setUp(self):
         super().setUp()
         self.website = self.env.ref('website.default_website')
+        self.website.dcasa_whatsapp_number = '+507 6000-0002'   # de fábrica va vacío (PENDIENTE)
         self.producto = self.env['product.template'].create({
             'name': 'CREMA DE PRUEBA DEL CÓDIGO', 'list_price': 120.0, 'is_published': True, 'sale_ok': True,
             'default_code': REFERENCIA, 'image_1920': foto(600, 600), 'website_sequence': -100000,
@@ -95,7 +96,8 @@ class TestCodigoPublicoEnLaWeb(HttpCase):
     def test_buscar_el_codigo_en_la_tienda(self):
         html = self.url_open('/shop', params={'search': self.codigo}).text
         self.assertIn(self.producto.website_url, html)
-        otro = self.env['product.template'].create({'name': 'LAMPARA QUE NO ES', 'list_price': 10.0, 'is_published': True})
+        otro = self.env['product.template'].create(
+            {'name': 'LAMPARA QUE NO ES', 'list_price': 10.0, 'is_published': True})
         self.assertNotIn(otro.website_url, html)
 
     def test_el_qr_abre_la_ficha(self):

@@ -679,7 +679,7 @@ body {
     .navbar-toggler-icon {
         width: 1.5rem;
         height: 1.5rem;
-        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3e%3cpath stroke='%231B3246' stroke-linecap='round' stroke-width='2' d='M4 6h16M4 12h16M4 18h16'/%3e%3c/svg%3e");
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3e%3cpath stroke='%23262626' stroke-linecap='round' stroke-width='2' d='M4 6h16M4 12h16M4 18h16'/%3e%3c/svg%3e");
         filter: none;
     }
 
@@ -807,8 +807,8 @@ html.o_dcasa_refraccion #wrapwrap > header#top .o_main_nav::before {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Hero en claro (S02Hero.tsx): el antetítulo en píldora, el titular oscuro, el subtítulo en `muted`, un solo botón y
-// la foto del bebé con esquinas redondeadas, con la píldora suave flotando encima. Detrás, las dos manchas suaves.
+// 1. Hero: el antetítulo en píldora, el titular oscuro, el subtítulo en `muted`, un solo botón y
+// el texto del hero (sin foto), con las dos manchas suaves detrás.
 // Las cabeceras de las páginas interiores (.o_dcasa_hero_compacto) son el mismo claro, sin foto.
 // ---------------------------------------------------------------------------
 
@@ -1443,7 +1443,7 @@ $dcasa-vitrina-zoom-vueltas: 6;      // el zoom tarda esto × lo que dura cada f
 }
 
 // ---------------------------------------------------------------------------
-// Socios: una tarjeta grande claro (radio de 24 px) con el texto y la foto de las cajas Nateen.
+// Socios: una tarjeta grande clara (radio de 24 px) con el texto, sin foto.
 // ---------------------------------------------------------------------------
 
 .o_dcasa_socios_band {

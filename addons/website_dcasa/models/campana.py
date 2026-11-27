@@ -253,8 +253,9 @@ class DcasaCampana(models.Model):
         día los precios de los carritos abiertos de la tienda que tienen alguno de esos productos.
 
         Odoo calcula cada línea nueva del carrito con la hora actual, pero no vuelve a calcular las que ya estaban: un
-        producto puesto el 26 seguiría a precio normal el 27 aunque la página diga el de campaña. Solo carritos (borrador,
-        de la tienda, sin fecha de apartado); nunca un apartado ni un pedido confirmado. Devuelve cuántos tocó.
+        producto puesto el 26 seguiría a precio normal el 27 aunque la página diga el de campaña. Solo carritos
+        (borrador, de la tienda, sin fecha de apartado); nunca un apartado ni un pedido confirmado. Devuelve cuántos
+        tocó.
         """
         self.env['product.template']._dcasa_campana_sincronizar(ahora)   # crear o borrar reglas según la hora
         param = self.env['ir.config_parameter'].sudo()

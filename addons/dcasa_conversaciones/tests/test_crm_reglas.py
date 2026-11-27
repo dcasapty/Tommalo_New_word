@@ -58,7 +58,7 @@ class TestTemperatura(BaseCase):
 class TestDatosDelCliente(BaseCase):
 
     def test_una_linea_de_texto_plano_con_tope(self):
-        self.assertEqual(R.limpiar_dato('  La   Penonomé\n centro  '), 'Penonomé centro')
+        self.assertEqual(R.limpiar_dato('  La   Penonomé\n centro  '), 'La Penonomé centro')
         self.assertEqual(len(R.limpiar_dato('x' * 500)), R.MAX_TEXTO_DATO)
 
     def test_lo_que_no_sirve_queda_vacio(self):

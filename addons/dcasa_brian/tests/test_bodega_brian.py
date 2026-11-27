@@ -17,7 +17,7 @@ class TestBrianEntregasPorDespachar(TransactionCase):
         cls.sin_inventario = new_test_user(cls.env, login='brian_sin_bodega', groups='base.group_user')
         bodega = cls.env.ref('stock.warehouse0').lot_stock_id
         cls.lampara = cls.env['product.product'].create({
-            'name': 'Zzcama Brian bodega', 'default_code': 'ZZB-LÁMPARA', 'is_storable': True, 'list_price': 321.0})
+            'name': 'Zzcama Brian bodega', 'default_code': 'ZZB-LAMPARA', 'is_storable': True, 'list_price': 321.0})
         cls.env['stock.quant']._update_available_quantity(cls.lampara, bodega, 5)
         cliente = cls.env['res.partner'].create({'name': 'CLIENTE DE PRUEBA BRIAN BODEGA'})
         cls.pedido = cls.env['sale.order'].create({

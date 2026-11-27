@@ -74,6 +74,6 @@ class TestMarcaSocios(HttpCase):
     def test_el_icono_del_modulo_con_los_colores_de_la_marca(self):
         icono = Image.open(MODULO / 'static/description/icon.png').convert('RGB')
         colores = {color for _n, color in icono.getcolors(2 ** 20)}
-        self.assertIn((27, 50, 70), colores, 'el navy')
-        self.assertIn((238, 146, 74), colores, 'el naranja')
+        self.assertIn((38, 38, 38), colores, 'el navy')
+        self.assertIn((212, 212, 212), colores, 'el naranja')
         self.assertFalse(colores & {(19, 64, 177), (254, 208, 15)}, 'ni el azul ni el amarillo de D’CASA')

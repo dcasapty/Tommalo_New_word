@@ -2,6 +2,7 @@
 import json
 import os
 import re
+from datetime import date
 from unittest.mock import patch
 
 from odoo import Command
@@ -14,6 +15,14 @@ TOKEN_ODOO = 'o' * 40       # JUAN_ODOO_TOKEN de prueba
 URL_WORKER = 'http://127.0.0.1:9'   # válida (local) y nadie contesta: las rutas de Odoo no la llaman
 RAIZ = '/dcasa/brian/v1'
 RE_CSRF = re.compile(r'[0-9a-f]{40}o\d{6,}')
+
+
+def promocion_de_prueba(env):
+    """Tommalo no trae ninguna promoción de envío de fábrica: esta es de PRUEBA (inventada): envío gratis en la
+    provincia de «Costa Inventada» con compras de más de $200 y un abono de $20 en el resto, todo noviembre de 2026."""
+    return env['dcasa.envio.promocion'].create({
+        'name': 'Envío Gratis de prueba', 'desde': date(2026, 11, 1), 'hasta': date(2026, 11, 30), 'minimo': 200,
+        'mide': 'sin_itbms', 'provincias_gratis': 'Panamá', 'abono': 20, 'active': True})
 
 
 class TiendaCase(HttpCase):

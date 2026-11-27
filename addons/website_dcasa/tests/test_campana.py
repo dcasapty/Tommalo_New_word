@@ -66,6 +66,7 @@ class TestCampanaPrecios(_Base, TransactionCase):
     def setUpClass(cls):
         super().setUpClass()
         cls._preparar()
+        cls.env.ref('website.default_website').dcasa_whatsapp_number = '+507 6000-0002'
 
     def _en_campana(self, precio=150.0, inicio=date(2026, 11, 27), fin=date(2026, 11, 30)):
         self.campana.write({'fecha_inicio': inicio, 'fecha_fin': fin})
@@ -520,6 +521,7 @@ class TestCampanaSitio(_Base, HttpCase):
     def setUp(self):
         super().setUp()
         self._preparar()
+        self.env.ref('website.default_website').dcasa_whatsapp_number = '+507 6000-0002'
         hoy = fields.Date.context_today(self.campana)
         self.hoy = hoy
 
@@ -567,8 +569,8 @@ class TestCampanaSitio(_Base, HttpCase):
 
     def test_frase_del_panel(self):
         self._activa()
-        self.campana.frase = 'Pañales seleccionados'
-        self.assertIn('Pañales seleccionados', self.url_open('/').text)
+        self.campana.frase = 'Productos seleccionados'
+        self.assertIn('Productos seleccionados', self.url_open('/').text)
 
     def test_apagada_no_sale_nada(self):
         portada = self.url_open('/').text

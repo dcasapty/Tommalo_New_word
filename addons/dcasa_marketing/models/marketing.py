@@ -9,7 +9,7 @@ Qué cuenta cada sección (nada se estima ni se inventa: todo sale de la base):
 * **Periodo**: Semana, 15 días o Mes son los últimos 7, 15 o 30 días corridos, hoy incluido (hora de Panamá). Corridos y
   no «del lunes» o «del día 1»: así lo quieto no depende de en qué día del mes se mira.
 * **Categoría**: el «tipo» del producto, el mismo de «Unidades vendidas por tipo» del Inicio: la categoría de primer
-  nivel bajo la raíz (``Hogar / Lámparas / …`` → «Salas»; una raíz sin padre, como «Jabones», es su propio tipo). Con
+  nivel bajo la raíz (``Hogar / Lámparas / …`` → «Lámparas»; una raíz sin padre, como «Jabones», es su propio tipo). Con
   una categoría elegida, TODAS las secciones se filtran a ella.
 * **Más y menos stock**: ``dcasa_stock`` (el «A la mano» guardado en el producto, dcasa_catalogo). «Menos stock» deja
   fuera lo agotado (eso no se puede empujar), igual que el favorito «Menor stock primero» de Productos; lo agotado se

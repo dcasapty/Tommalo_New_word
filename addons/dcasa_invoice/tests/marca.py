@@ -12,11 +12,11 @@ COLORES_DE_DCASA = ('1340b1', 'fed00f', '0e2a6b', '0b2a6f', '0b1f5c', '1b2233', 
 LETRAS_DE_DCASA = ('anton', 'oswald', 'inter')
 
 # Los del contrato (brand.json de Tommalo).
-NAVY = '1b3246'
-NARANJA = 'ee924a'
-SALVIA = '91c9a2'
-NARANJA_TEXTO = '985d2f'
-CREMA = 'f9f6ed'
+NAVY = '262626'
+NARANJA = 'd4d4d4'
+SALVIA = 'bdbdbd'
+NARANJA_TEXTO = '595959'
+CREMA = 'fafafa'
 
 
 def sin_rastro_de_dcasa(case, texto, donde):

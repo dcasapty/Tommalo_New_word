@@ -47,7 +47,7 @@ class TestAuditoria2Http(_SinClaves, HttpCase):
         cls.usuario = new_test_user(cls.env, login='aud2_clienta', name='Wanda Auditoría', groups='base.group_portal',
                                     email='wanda.aud2@example.com')
         cls.partner = cls.usuario.partner_id
-        cls.partner.write({'phone': '+507 6123-4511', 'street': 'Villa Prueba II, casa 1', 'city': 'Penonomé',
+        cls.partner.write({'phone': '+507 6123-4511', 'street': 'Villa Prueba II, casa 1', 'city': 'La Chorrera',
                            'country_id': cls.env.ref('base.pa').id})
 
     def setUp(self):
@@ -65,7 +65,7 @@ class TestAuditoria2Http(_SinClaves, HttpCase):
 
     def enviar(self, token, **campos):
         datos = {'csrf_token': token, 'name': 'Wanda Auditoría', 'email': 'wanda.aud2@example.com',
-                 'phone': '+507 6123-4511', 'street': 'Villa Prueba II, casa 1', 'city': 'Penonomé',
+                 'phone': '+507 6123-4511', 'street': 'Villa Prueba II, casa 1', 'city': 'La Chorrera',
                  'country_id': str(self.env.ref('base.pa').id), 'partner_id': str(self.partner.id),
                  'address_type': 'delivery', 'use_delivery_as_billing': 'True'}
         datos.update(campos)
@@ -81,7 +81,7 @@ class TestAuditoria2Http(_SinClaves, HttpCase):
     # --- 1: el aviso de cruce ---------------------------------------------------------------------------------------
 
     def test_1_el_servidor_exige_el_es_aqui_del_cruce(self):
-        """Escribió San Miguelito (la casa de la mamá) y el punto está en Penonomé: sin «📍 Es aquí» no se guarda."""
+        """Escribió San Miguelito (la casa de la mamá) y el punto está en La Chorrera: sin «📍 Es aquí» no se guarda."""
         _html, token = self.csrf(f'/shop/address?partner_id={self.partner.id}&address_type=delivery')
         regalo = {'street': 'San Ensayito, calle 8', 'city': 'San Miguelito'}
         r = self.mapa(token, *CERCA, **regalo)
@@ -94,16 +94,16 @@ class TestAuditoria2Http(_SinClaves, HttpCase):
         self.partner.invalidate_recordset()
         self.assertEqual((self.partner.dcasa_ubic_origen, self.partner.street), ('gps', 'San Ensayito, calle 8'))
         # Lo que llenó el mapa (la barriada y el distrito del punto) no es un cruce.
-        r = self.mapa(token, *CERCA, street='Villa Prueba II, Barrio Prueba', city='Penonomé')
+        r = self.mapa(token, *CERCA, street='Villa Prueba II, Barrio Prueba', city='La Chorrera')
         self.assertFalse(r.get('messages'), r)
 
     def test_1_lo_que_lleno_el_mapa_no_cuenta_y_sin_mapa_no_dice_mueva_el_mapa(self):
-        distritos = ['Colón', 'Penonomé', 'San Miguelito']
-        zona = {'barriada': 'Barrio Colón', 'corregimiento': 'Barrio Colón', 'distrito': 'Penonomé'}
+        distritos = ['Colón', 'La Chorrera', 'San Miguelito']
+        zona = {'barriada': 'Barrio Colón', 'corregimiento': 'Barrio Colón', 'distrito': 'La Chorrera'}
         # La calle la llenó el mapa (nombra «Colón») y la ciudad la escribió ella sin el nombre del distrito: la página
         # no ve cruce, así que el servidor tampoco puede rechazarlo (si no, no tendría salida).
-        lleno = {'street': 'Barrio Colón, Barrio Colón', 'city': 'Penonomé'}
-        self.assertEqual(checkout.texto_escrito(lleno, zona), 'Penonomé')
+        lleno = {'street': 'Barrio Colón, Barrio Colón', 'city': 'Chorrera'}
+        self.assertEqual(checkout.texto_escrito(lleno, zona), 'Chorrera')
         self.assertEqual(checkout.cruce_sin_responder(lleno, zona, distritos), '')
         escrito = {'street': 'Calle 8', 'city': 'San Miguelito'}
         self.assertIn('escribió San Miguelito', checkout.cruce_sin_responder(escrito, zona, distritos))
@@ -187,7 +187,7 @@ class TestAuditoria2Http(_SinClaves, HttpCase):
 
     def test_9_11_marcar_mi_casa_antes_de_firmar_o_pagar(self):
         cliente = self.env['res.partner'].create({'name': 'Lola Pago', 'phone': '+507 6555-6610', 'street': 'Calle 9',
-                                                  'city': 'Penonomé'})
+                                                  'city': 'La Chorrera'})
         orden = self.env['sale.order'].create({'partner_id': cliente.id, 'carrier_id': self.domicilio.id,
                                                'order_line': [(0, 0, {'product_id': self.producto.id})]})
         orden._set_delivery_method(self.domicilio)
@@ -208,7 +208,7 @@ class TestAuditoria2Http(_SinClaves, HttpCase):
 
     def test_18_19_el_motorizado_con_punto_aproximado_llama_primero(self):
         buscada = self.env['res.partner'].create({'name': 'Bea Aproximada', 'phone': '+507 6777-8812',
-                                                  'street': 'Calle 1', 'city': 'Penonomé'})
+                                                  'street': 'Calle 1', 'city': 'La Chorrera'})
         buscada._dcasa_poner_ubicacion(*CERCA, 'busqueda', referencia='Casa 3')
         orden = self.env['sale.order'].create({'partner_id': buscada.id, 'carrier_id': self.domicilio.id,
                                                'order_line': [(0, 0, {'product_id': self.producto.id})]})
@@ -272,7 +272,7 @@ class TestAuditoria2Invitada(_SinClaves, HttpCase):
         pagina = self.url_open('/shop/address')
         token = re.search(r'name="csrf_token" value="([^"]+)"', pagina.text).group(1)
         datos = {'csrf_token': token, 'name': 'Ana Atrás', 'email': 'ana.atras@example.com', 'phone': '6123-9876',
-                 'street': 'Villa Prueba II', 'city': 'Penonomé', 'country_id': str(self.env.ref('base.pa').id),
+                 'street': 'Villa Prueba II', 'city': 'La Chorrera', 'country_id': str(self.env.ref('base.pa').id),
                  'address_type': 'billing', 'use_delivery_as_billing': '', 'dcasa_ubic_modo': 'mapa',
                  'dcasa_ubic_lat': str(CERCA[0]), 'dcasa_ubic_lon': str(CERCA[1]), 'dcasa_ubic_origen': 'gps',
                  'dcasa_ubic_precision': '12', 'dcasa_ubic_confirmada': '1', 'dcasa_referencia': 'Casa 24',
@@ -401,7 +401,7 @@ SIGUE_EN_LA_DIRECCION = """
 })()
 """
 
-# 1: el regalo. Escribe San Miguelito, toca «Mi ubicación» en Penonomé, «Confirmar» no cuenta; «Es otra casa» va al
+# 1: el regalo. Escribe San Miguelito, toca «Mi ubicación» en La Chorrera, «Confirmar» no cuenta; «Es otra casa» va al
 # buscador; «Es aquí» sí.
 CRUCE = """
 (async () => {

@@ -536,7 +536,7 @@ class TestConsolidacion(ConsolidacionCommon):
         self.assertEqual(marca.letra_de_relleno(css), [])
         self.assertIn(f'.o_dcasa_consolidacion_pdf{{font-size:12px;color:#{marca.NAVY};}}', css)
         self.assertIn(f'border-bottom:2pxsolid#{marca.NARANJA}', css)
-        self.assertIn('.o_dcasa_consolidacion_pdf.consolidado{font-weight:700;background:#FFFFFF;}', css)
+        self.assertIn('.o_dcasa_consolidacion_pdf.consolidado{font-weight:700;background:#ffffff;}', css)
 
     def test_no_se_imprime_lo_que_no_se_ha_calculado(self):
         consolidacion = self.consolidacion(calcular=False)

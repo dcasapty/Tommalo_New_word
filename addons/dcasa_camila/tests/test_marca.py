@@ -29,7 +29,7 @@ class TestMarcaCamila(TransactionCase):
                                           paquete='web.assets_backend').lower().replace(' ', '')
         for token in (f'--dc-tinta:#{marca.NAVY}', f'--dc-naranja:#{marca.NARANJA}', f'--dc-en-naranja:#{marca.NAVY}',
                       f'--dc-salvia:#{marca.SALVIA}', f'--dc-en-salvia:#{marca.NAVY}', f'--dc-crema:#{marca.CREMA}',
-                      '--dc-superficie:#FFFFFF', f'--dc-naranja-fuerte:#{marca.NARANJA_TEXTO}'):
+                      '--dc-superficie:#ffffff', f'--dc-naranja-fuerte:#{marca.NARANJA_TEXTO}'):
             self.assertIn(token, panel)
         # El botón principal: pastilla naranja con la letra navy; lo que se toca, de 44 px.
         self.assertIn('--bs-btn-bg:var(--cm-naranja)', plano)

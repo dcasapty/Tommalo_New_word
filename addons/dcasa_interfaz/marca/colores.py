@@ -62,7 +62,7 @@ _HEXA = re.compile(r'#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})')
 
 
 def normalizar(texto):
-    """``'#262626'``, ``'1B3246'`` o ``'#13b'`` → ``'#262626'``; vacío → ``None``. Si no es un color: ``ValueError``."""
+    """``'#262626'``, ``'262626'`` o ``'#13b'`` → ``'#262626'``; vacío → ``None``. Si no es un color: ``ValueError``."""
     if texto is None or texto is False:
         return None
     texto = str(texto).strip()
@@ -79,7 +79,7 @@ def normalizar(texto):
 
 
 def a_rgb(color):
-    """``'#262626'`` → ``(27, 50, 70)``. Acepta también una tupla (la devuelve tal cual, en enteros)."""
+    """``'#262626'`` → ``(38, 38, 38)``. Acepta también una tupla (la devuelve tal cual, en enteros)."""
     if isinstance(color, (tuple, list)):
         return tuple(int(round(c)) for c in color[:3])
     color = normalizar(color)
@@ -183,19 +183,31 @@ LUZ_DE_LETRA = _luz_maxima(SUPERFICIE, MINIMO_TEXTO)
 LUZ_DE_DETALLE = _luz_maxima(SUPERFICIE, MINIMO_DETALLE)
 
 
-def _en_familia(color, de, ventana, saturacion_minima):
+# La paleta provisional de Tommalo es gris: sin tono ni saturación, «la familia» no se puede medir por el tono. Se lista
+# a mano lo que es de la marca (la escala de la tinta de ``tokens.scss`` y el puntero y la letra del acento). Los grises
+# neutros (líneas, letra de apoyo, bordes de los campos, #8A8A8A, #BDBDBD) comparten valor con otros usos y NO giran.
+FAMILIA_GRIS_PRINCIPAL = frozenset(
+    tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
+    for h in ('#0F0F0F', '#151515', '#1A1A1A', '#1F1F1F', '#262626', '#333333', '#3D3D3D'))
+FAMILIA_GRIS_ACENTO = frozenset(
+    tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) for h in ('#D4D4D4', '#E5E5E5', '#595959'))
+
+
+def _en_familia(color, de, ventana, saturacion_minima, gris=frozenset()):
+    if hsl(de)[1] == 0:
+        return tuple(a_rgb(color)) in gris
     tono, saturacion, _luminosidad = hsl(color)
     return saturacion >= saturacion_minima and distancia_de_tono(tono, hsl(de)[0]) <= ventana
 
 
 def es_de_la_familia(color):
-    """¿Es el principal de fábrica (el navy) o algo que sale de él (más oscuro, más claro, más o menos vivo)?"""
-    return _en_familia(color, FABRICA_PRINCIPAL, VENTANA, SATURACION)
+    """¿Es el principal de fábrica (la tinta) o algo que sale de él (más oscuro, más claro)?"""
+    return _en_familia(color, FABRICA_PRINCIPAL, VENTANA, SATURACION, FAMILIA_GRIS_PRINCIPAL)
 
 
 def es_de_la_familia_del_acento(color):
-    """¿Es el acento de fábrica (el naranja) o uno de sus tonos (el de letra, el de los bordes, el del puntero)?"""
-    return _en_familia(color, FABRICA_ACENTO, VENTANA_ACENTO, SATURACION_ACENTO)
+    """¿Es el acento de fábrica o uno de sus tonos (el del puntero, el de la letra)?"""
+    return _en_familia(color, FABRICA_ACENTO, VENTANA_ACENTO, SATURACION_ACENTO, FAMILIA_GRIS_ACENTO)
 
 
 class Giro:
@@ -212,7 +224,10 @@ class Giro:
         tono_fabrica, saturacion_fabrica, _luminosidad = hsl(self._fabrica)
         tono, saturacion, _luminosidad = hsl(self.principal)
         self.giro = tono - tono_fabrica
-        self.factor = saturacion / saturacion_fabrica
+        # La paleta provisional de Tommalo es gris (saturación 0): sin saturación de fábrica no hay proporción que
+        # escalar.
+        self.factor = saturacion / saturacion_fabrica if saturacion_fabrica else None
+        self._saturacion = saturacion
         self.luz = luz(self.principal)
         self._luz_fabrica = luz(self._fabrica)
         self._hechos = {}
@@ -250,7 +265,9 @@ class Giro:
                 despues, como_mucho = techo, True
             if piso is not None and despues <= piso:
                 despues, como_poco, como_mucho = piso, True, False
-            nuevo = con_luz(tono + self.giro, min(1.0, saturacion * self.factor), despues,
+            # Con una fábrica gris (saturación 0) no hay proporción: la saturación es la del color de la empresa.
+            nueva_saturacion = self._saturacion if self.factor is None else min(1.0, saturacion * self.factor)
+            nuevo = con_luz(tono + self.giro, nueva_saturacion, despues,
                             como_mucho=como_mucho, como_poco=como_poco)
         self._hechos[rgb] = nuevo
         return nuevo

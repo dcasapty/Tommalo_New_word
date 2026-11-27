@@ -26,7 +26,7 @@ class Carritos(TransactionCase):
         cls.vend = new_test_user(cls.env, login='rev5_vend', groups='base.group_user,dcasa_base.group_vendedora')
         cls.itbms = cls.env.company.account_sale_tax_id
         cls.articulo = cls.env['product.product'].create({'name': 'ARTICULO carrito 5', 'type': 'consu', 'list_price': 1000.0, 'taxes_id': [Command.set(cls.itbms.ids)]})
-        cls.mueble2 = cls.env['product.product'].create({'name': 'MUEBLE2 carrito 5', 'type': 'consu', 'list_price': 700.0})
+        cls.articulo2 = cls.env['product.product'].create({'name': 'ARTICULO2 carrito 5', 'type': 'consu', 'list_price': 700.0})
         cls.cliente = cls.env['res.partner'].create({'name': 'Cliente carrito 5'})
         cls.cliente2 = cls.env['res.partner'].create({'name': 'Otro cliente carrito'})
 
@@ -58,16 +58,16 @@ class TestLoTecleadoSigueMarcado(Carritos):
             'discount 100': lambda: linea.write({'discount': 100.0}),
             'discount y price iguales': lambda: linea.write({'discount': 0.0, 'price_unit': linea.price_unit}),
             'qty': lambda: linea.write({'product_uom_qty': 3}),
-            'producto': lambda: linea.write({'product_id': self.mueble2.id}),
+            'producto': lambda: linea.write({'product_id': self.articulo2.id}),
             'tax_ids': lambda: linea.write({'tax_ids': [Command.clear()]}),
             'order.write order_line update price': lambda: o.write({'order_line': [Command.update(linea.id, {'price_unit': 1.0})]}),
             'order.write order_line update discount': lambda: o.write({'order_line': [Command.update(linea.id, {'discount': 10.0})]}),
-            'order.write order_line create': lambda: o.write({'order_line': [Command.create({'product_id': self.mueble2.id, 'product_uom_qty': 1})]}),
-            'order.write order_line create con precio': lambda: o.write({'order_line': [Command.create({'product_id': self.mueble2.id, 'product_uom_qty': 1, 'price_unit': 5.0})]}),
+            'order.write order_line create': lambda: o.write({'order_line': [Command.create({'product_id': self.articulo2.id, 'product_uom_qty': 1})]}),
+            'order.write order_line create con precio': lambda: o.write({'order_line': [Command.create({'product_id': self.articulo2.id, 'product_uom_qty': 1, 'price_unit': 5.0})]}),
             'order.write order_line unlink': lambda: o.write({'order_line': [Command.delete(linea.id)]}),
-            'line.create': lambda: o.env['sale.order.line'].create({'order_id': o.id, 'product_id': self.mueble2.id, 'product_uom_qty': 1}),
-            'line.create con precio': lambda: o.env['sale.order.line'].create({'order_id': o.id, 'product_id': self.mueble2.id, 'product_uom_qty': 1, 'price_unit': 9000.0}),
-            'line.create default_price_unit': lambda: o.env['sale.order.line'].with_context(default_price_unit=9000.0).create({'order_id': o.id, 'product_id': self.mueble2.id, 'product_uom_qty': 1}),
+            'line.create': lambda: o.env['sale.order.line'].create({'order_id': o.id, 'product_id': self.articulo2.id, 'product_uom_qty': 1}),
+            'line.create con precio': lambda: o.env['sale.order.line'].create({'order_id': o.id, 'product_id': self.articulo2.id, 'product_uom_qty': 1, 'price_unit': 9000.0}),
+            'line.create default_price_unit': lambda: o.env['sale.order.line'].with_context(default_price_unit=9000.0).create({'order_id': o.id, 'product_id': self.articulo2.id, 'product_uom_qty': 1}),
             'line.copy': lambda: linea.copy({'order_id': o.id, 'price_unit': 800.0}),
             'line.unlink': linea.unlink,
             'ctx sale_write_from_compute': lambda: linea.with_context(sale_write_from_compute=True).write({'price_unit': 400.0}),
@@ -192,7 +192,7 @@ class TestMoverLineasEntrePedidos(Carritos):
             for forma in ('write order_id', 'order.write link', 'order.write set', 'copy+unlink', 'varias lineas',
                           'write mezclado', 'create+write', 'con precio'):
                 for objetivo, nombre in ((self.carrito(web=False), 'mostrador'), (self.carrito(), 'online')):
-                    origen = self.carrito(lineas=[(self.articulo, 1), (self.mueble2, 1)])
+                    origen = self.carrito(lineas=[(self.articulo, 1), (self.articulo2, 1)])
                     try:
                         with self.env.cr.savepoint():
                             self.mover(forma, usuario, origen, objetivo)

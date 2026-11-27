@@ -72,10 +72,10 @@ class TestCarruselPortada(HttpCase):
         cls.Diapositiva.search([]).unlink()
         base = {'type': 'consu', 'is_storable': False, 'sale_ok': True, 'is_published': True, 'list_price': 45.0}
         Plantilla = cls.env['product.template']
-        cls.cremas = Plantilla.browse()   # (el nombre viene de la copia de origen: aquí son cajas de pañales)
-        for nombre, color in (('CAJA NATEEN TALLA M', (20, 20, 20)),
-                              ('CAJA NATEEN TALLA L', (230, 150, 170)),
-                              ('CAJA WIPES DE AGUA', (220, 205, 180))):
+        cls.cremas = Plantilla.browse()   # (productos de PRUEBA)
+        for nombre, color in (('CAJA DE PRUEBA UNO', (20, 20, 20)),
+                              ('CAJA DE PRUEBA DOS', (230, 150, 170)),
+                              ('CAJA DE PRUEBA TRES', (220, 205, 180))):
             cls.cremas |= Plantilla.create({**base, 'name': f'ZZCARRUSEL {nombre}', 'image_1920': _foto(color)})
         cls.sin_publicar = Plantilla.create({**base, 'name': 'ZZCARRUSEL CAJA SIN PUBLICAR', 'is_published': False,
                                              'image_1920': _foto((90, 90, 90))})
@@ -451,7 +451,7 @@ class TestCarruselPortada(HttpCase):
     # ------------------------------------------------------------------ nace con los productos de CARRUSEL_INICIAL
 
     # Códigos públicos de PRUEBA con que se parchea CARRUSEL_INICIAL (en la base de Tommalo va vacío).
-    CODIGOS_DE_PRUEBA = ('DC-PRUEB1', 'DC-PRUEB2', 'DC-PRUEB3', 'DC-PRUEB4', 'DC-PRUEB5', 'DC-PRUEB6')
+    CODIGOS_DE_PRUEBA = ('DC-TTTT22', 'DC-TTTT33', 'DC-TTTT44', 'DC-TTTT55', 'DC-TTTT66', 'DC-TTTT77')
 
     def _crema_con_codigo(self, codigo):
         """Una crema publicada, con foto, con el código público ``codigo`` (el código solo se da al crear)."""
@@ -600,7 +600,7 @@ class TestCarruselPortada(HttpCase):
         self.assertTrue(r['fotoEnSuMarco'], 'la foto llena su marco')
         self.assertTrue(r['textoArriba'], 'en el celular el texto va arriba y las fotos debajo, como en su web')
         self.assertTrue(r['sinCapa'], 'sin velo ni degradado')
-        self.assertTrue(r['botonVisible'], 'el botón naranja se ve sin bajar')
+        self.assertTrue(r['botonVisible'], 'el botón de acento se ve sin bajar')
         self.assertEqual(r['nadaQueTocar'], 0, 'tampoco en el celular hay nada que manejar')
         self.assertFalse(r['deslizarCambia'], 'deslizar no cambia la foto: no es un carrusel')
         self.assertFalse(r['abrioFicha'], 'ni abre ninguna ficha')

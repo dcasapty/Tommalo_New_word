@@ -9,8 +9,7 @@ entiende sin la palabra, una paleta más profesional). Lo que se fija aquí:
   tarjetas a la vista, las flechas mueven el carril, el carrito es redondo de 48 px (una barra ancha en el teléfono), la
   tarjeta es la de tommalo.example (TarjetaDeArticulo.tsx: crema con filo fino y radio de 16 px, la foto entera en un
   plato cuadrado) y nada ensancha la página.
-* (Las categorías «Compra por espacio» y el carril «Para dormir mejor» eran de articulos: se quitaron con la marca de Baby
-  Caleb, 2026-11-19.)
+* (Las categorías «Compra por espacio» y el carril «Para dormir mejor» eran de la plantilla de origen: se quitaron.)
 """
 import contextlib
 
@@ -149,7 +148,7 @@ class TestPortadaV3(HttpCase):
         self.assertFalse(tarjeta.xpath('.//form'), 'con colores no se agrega de un clic')
         enlace = tarjeta.xpath('.//a[contains(@class, "o_dcasa_pcard_add")]')[0]
         self.assertEqual(enlace.get('href'), self.con_colores.website_url)
-        self.assertEqual(enlace.get('aria-label'), f'Elegir medida o color de {self.con_colores._dcasa_nombre_cliente()}')
+        self.assertEqual(enlace.get('aria-label'), f'Elegir opciones de {self.con_colores._dcasa_nombre_cliente()}')
         self.assertEqual(enlace.text_content().strip(), '')
         self.assertTrue(enlace.xpath('.//svg'))
 
@@ -236,7 +235,7 @@ class TestPortadaV3(HttpCase):
 
     def _revisar_tarjeta(self, r):
         """TarjetaDeArticulo.tsx: `surface` con el filo `line`, radio de 16 px, la foto entera en un plato cuadrado
-        crema, el precio en 700 y el carrito naranja con el ícono navy."""
+        crema, el precio en 700 y el carrito de acento con el ícono oscuro."""
         self.assertEqual(r['tarjeta'], {
             'fondo': 'rgb(255, 255, 255)', 'borde': 'rgba(38, 38, 38, 0.12)', 'radio': '16px',
             'plato': 'rgb(250, 250, 250)', 'cuadrado': True, 'foto': 'contain',

@@ -52,7 +52,7 @@ class TestPixelNavegador(SitioMetaCase):
         cls.ICP.set_param(PARAM_INICIO, '')
         cls.ICP.set_param(PARAM_FIN, '')
         categoria = cls.env.ref('website_dcasa.public_category_salud')
-        cls.lampara = cls.env['product.template'].create({
+        cls.lampara_bw = cls.env['product.template'].create({
             'name': 'LAMPARA META NAVEGADOR', 'list_price': 49.99, 'is_published': True, 'type': 'consu',
             'is_storable': False, 'sale_ok': True, 'taxes_id': [Command.clear()],
             'public_categ_ids': [Command.set(categoria.ids)], 'dcasa_black_weekend': True})
@@ -160,7 +160,7 @@ class TestPixelNavegador(SitioMetaCase):
         self._sin_facebook()
 
     def test_con_las_cookies_aceptadas_agregar_buscar_y_whatsapp(self):
-        variante_bw = self.lampara.product_variant_id
+        variante_bw = self.lampara_bw.product_variant_id
         with self._chrome(aceptadas=True) as browser:
             # Portada: «Agregar» de la tarjeta de Black Weekend (formulario normal) y el botón de WhatsApp.
             self._abrir(browser, '/')
@@ -179,7 +179,7 @@ class TestPixelNavegador(SitioMetaCase):
             })()""")
             self.assertFalse(portada.get('sinFormulario'), 'La portada no trae el formulario «Agregar» con el id')
             # Tienda con búsqueda: Search y «Agregar al carrito» de Odoo (add_to_cart_event).
-            self._abrir(browser, '/shop?search=' + 'LAMPARA META RENDER'.replace(' ', '+'))
+            self._abrir(browser, '/shop?search=' + 'FILTRO META RENDER'.replace(' ', '+'))
             tienda = self._evaluar(browser, '(async () => {' + ESPERAR_LISTA + """
                 const boton = document.querySelector('#products_grid .o_wsale_product_btn .a-submit');
                 if (!boton) { return { sinBoton: true, llamadas: llamadas() }; }
@@ -200,7 +200,7 @@ class TestPixelNavegador(SitioMetaCase):
         self.assertRegex(agregados[0][3]['eventID'], RE_EVENT_ID.format('AddToCart'))
         self.assertEqual(len(self._eventos(llamadas, 'Contact')), 1, 'El clic en WhatsApp es un Contact')
         busqueda = self._eventos(llamadas, 'Search')
-        self.assertEqual(busqueda[0][2], {'search_string': 'LAMPARA META RENDER'})
+        self.assertEqual(busqueda[0][2], {'search_string': 'FILTRO META RENDER'})
         self.assertFalse(tienda.get('sinBoton'), 'La tienda no trae el botón «Agregar al carrito»')
         self.assertEqual(len(agregados), 2, f'AddToCart por los dos caminos: {agregados}')
         self.assertEqual(agregados[1][2]['content_ids'], [str(self.lampara.id)])
@@ -217,7 +217,8 @@ class TestPixelNavegador(SitioMetaCase):
                     body: JSON.stringify({jsonrpc: '2.0', method: 'call', params: {
                         product_template_id: PLANTILLA, product_id: VARIANTE, quantity: 2}})});
                 return (await r.json()).result ? true : false;
-            })()'''.replace('PLANTILLA', str(self.lampara.product_tmpl_id.id)).replace('VARIANTE', str(self.lampara.id)))
+            })()'''.replace('PLANTILLA', str(self.lampara.product_tmpl_id.id)).replace('VARIANTE',
+            str(self.lampara.id)))
             self._abrir(browser, '/shop/checkout')
             r = self._evaluar(browser, '(async () => {' + ESPERAR_LISTA + """
                 return { llamadas: llamadas(), pagina: location.pathname };

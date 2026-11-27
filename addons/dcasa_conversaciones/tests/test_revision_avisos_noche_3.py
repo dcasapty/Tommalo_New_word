@@ -41,7 +41,8 @@ class TestRevision3DeDia(NocheCase):
     def test_rv3_como_se_dice_aqui_que_ya_se_pago(self):
         """Con «tope» o «apagado», el segundo aviso del día solo sale si el cliente habla de pago. Formas de decirlo en
         Panamá que la lista no reconoce: cada una se queda sin aviso."""
-        for texto in ('listo, ya te yapié', 'ya cancelé la lámpara', 'la cuota ya está pagada', 'ahí te envié la plata'):
+        for texto in ('listo, ya te yapié', 'ya cancelé la lámpara', 'la cuota ya está pagada',
+            'ahí te envié la plata'):
             with self.subTest(texto=texto):
                 self.enviar.reset_mock()
                 conv = self.cliente()

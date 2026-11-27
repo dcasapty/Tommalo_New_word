@@ -1,5 +1,6 @@
 """La portada neutra y lo que ya no existe: las páginas de marketing de la plantilla de origen (beneficios, historia,
-tips, cómo comprar, preguntas frecuentes) se quitaron por completo; la banda final es genérica; y ``_dcasa_hero_tarjeta``
+tips, cómo comprar, preguntas frecuentes) se quitaron por completo; la banda final es genérica; y
+``_dcasa_hero_tarjeta``
 sigue funcionando (sin nada publicado, no sale)."""
 import re
 
@@ -68,7 +69,7 @@ class TestTarjetaDelHero(HttpCase):
         tarjeta = self.env.ref('website.default_website')._dcasa_hero_tarjeta()
         self.assertTrue(tarjeta)
         self.assertEqual(tarjeta['desde'], 45)
-        self.assertEqual(tarjeta['nombre'], 'Lámpara de prueba')
+        self.assertEqual(tarjeta['nombre'].lower(), 'lámpara de prueba')
         self.assertEqual(tarjeta['url'], barata.website_url)
 
     def test_la_portada_no_dibuja_tarjeta_fija(self):

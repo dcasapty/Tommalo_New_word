@@ -47,7 +47,7 @@ class DisposicionCase(PanelUiCase):
         larga = self.env['dcasa.conversacion'].search([('id_externo', '=', '50761000099')])
         ultimo = self.env['dcasa.mensaje'].search([('conversacion_id', '=', larga.id)], order='id desc', limit=1)
         larga.sudo().write({
-            'resumen_ia': '• Busca una lámpara grande en gris para dos personas.\n• Pregunta por el precio y la entrega.',
+            'resumen_ia': '• Busca una lámpara grande en gris para dos personas.\n• Pregunta el precio y la entrega.',
             'resumen_ia_en': self.ahora, 'resumen_ia_hasta_id': ultimo.id})
         return larga
 

@@ -230,7 +230,7 @@ class TestHerramientasRonda6(TransactionCase):
         impuesto = cls.env['brian.herramientas']._b_itbms_venta()
         Template = cls.env['product.template']
         base = {'type': 'consu', 'is_storable': True, 'taxes_id': [Command.set(impuesto.ids)], 'sale_ok': True}
-        cls.lampara = Template.create({**base, 'name': 'RONDA6 LÁMPARA ROBLE', 'default_code': 'R6-LÁMPARA',
+        cls.lampara = Template.create({**base, 'name': 'RONDA6 LÁMPARA ROBLE', 'default_code': 'R6-LAMPARA',
                                     'list_price': 300.0, 'image_1920': _png(), 'dcasa_medidas': '160 × 200 cm'})
         cls.mesa = Template.create({**base, 'name': 'RONDA6 MESA PINO', 'default_code': 'R6-MESA',
                                     'list_price': 80.0})
@@ -286,9 +286,9 @@ class TestHerramientasRonda6(TransactionCase):
 
     def test_cotizacion_con_varias_lineas_y_texto_como_numero(self):
         datos = self.ok(self.ejecutar(self.vendedor, 'crear_cotizacion', {
-            'cliente': '6555-0606', 'lineas': 'R6-LÁMPARA x 2; R6-MESA x 1'}))
+            'cliente': '6555-0606', 'lineas': 'R6-LAMPARA x 2; R6-MESA x 1'}))
         self.assertEqual([(ln['producto'], ln['cantidad']) for ln in datos['lineas']],
-                         [('[R6-LÁMPARA] RONDA6 LÁMPARA ROBLE', 2), ('[R6-MESA] RONDA6 MESA PINO', 1)])
+                         [('[R6-LAMPARA] RONDA6 LÁMPARA ROBLE', 2), ('[R6-MESA] RONDA6 MESA PINO', 1)])
         self.assertEqual(datos['abrir']['modelo'], 'sale.order')
         # Un modelo pequeño manda la cantidad como texto: se entiende.
         datos = self.ok(self.ejecutar(self.vendedor, 'agregar_linea_cotizacion', {
@@ -297,7 +297,7 @@ class TestHerramientasRonda6(TransactionCase):
         # Una línea que no existe: no se crea nada y se listan todas las que fallan.
         antes = self.env['sale.order'].search_count([])
         error = self.ejecutar(self.vendedor, 'crear_cotizacion', {
-            'cliente': '6555-0606', 'lineas': 'R6-LÁMPARA x 1; NO-EXISTE x 2'})
+            'cliente': '6555-0606', 'lineas': 'R6-LAMPARA x 1; NO-EXISTE x 2'})
         self.assertFalse(error['ok'])
         self.assertIn('NO-EXISTE', error['error'])
         self.assertEqual(self.env['sale.order'].search_count([]), antes)
@@ -308,24 +308,24 @@ class TestHerramientasRonda6(TransactionCase):
 
     def test_sugerir_reabastecimiento(self):
         datos = self.ok(self.ejecutar(self.vendedor, 'sugerir_reabastecimiento', {'dias_cobertura': '30'}))
-        fila = next(f for f in datos['productos'] if f['codigo'] == 'R6-LÁMPARA')
+        fila = next(f for f in datos['productos'] if f['codigo'] == 'R6-LAMPARA')
         # Vendió 5 en 30 días; hay 0, comprometidas 5 → pedir 5 (cubrir 30 días) + 5 (lo vendido) = 10.
         self.assertEqual(fila['vendidas'], 5)
         self.assertEqual(fila['comprometidas'], 5)
         self.assertEqual(fila['pedir'], 10)
         self.assertEqual(fila['proveedor'], 'Ronda6 Proveedor Estantes')
         self.assertNotIn('costo_proveedor', fila, 'el costo del proveedor es solo de Gerencia (2026-10-16)')
-        self.assertIn('R6-LÁMPARA x 10', datos['lineas_para_compra'])
+        self.assertIn('R6-LAMPARA x 10', datos['lineas_para_compra'])
         de_gerencia = self.ok(self.ejecutar(self.gerente, 'sugerir_reabastecimiento', {'dias_cobertura': '30'}))
-        fila = next(f for f in de_gerencia['productos'] if f['codigo'] == 'R6-LÁMPARA')
+        fila = next(f for f in de_gerencia['productos'] if f['codigo'] == 'R6-LAMPARA')
         self.assertEqual(fila['costo_proveedor'], '$150.00')
         self.assertFalse([f for f in datos['productos'] if f['codigo'] == 'R6-MESA'], 'Sin ventas ni faltante: nada')
 
     def test_crear_pedido_compra_y_buscar(self):
         self.assertFalse(self.ejecutar(self.vendedor, 'crear_pedido_compra', {
-            'proveedor': 'Ronda6 Proveedor', 'lineas': 'R6-LÁMPARA x 1'})['ok'])
+            'proveedor': 'Ronda6 Proveedor', 'lineas': 'R6-LAMPARA x 1'})['ok'])
         datos = self.ok(self.ejecutar(self.gerente, 'crear_pedido_compra', {
-            'proveedor': 'Ronda6 Proveedor', 'lineas': 'R6-LÁMPARA x 10; R6-MESA x 2 @ 35.5',
+            'proveedor': 'Ronda6 Proveedor', 'lineas': 'R6-LAMPARA x 10; R6-MESA x 2 @ 35.5',
             'referencia': 'COT-77'}))
         self.assertEqual(datos['estado'], 'solicitud (borrador)')
         self.assertEqual([ln['costo'] for ln in datos['lineas']], ['$150.00', '$35.50'])
@@ -367,11 +367,11 @@ class TestHerramientasRonda6(TransactionCase):
         self.assertFalse(self.ejecutar(self.vendedor, 'productos_incompletos', {'problema': 'raro'})['ok'])
 
     def test_ver_producto_dice_si_tiene_foto(self):
-        self.assertTrue(self.ok(self.ejecutar(self.vendedor, 'ver_producto', {'producto': 'R6-LÁMPARA'}))['tiene_foto'])
+        self.assertTrue(self.ok(self.ejecutar(self.vendedor, 'ver_producto', {'producto': 'R6-LAMPARA'}))['tiene_foto'])
         self.assertFalse(self.ok(self.ejecutar(self.vendedor, 'ver_producto', {'producto': 'R6-MESA'}))['tiene_foto'])
 
     def test_publicar_en_bloque_confirma_y_salta_incompletos(self):
-        argumentos = {'productos': 'R6-LÁMPARA; R6-MESA; R6-CERO', 'publicar': True}
+        argumentos = {'productos': 'R6-LAMPARA; R6-MESA; R6-CERO', 'publicar': True}
         propuesta = self.ejecutar(self.gerente, 'publicar_productos_en_bloque', argumentos)
         self.assertTrue(propuesta.get('requiere_confirmacion'))
         self.assertIn('Publicar en la web 1 producto', propuesta['resumen'])
@@ -386,7 +386,7 @@ class TestHerramientasRonda6(TransactionCase):
         self.assertFalse(self.gratis.is_published)
         self.assertEqual(hecho['datos']['omitidos']['sin foto'], ['[R6-MESA] RONDA6 MESA PINO'])
         retirar = self.ejecutar(self.gerente, 'publicar_productos_en_bloque',
-                                {'productos': 'R6-LÁMPARA', 'publicar': 'false'})
+                                {'productos': 'R6-LAMPARA', 'publicar': 'false'})
         self.assertTrue(self.confirmar(self.gerente, retirar)['ok'])
         self.assertFalse(self.lampara.is_published)
         malo = self.ejecutar(self.gerente, 'publicar_productos_en_bloque', {'productos': 'NO-EXISTE', 'publicar': True})
@@ -409,7 +409,7 @@ class TestHerramientasRonda6(TransactionCase):
     def test_existencias_en_bloque_dejan_en_cero_varios_productos_con_una_sola_confirmacion(self):
         self._con_existencias(self.lampara, 5)
         self._con_existencias(self.mesa, 3)
-        argumentos = {'productos': 'R6-LÁMPARA; R6-MESA; R6-CERO', 'cantidad': 0, 'almacen': self._almacen(),
+        argumentos = {'productos': 'R6-LAMPARA; R6-MESA; R6-CERO', 'cantidad': 0, 'almacen': self._almacen(),
                       'motivo': 'arranque de prueba'}
         propuesta = self.ejecutar(self.gerente, 'ajustar_existencias_en_bloque', argumentos)
         self.assertTrue(propuesta.get('requiere_confirmacion'))
@@ -421,13 +421,13 @@ class TestHerramientasRonda6(TransactionCase):
         self.assertTrue(hecho['ok'], hecho)
         self.assertEqual((self.lampara.qty_available, self.mesa.qty_available), (0, 0))
         self.assertIn('2 productos', hecho['datos']['mensaje'])
-        self.assertEqual(sorted(hecho['datos']['cambiados']), ['[R6-LÁMPARA] RONDA6 LÁMPARA ROBLE',
+        self.assertEqual(sorted(hecho['datos']['cambiados']), ['[R6-LAMPARA] RONDA6 LÁMPARA ROBLE',
                                                               '[R6-MESA] RONDA6 MESA PINO'])
 
     def test_existencias_en_bloque_con_una_cantidad_distinta_de_cero(self):
         self._con_existencias(self.lampara, 5)
         propuesta = self.ejecutar(self.gerente, 'ajustar_existencias_en_bloque', {
-            'productos': 'R6-LÁMPARA; R6-MESA', 'cantidad': '3', 'almacen': self._almacen(), 'motivo': 'conteo'})
+            'productos': 'R6-LAMPARA; R6-MESA', 'cantidad': '3', 'almacen': self._almacen(), 'motivo': 'conteo'})
         self.assertTrue(self.confirmar(self.gerente, propuesta)['ok'])
         self.assertEqual((self.lampara.qty_available, self.mesa.qty_available), (3, 3))
 
@@ -454,31 +454,31 @@ class TestHerramientasRonda6(TransactionCase):
         if sin_nada.get('requiere_confirmacion'):
             self.assertFalse(self.confirmar(self.gerente, sin_nada)['ok'])
         no_puede = self.ejecutar(self.vendedor, 'ajustar_existencias_en_bloque', {
-            'productos': 'R6-LÁMPARA', 'cantidad': 0, 'motivo': 'prueba'})
+            'productos': 'R6-LAMPARA', 'cantidad': 0, 'motivo': 'prueba'})
         self.assertFalse(no_puede['ok'])
         self.assertIn('no tienes permiso', no_puede['error'])
 
     def test_actualizar_precio_en_bloque_por_valor_y_por_porcentaje(self):
         propuesta = self.ejecutar(self.gerente, 'actualizar_productos_en_bloque', {
-            'campo': 'precio', 'productos': 'R6-LÁMPARA; R6-MESA', 'porcentaje': '10'})
+            'campo': 'precio', 'productos': 'R6-LAMPARA; R6-MESA', 'porcentaje': '10'})
         self.assertIn('Cambiar precio en 2 productos', propuesta['resumen'])
         self.assertIn('$300.00 → $330.00', propuesta['resumen'])
         self.assertEqual((self.lampara.list_price, self.mesa.list_price), (300.0, 80.0), 'Nada cambia antes del clic')
         self.assertTrue(self.confirmar(self.gerente, propuesta)['ok'])
         self.assertEqual((self.lampara.list_price, self.mesa.list_price), (330.0, 88.0))
         fijo = self.ejecutar(self.gerente, 'actualizar_productos_en_bloque', {
-            'campo': 'precio', 'productos': 'R6-LÁMPARA; R6-MESA', 'valor': '99.99'})
+            'campo': 'precio', 'productos': 'R6-LAMPARA; R6-MESA', 'valor': '99.99'})
         self.assertTrue(self.confirmar(self.gerente, fijo)['ok'])
         self.assertEqual((self.lampara.list_price, self.mesa.list_price), (99.99, 99.99))
         ambos = self.ejecutar(self.gerente, 'actualizar_productos_en_bloque', {
-            'campo': 'precio', 'productos': 'R6-LÁMPARA', 'valor': '10', 'porcentaje': '5'})
+            'campo': 'precio', 'productos': 'R6-LAMPARA', 'valor': '10', 'porcentaje': '5'})
         self.assertFalse(self.confirmar(self.gerente, ambos)['ok'], 'O un valor o un porcentaje, no los dos')
         self.assertEqual(self.lampara.list_price, 99.99)
 
     def test_actualizar_en_bloque_categoria_y_vendible(self):
         categoria = self.env['product.category'].create({'name': 'Ronda6 Categoria Nueva'})
         propuesta = self.ejecutar(self.gerente, 'actualizar_productos_en_bloque', {
-            'campo': 'categoria', 'productos': 'R6-LÁMPARA; R6-MESA', 'valor': 'Ronda6 Categoria Nueva'})
+            'campo': 'categoria', 'productos': 'R6-LAMPARA; R6-MESA', 'valor': 'Ronda6 Categoria Nueva'})
         self.assertIn('Cambiar categoria en 2 productos', propuesta['resumen'])
         self.assertTrue(self.confirmar(self.gerente, propuesta)['ok'])
         self.assertEqual((self.lampara.categ_id, self.mesa.categ_id), (categoria, categoria))
@@ -488,7 +488,7 @@ class TestHerramientasRonda6(TransactionCase):
         self.assertFalse(self.mesa.sale_ok)
         self.assertTrue(self.lampara.sale_ok)
         raro = self.ejecutar(self.gerente, 'actualizar_productos_en_bloque', {
-            'campo': 'nombre', 'productos': 'R6-LÁMPARA', 'valor': 'x'})
+            'campo': 'nombre', 'productos': 'R6-LAMPARA', 'valor': 'x'})
         self.assertFalse(raro.get('ok', True) and self.confirmar(self.gerente, raro)['ok'])
 
     # -- Consumo de Brian ----------------------------------------------------------

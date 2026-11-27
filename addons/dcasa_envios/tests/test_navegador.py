@@ -55,14 +55,14 @@ class TestCalculadoraEnElNavegador(HttpCase):
                 throw new Error('Falta el desglose');
             }
             const ruta = villa.querySelector('a[href*="google.com/maps/dir"]').href;
-            if (!ruta.includes('origin=8.9500000,-79.5500000')) { throw new Error('La ruta no sale de la tienda'); }
+            if (!ruta.includes('origin=8.95,-79.55')) { throw new Error('La ruta no sale de la tienda'); }
             const aviso = document.querySelector('.o_de_aviso');
             if (!aviso || !aviso.textContent.includes('Tarifa en revisión')) {
                 throw new Error('Falta el aviso «Tarifa en revisión»');
             }
             villa.querySelector('.o_de_copiar').click();
             await esperar(() => copiado.length === 1, 'que copie el precio');
-            if (copiado[0] !== 'Envío a Villa Prueba (Barrio Prueba, Penonomé): $15.') {
+            if (copiado[0] !== 'Envío a Villa Prueba (Barrio Prueba, La Chorrera): $15.') {
                 throw new Error('Copió otra cosa: ' + copiado[0]);
             }
             await esperar(() => villa.querySelector('.o_de_copiar').textContent.includes('Copiado'), '«Copiado»');
@@ -115,7 +115,7 @@ class TestCalculadoraEnElNavegador(HttpCase):
         """)
         lugar = self.env['dcasa.envio.lugar'].search([('name', '=', 'Finca del Ensayo')])
         self.assertEqual((lugar.agregado_por, lugar.km, lugar.dist, lugar.alias, lugar.origen),
-                         (self.vendedora, 7.0, 'Penonomé', 'La finquita\nFinca E', 'mano'))
+                         (self.vendedora, 7.0, 'Arraiján', 'La finquita\nFinca E', 'mano'))
 
     def test_calcula_por_kilometros_con_peaje(self):
         self.cargar_fixture()

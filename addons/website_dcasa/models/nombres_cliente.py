@@ -1,7 +1,7 @@
 """La tienda y Mi cuenta muestran los nombres de los productos en formato título (F5).
 
-Por dentro el nombre se guarda y se ve en MAYÚSCULAS; en el sitio el cliente lee «Crema Hidratante de Prueba». La regla está
-en ``dcasa_base/nombres.py``; aquí se engancha en lo que pinta el sitio:
+Por dentro el nombre se guarda y se ve en MAYÚSCULAS; en el sitio el cliente lee «Crema Hidratante». La regla está en
+``dcasa_base/nombres.py``; aquí se engancha en lo que pinta el sitio:
 
 * Todo ``t-field`` del nombre de un producto o de una línea de pedido o factura en una página del sitio (la tarjeta
   de /shop, la ficha y su miga de pan, el portal del pedido): ``ir.qweb._get_field``. Con el editor abierto se deja

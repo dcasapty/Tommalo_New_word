@@ -15,7 +15,7 @@ class TestCotizacionDeJuan(CotizarCase):
 
     def cotizada(self, conv=None):
         """La cotización que arma la herramienta ``cotizar`` de Juan (como el usuario del asistente, por la API)."""
-        self.cotizar({'codigo': 'ZZ-CREMA', 'cantidad': 1}, conv=conv)
+        self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 1}, conv=conv)
         return self.ordenes(conv)[-1]
 
     def escribe_la_vendedora(self, hace_dias):
@@ -54,7 +54,7 @@ class TestCotizacionDeJuan(CotizarCase):
         orden = self.env['sale.order'].with_user(self.vendedora).create({
             'partner_id': self.conv.partner_id.id, 'origin': 'Conversación Karen', 'website_id': sitio.id,
             'dcasa_nacio_en_web': True, 'dcasa_venta_online': True,
-            'order_line': [Command.create({'product_id': self.crema.product_variant_id.id, 'product_uom_qty': 1})]})
+            'order_line': [Command.create({'product_id': self.espejo.product_variant_id.id, 'product_uom_qty': 1})]})
         self.assertFalse(orden.dcasa_nacio_en_web or orden.dcasa_venta_online)
         orden.action_confirm()
         self.assertFalse(orden.dcasa_venta_online)

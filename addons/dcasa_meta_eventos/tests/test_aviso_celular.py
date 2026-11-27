@@ -53,12 +53,12 @@ class TestAvisoDeCookiesEnElCelular(SitioMetaCase, ChromeMovilCase):
                     self.assertLessEqual(abajo, ALTO + 0.5, f'{parte}: queda debajo de la pantalla')
                 for boton in ('necesarias', 'aceptar'):
                     self.assertGreaterEqual(medida[boton][3] - medida[boton][1], 44 - 0.5, f'{boton}: muy chico')
-                # La marca Tommalo (su aviso de Meta): la tarjeta crema, «Aceptar» naranja con letra navy y «Solo las
-                # necesarias» de contorno, en pastilla, y los dos del mismo alto (rechazar, igual de fácil).
+                # La marca Tommalo (su aviso de Meta): la tarjeta clara, «Aceptar» de acento con letra oscura y «Solo
+                # las necesarias» de contorno, en pastilla, y los dos del mismo alto (rechazar, igual de fácil).
                 marca = medida['marca']
                 self.assertEqual(marca['tarjeta'], 'rgb(255, 255, 255)')
                 self.assertEqual(marca['aceptar'][:2], ['rgb(212, 212, 212)', 'rgb(38, 38, 38)'])
-                self.assertEqual(marca['necesarias'][:3], ['rgba(0, 0, 0, 0)', 'rgb(152, 93, 47)', 'rgb(195, 120, 61)'])
+                self.assertEqual(marca['necesarias'][:3], ['rgba(0, 0, 0, 0)', 'rgb(89, 89, 89)', 'rgb(138, 138, 138)'])
                 self.assertEqual({marca['aceptar'][3], marca['necesarias'][3]}, {'999px'})
                 self.assertEqual({marca['aceptar'][4], marca['necesarias'][4]}, {'Montserrat'})
                 self.assertAlmostEqual(medida['necesarias'][3] - medida['necesarias'][1],
