@@ -27,6 +27,25 @@ Diseño y plan: [specs](specs/2026-11-27-base-tommalo-diseno.md) · [plan](plans
   en los tres. `scripts/tests` (unittest) 22/22.
 - `scripts/revisar_datos_ajenos.sh`: sin hallazgos duros (quedan nombres de marca en documentos y listas de «prohibido»).
 
+## Arreglos tras el primer CI (2026-11-27)
+- **Faltaba el submódulo de Odoo**: `.gitmodules` existía pero el árbol no tenía la entrada `vendor/odoo`, y un clon limpio
+  no traía Odoo (por eso fallaron «Dependencias de Odoo», «Imagen Docker» y la integración). Ahora está registrado en
+  `ba91c87ae3d90b072cdb473a4e518722c7eebf33` (el mismo de Baby Caleb); comprobado en un clon nuevo con
+  `git submodule update --init --depth 1`. No se subieron archivos de Odoo.
+- **Lint**: el CI corre `ruff check addons scripts` (no solo `addons`); se arregló la última línea larga en `scripts/tests`.
+  Lo que el CI marcó en `addons` ya estaba corregido en commits posteriores.
+- **Borde (dry-run)**: `staging` tenía `CANONICAL_HOST`, `YAPPY_URL_BASE` y `TIENDA_AVISO_URL` con `subdominio-pendiente`, y el
+  CI (I-11) rechaza cualquier valor que diga «PENDIENTE». Quedan vacíos (como producción) hasta que exista el subdominio
+  workers.dev de Tommalo; los tres tests del borde se ajustaron (no se saltó ninguno).
+- **Imagen ajena**: `website_dcasa/static/src/img/black_weekend/og.jpg` era de otro negocio; se reemplazó por una imagen gris
+  neutra (1200×850). `scripts/revisar_datos_ajenos.sh` ahora compara el sha256 de cada imagen del repositorio con el de
+  todas las de los moldes (`scripts/huellas_imagenes_ajenas.txt`, solo huellas) y falla si coincide, salvo las revisadas a mano en
+  `scripts/imagenes_heredadas_permitidas.txt` (la mascota de Brian y un ícono de mapa: **el cliente debe confirmar la mascota**).
+  Probado: con el og.jpg viejo el script falla; con el nuevo pasa.
+- Probado en un clon limpio del commit subido: `ruff check addons scripts`, `scripts/tests` 22/22, versiones estables,
+  XML bien formado, `probar_config_despliegue.sh` (dry-run de producción y staging) y `npm test` en `edge/` 326/326.
+  No se pudo probar aquí: shellcheck y actionlint (no instalados) ni la imagen Docker (no hay servicio de Docker).
+
 ## No probado
 - Flujos de GitHub (CI), imagen Docker, despliegue y todo lo de Cloudflare: no se lanzan en esta fase.
 - Las capturas de referencia visual se regeneraron localmente; no se pudo comparar contra el CI.
