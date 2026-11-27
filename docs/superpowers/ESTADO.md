@@ -1,6 +1,6 @@
 # Estado de la base de Tommalo (se actualiza a medida que avanza)
 
-Rama: `claude/hopeful-cerf-y23p5l` (el repositorio estaba vacío). Última actualización: 2026-11-27, en curso.
+Rama: `claude/hopeful-cerf-y23p5l` (el repositorio estaba vacío). Última actualización: 2026-11-27, limpiezas terminadas y pruebas corridas.
 Diseño y plan: [specs](specs/2026-11-27-base-tommalo-diseno.md) · [plan](plans/2026-11-27-plan-base-tommalo.md).
 
 ## Hecho
@@ -16,30 +16,30 @@ Diseño y plan: [specs](specs/2026-11-27-base-tommalo-diseno.md) · [plan](plans
   EJEMPLO inventado, marcado «de prueba», nunca en producción).
 - Versiones estables: las de D'CASA se quitaron (apuntaban a su registro); marcador `pendiente`.
 
-## Probado (resultado real)
-- `edge/`: `npm test` 326/326 y `npm run typecheck` sin errores (2026-11-27).
-- `scripts/tests` (unittest): 22/22.
-- `dcasa_base` solo (scripts/test.sh): instaló; 2 fallas que dependen de otros módulos instalados
-  (`test_exportar … campo cerrado a Gerencia`, `test_aviso_vendedora … sin asunto`): se confirman en la corrida completa.
+## Probado (resultado real, 2026-11-27)
+- Odoo, corrida completa (`scripts/test.sh`, los 37 módulos juntos): 7708 pruebas; la primera vez 5 fallos y 1 error
+  (dos fallos eran de mi edición automática de las listas de «prohibido», uno de una llamada rota y tres de un nombre de
+  prueba demasiado largo para 360 px). Se corrigieron y se repitieron `dcasa_invoice`, `dcasa_catalogo`, `website_dcasa`,
+  `dcasa_tienda_borde` y `dcasa_pago_yappy`: 0 fallos en 1278 pruebas.
+- Aviso que queda en el registro, sin fallo contado: en una prueba de navegador de Yappy («atrás» tras el pago) sale
+  «Failed to fetch» al cargar traducciones, porque la página se abandona a propósito. Salió igual en las dos corridas.
+- `ruff check addons`: sin errores. `edge/` 326/326, `juan/` 2246 (41 saltadas), `puente-wa/` 744/744; `typecheck` limpio
+  en los tres. `scripts/tests` (unittest) 22/22.
+- `scripts/revisar_datos_ajenos.sh`: sin hallazgos duros (quedan nombres de marca en documentos y listas de «prohibido»).
 
 ## No probado
-- La corrida completa de `scripts/test.sh` (todos los módulos) y `ruff check addons` (hay E501 por los reemplazos).
-- `juan/` y `puente-wa/` (`npm test && npm run typecheck`): los limpia otra tarea en paralelo.
-- Los flujos de GitHub (no se lanzan en esta fase), la imagen Docker, el despliegue y todo lo de Cloudflare.
-- Las capturas de referencia visual: si cambian, se regeneran localmente y no se pudo comparar contra el CI.
-
-## En curso (agentes en paralelo)
-Limpieza de contenido de otros negocios en: sitio web y módulos de tienda; resto de módulos Odoo; `dcasa_catalogo`;
-`juan/` y `puente-wa/`.
+- Flujos de GitHub (CI), imagen Docker, despliegue y todo lo de Cloudflare: no se lanzan en esta fase.
+- Las capturas de referencia visual se regeneraron localmente; no se pudo comparar contra el CI.
+- `dcasa_comision_web › test_revision4_carrito` falló en una corrida parcial (148 vs 50 consultas) y no en la completa;
+  si reaparece, investigar.
+- Las pruebas de Brian ↔ Guía y Guía ↔ Nómina necesitan `dcasa_guia` y `dcasa_nomina` instalados juntos.
 
 ## Bloqueos
-- **No abro el PR (borrador) todavía:** `.github/workflows/ci.yml` se dispara solo con cada PR (`pull_request`) y correría
-  las pruebas completas (unos 27 minutos y la imagen Docker). El encargo dice «sin lanzar flujos de GitHub», así que la
-  rama queda subida sin PR hasta que el cliente o la sesión principal digan si se acepta esa corrida. Subir la rama no
-  dispara nada (`push` solo en `main`). Nota: no desactivé el CI para evitarlo (no fue lo pedido).
-- Ninguno técnico. Las decisiones del cliente están en [PENDIENTES_DEL_CLIENTE.md](../PENDIENTES_DEL_CLIENTE.md).
+- **No abro el PR (borrador):** `.github/workflows/ci.yml` se dispara solo con cada PR y correría las pruebas completas y
+  la imagen Docker. El encargo dice «sin lanzar flujos de GitHub»; la rama queda subida sin PR hasta que la persona o la
+  sesión principal acepten esa corrida. Subir la rama no dispara nada.
+- Las decisiones del cliente están en [PENDIENTES_DEL_CLIENTE.md](../PENDIENTES_DEL_CLIENTE.md).
 
 ## Siguiente paso
-1. Que terminen las limpiezas por zona; correr `scripts/revisar_datos_ajenos.sh` hasta que no haya hallazgos duros.
-2. Corrida completa de pruebas (Odoo, tres Workers, ruff); corregir.
-3. Primer commit limpio y push; PR en borrador.
+1. Revisión de seguridad breve y de valores de marca centralizados (opcional, ya con la base instalable).
+2. La persona decide el PR en borrador, si el repositorio pasa a privado y las preguntas de PENDIENTES_DEL_CLIENTE.
