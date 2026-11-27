@@ -88,7 +88,7 @@ class TestDcasaInvoice(TransactionCase):
         self.assertIn('Tommalo', html)
         self.assertNotIn('o_dcasa_tagline', html, 'sin lema: no se pone otro')
         # (El recuadro de Socios que pone dcasa_socios todavía dice «Socios Tommalo»: lo cambia el trabajo de Socios.)
-        for de_la_tienda_de_origen in ('dcasapty'):
+        for de_la_tienda_de_origen in ('dcasapty',):
             self.assertNotIn(de_la_tienda_de_origen, html)
 
     def test_factura_en_espanol_y_con_formato_de_panama(self):

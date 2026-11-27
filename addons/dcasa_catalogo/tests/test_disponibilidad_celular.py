@@ -58,7 +58,7 @@ class TestDisponibilidadALaVistaEnElCelular(ChromeMovilCase):
         base = {'type': 'consu', 'is_storable': True, 'sale_ok': True, 'is_published': True,
                 'allow_out_of_stock_order': True, 'list_price': 238.99, 'image_1920': _foto(),
                 'public_categ_ids': [(6, 0, cls.env.ref('website_dcasa.public_category_hogar').ids)]}
-        nombre = 'LÁMPARA DE PRUEBA DE MESA CON PANTALLA DE TELA A CUADROS GRIS Y BLANCO, BASE NEGRA'
+        nombre = 'LÁMPARA DE PRUEBA DE MESA CON PANTALLA DE TELA A CUADROS GRIS'
         ubicacion = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1).lot_stock_id
         cls.productos = {}
         for estado, cantidad in (('disponible', 12), ('pocas', 3), ('agotado', 0)):

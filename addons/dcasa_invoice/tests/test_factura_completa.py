@@ -241,7 +241,7 @@ class TestFacturaCompleta(TransactionCase):
         self.assertIn('WhatsApp +507 6000-0002', html)
         self.assertIn('contacto@tommalo.example', html)
         self.assertNotIn('RUC', html.rsplit('o_dcasa_footer', 1)[-1])
-        for de_la_tienda_de_origen in ('dcasapty'):
+        for de_la_tienda_de_origen in ('dcasapty',):
             self.assertNotIn(de_la_tienda_de_origen, html)
 
     def test_hoja_carta(self):

@@ -540,7 +540,6 @@ class TestMarcaYMovimiento(HttpCase):
         self.assertNotIn('555-555-5556', html)
         self.assertIn('ventas@tommalo.example', html)
         self.assertIn('Venta 100% en línea con entrega a domicilio en Panamá', html)
-        self.assertNotIn(html)
         self.assertIn('href="/whatsapp"', html)
 
     def test_whatsapp_sin_boton_en_el_menu_y_con_la_cobertura(self):
