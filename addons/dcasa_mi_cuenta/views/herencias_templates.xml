@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Lo que cambia fuera de /mi-cuenta para que todos los caminos lleven ahí. -->
+
+    <!-- La página sabe que es Mi cuenta: en el celular la barra de abajo reemplaza al botón flotante de WhatsApp. -->
+    <template id="layout_mi_cuenta" inherit_id="website.layout" name="Mi cuenta: clase de la página">
+        <xpath expr="//div[@id='wrapwrap']" position="attributes">
+            <attribute name="t-attf-class" add="#{'o_dcasa_mc_activa' if dcasa_mi_cuenta else ''}" separator=" "/>
+        </xpath>
+    </template>
+
+    <!-- Cabecera: «Inicia sesión» pasa a ser «Mi cuenta» (/mi-cuenta), igual para todos los visitantes: el borde guarda
+         las páginas anónimas, así que el enlace no puede depender de la sesión del PIN. Allí se elige cómo entrar. -->
+    <template id="cabecera_mi_cuenta" inherit_id="portal.user_sign_in" name="Mi cuenta: enlace de la cabecera">
+        <xpath expr="//a" position="replace">
+            <!-- En la pastilla de la computadora, la persona de lucide (User) en un círculo de 44 px, como la bolsa; en el
+                 menú del celular, el texto (website_dcasa/static/src/scss/dcasa.scss, «Cabecera»). El texto está siempre:
+                 es el nombre accesible. -->
+            <a href="/mi-cuenta" t-attf-class="#{_link_class} o_dcasa_cuenta" title="Mi cuenta">
+                <svg class="o_dcasa_icono" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span class="o_dcasa_cuenta_texto">Mi cuenta</span>
+            </a>
+        </xpath>
+    </template>
+
+    <!-- Menú del usuario con sesión: «Mi cuenta» lleva a /mi-cuenta (el equipo sigue yendo a /my). -->
+    <template id="menu_usuario_mi_cuenta" inherit_id="portal.my_account_link" name="Mi cuenta: menú del usuario">
+        <xpath expr="//a[@href='/my/home']" position="replace">
+            <a t-att-href="'/mi-cuenta' if user_id.share else '/my/home'" role="menuitem" class="dropdown-item ps-3">
+                <i class="fa fa-fw fa-id-card-o me-1 small text-primary-emphasis"/> Mi cuenta
+            </a>
+        </xpath>
+    </template>
+
+    <!-- Pie de página: «Mi cuenta». El xpath acepta también /mi-cuenta: si alguien guarda el pie con el constructor del
+         sitio, la copia guardada ya trae el enlace cambiado y un xpath solo a '/my' dejaba de encontrarlo (error de
+         validación al guardar; lo encontró la prueba del horario del pie, 2026-11-14). -->
+    <template id="pie_mi_cuenta" inherit_id="website_dcasa.footer_dcasa" name="Mi cuenta: pie de página">
+        <xpath expr="//a[@href='/my' or @href='/mi-cuenta']" position="attributes">
+            <attribute name="href">/mi-cuenta</attribute>
+        </xpath>
+    </template>
+
+    <!-- Socios: «Mi cuenta» del menú de /socios y el regreso desde el panel del vendedor. -->
+    <template id="socios_nav_mi_cuenta" inherit_id="dcasa_socios.socios_layout" name="Mi cuenta: menú de socios">
+        <xpath expr="//nav[hasclass('o_dcasa_socios_nav')]/a[@href='/socios/cuenta']" position="attributes">
+            <attribute name="href">/mi-cuenta</attribute>
+        </xpath>
+    </template>
+
+    <template id="vendedor_panel_mi_cuenta" inherit_id="dcasa_socios.vendedor_panel" name="Mi cuenta: regreso desde el panel de vendedor">
+        <xpath expr="//a[@href='/socios/cuenta']" position="attributes">
+            <attribute name="href">/mi-cuenta/puntos</attribute>
+        </xpath>
+    </template>
+
+    <template id="portal_socios_mi_cuenta" inherit_id="dcasa_socios.portal_my_home_socios" name="Mi cuenta: tarjeta de socios en /my">
+        <xpath expr="//a[@href='/socios/cuenta']" position="attributes">
+            <attribute name="href">/mi-cuenta/puntos</attribute>
+        </xpath>
+    </template>
+
+    <!-- «Iniciar sesión» del sitio: el cliente entra por Mi cuenta (celular y PIN, o su correo), nunca por la puerta del
+         panel; el equipo entra solo por /master (docs/PUERTA_MASTER.md). `redirect` lo devuelve a donde estaba: solo
+         rutas de la tienda (controllers/main.py, _redirect_seguro). -->
+    <template id="checkout_entrar_mi_cuenta" inherit_id="website_sale.address" name="Mi cuenta: entrar desde el checkout">
+        <xpath expr="//div[hasclass('o_address_signin')]/a" position="replace">
+            <a role="button" href="/mi-cuenta?redirect=/shop/checkout" class="btn btn-primary ms-2">Entra a tu cuenta</a>
+        </xpath>
+    </template>
+
+    <!-- El carrito (Socios: usar mis puntos): «entra con tu cuenta de la tienda», también por Mi cuenta. Son dos enlaces
+         iguales: cada xpath cambia el primero que queda. -->
+    <template id="carrito_entrar_mi_cuenta" inherit_id="dcasa_socios.carrito_puntos" name="Mi cuenta: entrar desde el carrito">
+        <xpath expr="//a[@t-attf-href='/web/login?redirect=/shop/cart']" position="attributes">
+            <attribute name="t-attf-href">/mi-cuenta?redirect=/shop/cart</attribute>
+        </xpath>
+        <xpath expr="//a[@t-attf-href='/web/login?redirect=/shop/cart']" position="attributes">
+            <attribute name="t-attf-href">/mi-cuenta?redirect=/shop/cart</attribute>
+        </xpath>
+    </template>
+
+    <!-- Crear cuenta: «¿Ya tienes cuenta?» lleva a Mi cuenta (con el mismo destino, si venía de la tienda). -->
+    <template id="registro_entrar_mi_cuenta" inherit_id="auth_signup.signup" name="Mi cuenta: ya tengo cuenta">
+        <xpath expr="//a[@t-attf-href='/web/login?{{ keep_query() }}']" position="replace">
+            <a t-attf-href="/mi-cuenta?{{ keep_query('redirect') }}" class="btn btn-link btn-sm mt-2" role="button">¿Ya tienes cuenta?</a>
+        </xpath>
+    </template>
+
+    <!-- Detalle del pedido y de la factura en /my (siguen existiendo): sin «Con la tecnología de Odoo». -->
+    <template id="portal_sin_credito_odoo" inherit_id="portal.portal_record_sidebar" name="Mi cuenta: sin crédito de Odoo en el portal">
+        <xpath expr="//a[contains(@href, 'utm_medium=portal')]/.." position="replace"/>
+    </template>
+</odoo>

@@ -1,0 +1,813 @@
+"""Ajustes de Juan: un solo registro (singleton) que edita la dueña.
+
+Los valores por defecto son las decisiones de la dueña (docs/JUAN.md y
+docs/auditoria/ronda7/crm-whatsapp.md, «Decisiones de la dueña»): atiende 24/7, nombre público
+«el equipo de Tommalo», seguimiento a las 5 h y a los 5 días (máximo 2, solo en horario laboral),
+horario laboral de 8:00 a 17:00 todos los días (hora de Panamá), tope de IA de 30 USD al mes.
+
+Los SECRETOS (``JUAN_ODOO_TOKEN``, ``JUAN_WORKER_TOKEN``) no se guardan aquí: viven en variables
+de entorno del contenedor (o, como alternativa, en parámetros del sistema) y esta pantalla solo
+dice si están puestos, nunca los muestra.
+"""
+import logging
+import os
+import re
+
+from odoo import api, fields, models
+from odoo.addons.dcasa_base import sin_itbms
+from odoo.exceptions import AccessError, UserError, ValidationError
+
+from . import horario as H
+
+_logger = logging.getLogger(__name__)
+
+CANALES = [
+    ('whatsapp_qr', 'WhatsApp (QR)'),
+    ('whatsapp_cloud', 'WhatsApp (API oficial)'),
+    ('telegram', 'Telegram'),
+    ('messenger', 'Messenger'),
+    ('instagram', 'Instagram'),
+]
+# Dónde se enciende cada canal. WhatsApp por QR y Telegram (pruebas y avisos) arrancan prendidos;
+# la API oficial de WhatsApp (plan B), Messenger e Instagram quedan apagados hasta que se activen.
+CANALES_PRENDIDOS = {'whatsapp_qr', 'telegram'}
+
+# Los canales cuyo id externo es un celular (E.164 sin «+»).
+CANALES_CON_CELULAR = {'whatsapp_qr', 'whatsapp_cloud'}
+
+DIAS_CAMPOS = [
+    ('dia_domingo', 0), ('dia_lunes', 1), ('dia_martes', 2), ('dia_miercoles', 3),
+    ('dia_jueves', 4), ('dia_viernes', 5), ('dia_sabado', 6),
+]
+
+PARAM_URL = 'dcasa_conversaciones.juan_url'
+PARAM_TOKEN_ODOO = 'dcasa_conversaciones.juan_odoo_token'
+PARAM_TOKEN_WORKER = 'dcasa_conversaciones.juan_worker_token'
+ENV_URL = 'JUAN_URL'
+ENV_TOKEN_ODOO = 'JUAN_ODOO_TOKEN'
+ENV_TOKEN_WORKER = 'JUAN_WORKER_TOKEN'
+LARGO_MINIMO_TOKEN = 32
+
+PROVEEDORES_IA = [('anthropic', 'Anthropic (Claude)'), ('meta', 'Meta (Muse Spark)'), ('openai', 'OpenAI')]
+# Modelos por defecto (rápido, inteligente) de cada proveedor. OpenAI queda vacío a propósito: no se inventa un
+# nombre de modelo; la dueña lo escribe (y el formulario no deja guardar sin él).
+MODELOS_POR_PROVEEDOR = {
+    'anthropic': ('claude-haiku-4-5', 'claude-sonnet-5-5'),
+    'meta': ('muse-spark-1.3', 'muse-spark-1.3'),
+    'openai': ('', ''),
+}
+NIVELES_IA = ('rapido', 'inteligente')
+TIPOS_PRECIO = ('entrada', 'salida', 'cache')
+MAX_LECCIONES = 20
+MAX_LARGO_LECCION = 300
+# «Máximo de clientes esperándole a la vez» (reparto): de 0 (sin límite) a esto.
+MAX_ESPERANDO_A_LA_VEZ = 50
+
+# Tommalo: el asistente saluda como la tienda, con el saludo de su CRM, sin nombre
+# propio («Juan» es solo el nombre interno).
+# El primer mensaje es corto; el aviso largo de privacidad no se manda por el chat (vive en la política del sitio).
+# Lo que no cambia: Juan nunca afirma ser humano y, si alguien pregunta de verdad, dice que es el asistente virtual.
+BIENVENIDA = "Buenas, un gusto atenderle. Somos Tommalo Panamá 👼🏻"
+# Comentarios de Instagram y Facebook (2026-11-12, la dueña: «Corto y lo demás por privado»). Lo público nunca lleva
+# nada que escriba quien comenta, ni su nombre (decisión del coordinador, 2.ª vuelta de la revisión, 2026-11-13): sin
+# {nombre}.
+TEXTO_PUBLICO_COMENTARIOS = '¡Hola! Te escribimos por mensaje directo con los detalles.'
+MAX_TEXTO_PUBLICO_COMENTARIOS = 300
+MAX_TOPE_COMENTARIOS_HORA = 200
+# Por persona y por 24 horas (revisión del 2026-11-13): 1 respuesta pública y 3 privadas, en comentarios distintos.
+MAX_COMENTARIOS_POR_PERSONA = 10
+# Una dirección web, con esquema o sin él («https://…», «www.…», «bit.ly/x», «tommalo.example/ofertas», un correo): algo
+# con forma de dominio que no esté pegado a otra letra. Igual que el Worker (juan/src/config.ts → DIRECCION_WEB).
+RE_DIRECCION_WEB = re.compile(
+    r'https?://|www\.|(?<![\w.-])[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,24}(?![\w-])', re.IGNORECASE)
+# Que la frase «quede bien»: empieza con una letra o una cifra (o con ¡ ¿ « " ( delante) y sin pares vacíos como «¡!».
+RE_BUEN_INICIO = re.compile(r'^[¡¿«"(]?[^\W_]')
+RE_PAR_VACIO = re.compile(r'¡\s*!|¿\s*\?|\(\s*\)|«\s*»')
+
+
+def quitar_nombre(texto):
+    """Quita un ``{nombre}`` de antes sin dejar la frase rota (igual que el Worker: ``quitarNombre`` en config.ts).
+
+    «¡Hola, {nombre}! Te escribimos…» → «¡Hola! Te escribimos…»; «{nombre}: te escribimos» → «Te escribimos»;
+    «¡{nombre}, gracias!» → «¡Gracias!»."""
+    if '{nombre}' not in (texto or ''):
+        return texto
+    t = re.sub(r'([^\W\d_])\s+\{nombre\}\s*,', r'\1,', texto)
+    t = re.sub(r',\s*\{nombre\}', '', t)
+    t = re.sub(r'\{nombre\}\s*,\s*', '', t)
+    t = re.sub(r'\s*\{nombre\}', '', t)
+    t = RE_PAR_VACIO.sub(' ', t)
+    t = re.sub(r'\s+([!?.,:;])', r'\1', t)
+    t = re.sub(r'\s+', ' ', t).strip()
+    t = re.sub(r'^[\s:;,.!?\-–—]+', '', t)
+    t = re.sub(r'^([¡¿«"(]?)\s+', r'\1', t)
+    letra = re.search(r'[^\W\d_]', t)
+    return t[:letra.start()] + t[letra.start()].upper() + t[letra.start() + 1:] if letra else t
+
+
+PRIVACIDAD = ""
+PALABRAS_PROHIBIDAS = "remate\ncorre\n¡¡\n!!"
+
+
+class JuanAjustes(models.Model):
+    _name = 'dcasa.juan.ajustes'
+    _description = 'Ajustes de Juan (conversaciones con clientes)'
+    _inherit = ['mail.thread']
+    _rec_name = 'nombre_publico'
+
+    nombre_publico = fields.Char(
+        'Nombre público', required=True, default='Tommalo Panamá', tracking=True,
+        help="Cómo se presenta el asistente ante los clientes. «Juan» es solo el nombre interno.")
+
+    # --- Encendido -----------------------------------------------------------------------------
+    bot_activo_global = fields.Boolean(
+        'Asistente encendido', default=True, tracking=True,
+        help='Apágalo para que el asistente no conteste a nadie (las vendedoras siguen atendiendo).')
+    canal_whatsapp_qr = fields.Boolean('WhatsApp (QR)', default=True, tracking=True)
+    canal_whatsapp_cloud = fields.Boolean('WhatsApp (API oficial)', default=False, tracking=True)
+    canal_telegram = fields.Boolean('Telegram', default=True, tracking=True)
+    telegram_abierto = fields.Boolean(
+        'Telegram abierto a cualquiera', default=False, tracking=True,
+        help='Apagado (de fábrica): Juan solo contesta a la lista de abajo y a quienes vincularon Brian. Encendido: '
+             'cualquiera que conozca el @ del bot de Juan puede escribirle; cada mensaje gasta IA y puede crear '
+             'oportunidades, y si alguien abusa, el límite de tu proveedor de IA se agota y Juan deja de contestar a '
+             'los clientes reales. Los clientes escriben por WhatsApp; Telegram es de pruebas.')
+    telegram_chats_permitidos = fields.Text(
+        'Chats de Telegram con permiso', tracking=True,
+        help='Telegram es el canal de PRUEBAS del equipo, no una puerta abierta: Juan solo contesta a los chats de '
+             'esta lista y a quienes vincularon su Telegram con Brian. Un chat por línea (el número que da el '
+             'comando /miid del bot de Juan). Cualquier otro chat se ignora sin gastar IA.')
+    canal_messenger = fields.Boolean('Messenger', default=False, tracking=True)
+    canal_instagram = fields.Boolean('Instagram', default=False, tracking=True)
+
+    # --- Comentarios de Instagram y Facebook (2026-11-12) -----------------------------------------
+    # Decisiones de la dueña: «Solo los que preguntan», «Corto y lo demás por privado», «Apagado hasta que lo pruebes».
+    comentarios_activo = fields.Boolean(
+        'Responder comentarios', default=False, tracking=True,
+        help='Juan contesta los comentarios de las publicaciones que preguntan algo (precio, medidas, colores, si hay, '
+             'envío o ganas de comprar): en público, con la frase corta de abajo, y por mensaje privado con la '
+             'respuesta completa. No contesta etiquetas de amigos, emojis sueltos, saludos ni elogios. Las quejas no '
+             'las contesta: avisa a Gerencia por Telegram y lo deja en la conversación. Si lo apagas, Juan para '
+             'enseguida, aunque estuviera a mitad de una respuesta. Viene apagado: enciéndelo cuando lo pruebes. '
+             'Necesita Messenger (para Facebook) o Instagram encendidos en «Dónde contesta».')
+    comentarios_facebook = fields.Boolean(
+        'Comentarios de Facebook', default=True, tracking=True,
+        help='Los comentarios de las publicaciones de la página de Facebook (la respuesta privada llega por '
+             'Messenger).')
+    comentarios_instagram = fields.Boolean(
+        'Comentarios de Instagram', default=True, tracking=True,
+        help='Los comentarios de las publicaciones de Instagram (la respuesta privada llega a sus mensajes).')
+    comentarios_texto_publico = fields.Char(
+        'Texto de la respuesta pública', default=TEXTO_PUBLICO_COMENTARIOS, tracking=True,
+        help='Lo que Juan escribe debajo del comentario, igual para todos: corto, sin enlaces y sin el nombre de '
+             'nadie (lo que ve todo el mundo no lleva nada que escriba quien comenta). Lo demás va por mensaje '
+             'privado.')
+    comentarios_tope_hora = fields.Integer(
+        'Respuestas públicas por hora (máximo)', default=30, tracking=True,
+        help='Para que no parezca spam: pasado este número en una hora, Juan sigue respondiendo por privado pero ya no '
+             f'en público. 0 = nunca en público. Máximo {MAX_TOPE_COMENTARIOS_HORA}.')
+    comentarios_publicas_persona = fields.Integer(
+        'Respuestas públicas por persona en 24 horas', default=1, tracking=True,
+        help='A una misma persona, Juan le responde en público como mucho estas veces en 24 horas (en comentarios '
+             f'distintos); lo de más queda anotado sin responder. 0 = nunca en público. Máximo '
+             f'{MAX_COMENTARIOS_POR_PERSONA}.')
+    comentarios_privadas_persona = fields.Integer(
+        'Respuestas privadas por persona en 24 horas', default=3, tracking=True,
+        help='A una misma persona, Juan le responde por privado como mucho estas veces en 24 horas (en comentarios '
+             f'distintos); lo de más queda anotado en su conversación sin responder. De 1 a '
+             f'{MAX_COMENTARIOS_POR_PERSONA}.')
+
+    # --- Horario laboral (hora de Panamá) -------------------------------------------------------
+    horario_inicio = fields.Float('Desde', default=8.0, tracking=True, help='Hora a la que empieza el horario laboral.')
+    horario_fin = fields.Float('Hasta', default=17.0, tracking=True, help='Hora a la que termina el horario laboral.')
+    horario_fin_domingo = fields.Float(
+        'El domingo cierran a las', default=0.0, tracking=True,
+        help='Si el domingo cierran más temprano (o más tarde) que los demás días. 0:00 = a la misma hora que los '
+             'demás días.')
+    dia_domingo = fields.Boolean('Domingo', default=True)
+    dia_lunes = fields.Boolean('Lunes', default=True)
+    dia_martes = fields.Boolean('Martes', default=True)
+    dia_miercoles = fields.Boolean('Miércoles', default=True)
+    dia_jueves = fields.Boolean('Jueves', default=True)
+    dia_viernes = fields.Boolean('Viernes', default=True)
+    dia_sabado = fields.Boolean('Sábado', default=True)
+    zona_horaria = fields.Char('Zona horaria', default=H.ZONA_PANAMA, readonly=True)
+
+    # --- Seguimiento ------------------------------------------------------------------------------
+    seguimiento_primero_horas = fields.Float(
+        'Primer seguimiento (horas)', default=5.0,
+        help='Horas después del último mensaje, si la persona preguntó y no volvió a escribir.')
+    seguimiento_segundo_dias = fields.Float(
+        'Segundo seguimiento (días)', default=5.0,
+        help='Días después del primer seguimiento, si sigue sin responder.')
+    seguimiento_solo_horario_laboral = fields.Boolean(
+        'Solo en horario laboral', default=True,
+        help='Si le toca fuera del horario laboral, espera al siguiente horario laboral.')
+    seguimiento_maximo = fields.Integer(
+        'Máximo de seguimientos', default=2, tracking=True,
+        help='Como máximo cuántos mensajes de seguimiento recibe una persona.')
+    # Issue #25: tras una caída, un despliegue o con el asistente apagado, lo vencido salía todo de golpe (de 50 en 50)
+    # aunque tuviera días. 6 h aguantan un reinicio, un despliegue (15 a 45 min) o una mañana con el asistente apagado,
+    # y cortan lo que ya no tiene sentido mandar (el cron corre cada 15 min: lo normal es llegar con minutos de atraso).
+    seguimiento_atraso_maximo_horas = fields.Integer(
+        'No enviar seguimientos atrasados más de (horas)', default=6, tracking=True,
+        help='Si un seguimiento se atrasa más que esto (el sistema estuvo detenido o el asistente apagado), ya no se '
+             'manda tarde: se salta y sigue el siguiente. 0 = mandarlo igual, por atrasado que vaya.')
+
+    # --- IA ---------------------------------------------------------------------------------------
+    proveedor_ia = fields.Selection(
+        PROVEEDORES_IA, 'Proveedor de IA', default='anthropic', required=True, tracking=True,
+        help='Quién pone el modelo que conversa con los clientes. Las claves de acceso NO se guardan en Odoo: '
+             'viven solo en el Worker de Juan.')
+    proveedor_respaldo_ia = fields.Selection(
+        PROVEEDORES_IA, 'Proveedor de respaldo', tracking=True,
+        help='Opcional: si el proveedor principal falla, el Worker intenta con este.')
+    presupuesto_ia_mensual_usd = fields.Float(
+        'Tope de IA al mes (USD)', default=30.0, tracking=True,
+        help='Al llegar, el asistente baja al modelo barato; nunca se queda sin contestar por dinero.')
+    modelo_rapido = fields.Char('Modelo rápido (barato)', default='claude-haiku-4-5', tracking=True)
+    modelo_inteligente = fields.Char('Modelo inteligente', default='claude-sonnet-5-5', tracking=True)
+    aviso_contributor = fields.Boolean('Entrena con las conversaciones', compute='_compute_aviso_contributor')
+    # Precios en dólares por millón de tokens. Vacío (0) = sin precio verificado: no se inventa ninguno.
+    precio_rapido_entrada_usd_mtok = fields.Float('Rápido: entrada', digits=(12, 4), tracking=True)
+    precio_rapido_salida_usd_mtok = fields.Float('Rápido: salida', digits=(12, 4), tracking=True)
+    precio_rapido_cache_usd_mtok = fields.Float('Rápido: caché', digits=(12, 4), tracking=True)
+    precio_inteligente_entrada_usd_mtok = fields.Float('Inteligente: entrada', digits=(12, 4), tracking=True)
+    precio_inteligente_salida_usd_mtok = fields.Float('Inteligente: salida', digits=(12, 4), tracking=True)
+    precio_inteligente_cache_usd_mtok = fields.Float('Inteligente: caché', digits=(12, 4), tracking=True)
+
+    # --- Textos ------------------------------------------------------------------------------------
+    mensaje_bienvenida = fields.Text('Mensaje de bienvenida', default=BIENVENIDA, translate=False)
+    texto_privacidad_corto = fields.Text(
+        'Aviso de privacidad (corto)', default=PRIVACIDAD, translate=False,
+        help='Se manda una sola vez, pegado a la bienvenida. Vacío = no se manda nada (lo normal: el aviso completo '
+             'vive en la política de privacidad del sitio y en la descripción del bot o el perfil del negocio).')
+    palabras_prohibidas = fields.Text(
+        'Palabras prohibidas', default=PALABRAS_PROHIBIDAS,
+        help='Una por línea. El asistente no las usa jamás.')
+    lecciones_aprendidas = fields.Text(
+        'Lecciones aprendidas', tracking=True,
+        help=f'Una por línea, hasta {MAX_LECCIONES}. Lo que el asistente debe recordar siempre, p. ej. «cuando '
+             'pregunten por X, haz Y». El Worker las suma a sus instrucciones.')
+    pausa_por_defecto_minutos = fields.Integer(
+        'Pausa al atender (minutos)', default=120, tracking=True,
+        help='Cuánto calla el asistente cuando una vendedora toma una conversación o la pide. '
+             'Cada mensaje de la vendedora la renueva. 0 = hasta que la devuelvan.')
+
+    # --- Avisos -------------------------------------------------------------------------------------
+    responsable_id = fields.Many2one(
+        'res.users', 'Responsable por defecto', default=lambda self: self.env.ref('base.user_admin', False),
+        domain=[('share', '=', False)],
+        help='A quién se le asigna la actividad cuando el asistente pasa una conversación a una vendedora '
+             'y nadie la tiene asignada.')
+    avisar_comprobantes = fields.Boolean(
+        'Avisar de comprobantes y documentos', default=True, tracking=True,
+        help='Cuando un cliente manda un comprobante de pago (la prueba de un pago hecho: el precio de una publicación '
+             'no cuenta) o su cédula, se avisa por Telegram a esas personas EN PARALELO: el asistente sigue atendiendo '
+             'y ellas deciden si intervienen. También cuando manda algo que Juan no pudo leer (un PDF, o una foto que '
+             'no alcanzó a leer o salió borrosa): puede ser un comprobante. De esos, a lo más un aviso cada 10 minutos '
+             'por conversación.')
+    avisar_archivos = fields.Boolean(
+        'Avisar de fotos y archivos', default=False, tracking=True,
+        help='Cuando un cliente manda cualquier otra foto o video (por ejemplo la captura de un producto o una '
+             'publicación de Instagram), también se avisa por Telegram, a lo más una vez cada 10 minutos por '
+             'conversación. Viene apagado: esas fotos se ven en el chat, sin aviso (pedido de la dueña, 2026-11-13).')
+    cotizacion_automatica = fields.Boolean(
+        'Juan envía las cotizaciones solo', default=True, tracking=True,
+        help='Cuando el cliente pide una cotización o el total de varios productos, Juan la arma con productos de la '
+             'tienda (precios de lista + ITBMS, sin descuentos) y se la manda en PDF sin esperar a una vendedora. '
+             'Queda un borrador en Ventas y un aviso en la conversación, y nunca confirma una venta. Si lo apagas, '
+             'Juan le dice al cliente que una vendedora se la prepara y le pasa la conversación; ellas la mandan a '
+             'mano con el botón «Cotización» de la pantalla de Conversaciones, que funciona igual con esto '
+             'encendido o apagado.')
+    cotizar_envios = fields.Boolean(
+        'Juan cotiza envíos', default=True, tracking=True,
+        help='Cuando el cliente pregunta cuánto cuesta el envío, Juan busca el lugar en la tabla de Envíos (la de '
+             'la calculadora), le dice el precio y la promoción de envío vigente (Envíos › Promoción de envío) y, si '
+             'el cliente quiere, se lo suma a su cotización. Si hay varios lugares parecidos pregunta cuál; si no lo '
+             'encuentra o se cotiza aparte, pasa la conversación a una vendedora. La fecha de entrega la confirma '
+             'siempre una vendedora. Mientras Gerencia no apruebe la tarifa de envíos, Juan no da precios y pasa a '
+             'una vendedora. Si lo apagas, Juan pasa a una vendedora cada vez que le pregunten por el costo del envío. '
+             '(La dueña dio su «sí», 2026-11-12.)')
+    cotizacion_dias_abierta = fields.Integer(
+        'Días que queda abierta una cotización del chatbot o de la web', default=3, tracking=True,
+        help='Las cotizaciones que arma Juan y las de la página web que nadie confirmó se cancelan solas pasados '
+             'estos días (decisión de la dueña, 2026-11-03: por defecto 3). No se borran: quedan canceladas, con una '
+             'nota, y se pueden reabrir con «Establecer como cotización». La cotización dice «válida hasta» esa '
+             'fecha. Las de las vendedoras no se tocan, ni una que tenga un pago en curso. 0 = nunca; máximo 60.')
+    crm_automatico = fields.Boolean(
+        'El CRM se ajusta solo', default=True, tracking=True,
+        help='Las oportunidades que nacen de una conversación se mueven solas con hechos que Odoo ya sabe: pasan a '
+             '«Propuesta» cuando se envía la cotización, a «Ganada» cuando se paga la factura, reciben una '
+             'temperatura (frío, tibio, caliente) y se archivan como «Sin respuesta» tras los días de abajo. Nunca '
+             'retroceden y, si una persona cambia la etapa o la temperatura, esa oportunidad queda en sus manos. '
+             'Apágalo y todo se queda como está.')
+    crm_dias_para_perdida = fields.Integer(
+        'Días sin respuesta para archivarla', default=30, tracking=True,
+        help='Si la conversación no tiene ningún mensaje en este tiempo y ninguna vendedora tiene algo pendiente con '
+             'ella, la oportunidad se archiva como «Sin respuesta» (se puede restaurar). 0 = nunca; si no, de 14 a '
+             '365 días (los seguimientos terminan antes de una semana).')
+    resumen_ia_activo = fields.Boolean(
+        'Resumir conversaciones con IA', default=True, tracking=True,
+        help='Muestra el botón «Resumir» en la pantalla de Conversaciones: la IA lee los mensajes de esa conversación '
+             '(los que viajaron por el canal; nunca las notas internas ni los archivos) y escribe unas líneas para '
+             'quien la recibe. Solo se pide cuando alguien aprieta el botón y el resumen se guarda en la conversación.')
+    busqueda_semantica = fields.Boolean(
+        'Buscar en el conocimiento por significado', default=False, tracking=True,
+        help='Además de las palabras, el asistente encuentra la entrada que habla de lo mismo aunque use otras (por '
+             'ejemplo «¿hacen envíos?» → «entrega a domicilio»). Usa Workers AI dentro de la cuenta de '
+             'Cloudflare de la empresa (cuesta centavos al mes): el Worker de Juan necesita el binding «AI». Si algo '
+             'falla, el asistente sigue buscando por palabras. Solo completa lo que las palabras no encontraron.')
+    reparto_modo = fields.Selection(
+        [('manual', 'Nadie: la toma quien quiera'),
+         ('parejo', 'Parejo: a quien lleva menos hoy (recomendado)'),
+         ('turnos', 'Por turnos entre quienes estén disponibles')],
+        'Reparto de conversaciones', default='manual', required=True, tracking=True,
+        help='Qué pasa cuando el asistente pasa una conversación a una vendedora. «Nadie»: no se asigna a nadie; la '
+             'toma quien quiera. «Parejo»: se asigna entre las vendedoras disponibles (no marcaron «No disponible» ni '
+             'Gerencia las sacó del reparto): si el cliente ya hablaba con una de ellas hace poco, vuelve con ella; si '
+             'no, le toca a quien lleva menos conversaciones recibidas hoy (y, con empate, a quien tiene menos '
+             'clientes esperándole). «Por turnos»: a quien lleva más tiempo sin recibir una, sin mirar cuántas lleva. '
+             'En los dos últimos se le avisa a ella y solo reciben las vendedoras: Gerencia y los administradores '
+             'pueden intervenir en cualquier conversación, pero no reciben. Si nadie está disponible, la tarea va al '
+             'responsable por defecto y se avisa a todo el equipo, como siempre.')
+    reparto_nadie_de_noche = fields.Boolean(
+        'De noche nadie recibe clientes', default=True, tracking=True,
+        help='Fuera del horario de la tienda Juan atiende y anota; nadie recibe clientes ni avisos. Al abrir, los que '
+             'esperan se reparten parejo entre las que van llegando, y a cada una le llega un solo aviso con su lista. '
+             'El cliente que ya era de una vendedora sigue siendo suyo. Las menciones en una nota y los avisos a '
+             'Gerencia llegan a cualquier hora. Apagado, de noche todo es como de día.')
+    reparto_dias_misma_vendedora = fields.Integer(
+        'Días que un cliente sigue con su vendedora', default=14, tracking=True,
+        help='Con el reparto «parejo»: si el cliente habló con una vendedora (o se la asignaron) en los últimos días '
+             'que pongas aquí y ella está disponible, la conversación vuelve con ella en vez de repartirse de nuevo. '
+             '0 = sin memoria: siempre se reparte parejo. Máximo 365.')
+    reparto_activa_minutos = fields.Integer(
+        'Recibe solo quien usó el sistema hace poco (minutos)', default=30, tracking=True,
+        help='Con el reparto encendido, Juan solo le pasa clientes a la vendedora que usó Odoo (o le escribió a un '
+             'cliente, también desde Telegram) en estos últimos minutos. Si no vino, no entró al sistema y no recibe, '
+             'aunque nadie la haya marcado «No disponible» (pedido de la dueña, 2026-11-03: los turnos rotan). Si '
+             'nadie está activa, la conversación queda sin dueña, se avisa a todo el equipo como siempre y se le da a '
+             'la primera que se active. 0 = no mirarlo (recibe toda la que esté «Disponible»). Máximo 480.')
+    reparto_reasignar_minutos = fields.Integer(
+        'Pasar a otra si no contesta (minutos)', default=15, tracking=True,
+        help='Con el reparto encendido y dentro del horario laboral: si la vendedora a la que Juan le pasó un cliente '
+             'no le contesta en estos minutos, el cliente pasa solo a otra vendedora activa, queda escrito en la '
+             'conversación y se avisa a Gerencia. No toca las conversaciones que una persona tomó o asignó a mano. '
+             '0 = nunca. De 5 a 240.')
+    reparto_max_esperando = fields.Integer(
+        'Máximo de clientes esperándole a la vez', default=3, tracking=True,
+        help='Con el reparto encendido. «Esperándole» = clientes que el reparto le dio y que nadie ha contestado. '
+             'Los clientes que escribieron antes de abrir (de noche) se reparten de a pocos: a quien ya tiene estos '
+             'esperándole no se le da otro hasta que conteste uno, y las que van llegando reciben los demás. Pasar a '
+             'otra un cliente que no contestaron tampoco se lo da a quien ya tiene estos (si no hay otra, se queda con '
+             'quien lo tenía). Un cliente que llega dentro del horario se le da a una vendedora activa aunque todas '
+             'tengan estos esperándole (a la que lleva menos). Con «Parejo», un cliente nuevo va primero a quien '
+             'tiene lugar, pero si ya habló con una vendedora vuelve con ella aunque tenga clientes esperándole. «Por '
+             'turnos» no lo mira al dar un cliente nuevo. 0 = sin límite. Máximo 50.')
+    aviso_espera_minutos = fields.Integer(
+        'Avisar si un cliente espera (minutos)', default=10, tracking=True,
+        help='Si una persona tiene la conversación y el cliente lleva tantos minutos sin respuesta, se avisa por '
+             'Telegram (a quien la atiende; si nadie, a las personas de arriba) y en la lista se ve cuánto espera. '
+             '0 = no avisar.')
+    aviso_espera_solo_horario = fields.Boolean(
+        'Avisar solo en horario laboral', default=True, tracking=True,
+        help='Fuera del horario laboral nadie está para contestar: el aviso espera a que abran. Con «De noche nadie '
+             'recibe clientes» encendido, de noche no se avisa aunque esto esté apagado.')
+    guardar_foto_perfil = fields.Boolean(
+        'Guardar la foto de perfil del cliente', default=True, tracking=True,
+        help='El asistente trae la foto de perfil de quien escribe (Telegram, WhatsApp, Messenger, Instagram) y la '
+             'guarda en la conversación para que se vea en la pantalla de Conversaciones. Es un dato personal: se '
+             'guarda reducida, solo la ven quienes atienden conversaciones, se renueva a lo más una vez por semana, '
+             'NUNCA se manda a la IA y se borra con la conversación. Apágalo para dejar de pedirla (las ya guardadas '
+             'se quedan).')
+    usuarios_aviso_ids = fields.Many2many(
+        'res.users', 'dcasa_juan_ajustes_aviso_rel', 'ajustes_id', 'user_id', string='Avisar por Telegram a',
+        domain=[('share', '=', False)],
+        help='Quienes reciben los avisos por Telegram (cuando se pide una vendedora o llega un comprobante o un '
+             'archivo; necesitan haber vinculado su Telegram con Brian). Vacío: todas las personas de ventas con '
+             'Telegram vinculado.')
+
+    # --- Conexión con el Worker (sin secretos) ----------------------------------------------------------
+    juan_url = fields.Char(
+        'Dirección del Worker de Juan', compute='_compute_juan_url', inverse='_inverse_juan_url',
+        help='URL base del Worker «juan» (https://…). Se guarda en el parámetro dcasa_conversaciones.juan_url '
+             'o se toma de la variable JUAN_URL.')
+    token_odoo_configurado = fields.Boolean('JUAN_ODOO_TOKEN puesto', compute='_compute_tokens')
+    token_worker_configurado = fields.Boolean('JUAN_WORKER_TOKEN puesto', compute='_compute_tokens')
+
+    _nombre_largo = models.Constraint(
+        'CHECK(char_length(nombre_publico) > 0)', 'El nombre público no puede estar vacío.')
+
+    # ------------------------------------------------------------------
+    # Singleton
+    # ------------------------------------------------------------------
+
+    @api.private
+    @api.model
+    def obtener(self):
+        """El único registro de ajustes (lo crea con los valores por defecto si no existe)."""
+        ajustes = self.sudo().search([], limit=1)
+        return ajustes or self.sudo().create({})
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        if len(vals_list) > 1 or self.sudo().search_count([]):
+            raise UserError(self.env._('Solo hay un registro de ajustes de Juan: edita el que ya existe.'))
+        return super().create(vals_list)
+
+    def unlink(self):
+        raise UserError(self.env._('Los ajustes de Juan no se borran: se editan.'))
+
+    @api.model
+    def action_abrir(self):
+        self.check_access('read')
+        ajustes = self.obtener()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': self.env._('Ajustes de Juan'),
+            'res_model': self._name,
+            'res_id': ajustes.id,
+            'view_mode': 'form',
+            'target': 'current',
+        }
+
+    # ------------------------------------------------------------------
+    # Validaciones
+    # ------------------------------------------------------------------
+
+    @api.constrains('horario_inicio', 'horario_fin', 'horario_fin_domingo', 'dia_domingo', 'dia_lunes', 'dia_martes',
+                    'dia_miercoles', 'dia_jueves', 'dia_viernes', 'dia_sabado')
+    def _check_horario(self):
+        for registro in self:
+            if not 0 <= registro.horario_inicio < 24 or not 0 < registro.horario_fin <= 24:
+                raise ValidationError(self.env._('El horario va de 0:00 a 24:00.'))
+            if registro.horario_fin >= 24:
+                raise ValidationError(self.env._('El horario termina antes de las 24:00 (por ejemplo, 23:59).'))
+            if not registro.horario_inicio < registro.horario_fin:
+                raise ValidationError(self.env._('La hora de inicio tiene que ser anterior a la hora de fin.'))
+            if registro.horario_fin_domingo and not registro.horario_inicio < registro.horario_fin_domingo < 24:
+                raise ValidationError(self.env._(
+                    'El domingo tiene que cerrar después de la hora de inicio y antes de las 24:00 (o deja 0:00 para '
+                    'que cierre a la misma hora que los demás días).'))
+            if not registro._dias():
+                raise ValidationError(self.env._('Marca al menos un día de atención.'))
+
+    @api.constrains('seguimiento_primero_horas', 'seguimiento_segundo_dias', 'seguimiento_maximo',
+                    'seguimiento_atraso_maximo_horas')
+    def _check_seguimiento(self):
+        for registro in self:
+            if registro.seguimiento_primero_horas < 0 or registro.seguimiento_segundo_dias < 0:
+                raise ValidationError(self.env._('Los tiempos de seguimiento no pueden ser negativos.'))
+            if not 0 <= registro.seguimiento_atraso_maximo_horas <= 72:
+                raise ValidationError(self.env._(
+                    'El atraso máximo de un seguimiento es de 0 (mandarlo igual) a 72 horas.'))
+            if not 0 <= registro.seguimiento_maximo <= 2:
+                raise ValidationError(self.env._(
+                    'El seguimiento admite como máximo 2 mensajes (decisión de la dueña): pon 0, 1 o 2.'))
+
+    @api.constrains('cotizacion_dias_abierta')
+    def _check_cotizacion_dias_abierta(self):
+        for registro in self:
+            if not 0 <= registro.cotizacion_dias_abierta <= 60:
+                raise ValidationError(self.env._(
+                    'Los días que queda abierta una cotización del chatbot o de la web son de 0 (nunca se cancelan) '
+                    'a 60.'))
+
+    @api.constrains('crm_dias_para_perdida')
+    def _check_crm_dias_para_perdida(self):
+        for registro in self:
+            dias = registro.crm_dias_para_perdida
+            if dias and not 14 <= dias <= 365:
+                raise ValidationError(self.env._(
+                    'Los días sin respuesta son 0 (nunca) o de 14 a 365: los seguimientos terminan antes de '
+                    'una semana.'))
+
+    @api.constrains('proveedor_ia', 'proveedor_respaldo_ia', 'modelo_rapido', 'modelo_inteligente')
+    def _check_ia(self):
+        for registro in self:
+            if registro.proveedor_respaldo_ia and registro.proveedor_respaldo_ia == registro.proveedor_ia:
+                raise ValidationError(self.env._('El proveedor de respaldo tiene que ser distinto del principal.'))
+            for nivel in (registro.modelo_rapido, registro.modelo_inteligente):
+                if not (nivel or '').strip() or len(nivel) > 100 or any(c.isspace() for c in nivel.strip()):
+                    raise ValidationError(self.env._(
+                        'Escribe el nombre del modelo rápido y del inteligente (una sola palabra, p. ej. '
+                        'claude-haiku-4-5). Para OpenAI no hay uno por defecto: pon el que quieras usar.'))
+
+    @api.constrains(*[f'precio_{n}_{t}_usd_mtok' for n in NIVELES_IA for t in TIPOS_PRECIO])
+    def _check_precios(self):
+        for registro in self:
+            for nivel in NIVELES_IA:
+                for tipo in TIPOS_PRECIO:
+                    if registro[f'precio_{nivel}_{tipo}_usd_mtok'] < 0:
+                        raise ValidationError(self.env._('Los precios de la IA no pueden ser negativos.'))
+
+    @api.constrains('lecciones_aprendidas')
+    def _check_lecciones(self):
+        for registro in self:
+            lecciones = registro.lista_lecciones()
+            if len(lecciones) > MAX_LECCIONES:
+                raise ValidationError(self.env._(
+                    'Son demasiadas lecciones (%(n)s): el máximo es %(max)s. Junta o quita algunas.',
+                    n=len(lecciones), max=MAX_LECCIONES))
+            if any(len(leccion) > MAX_LARGO_LECCION for leccion in lecciones):
+                raise ValidationError(self.env._(
+                    'Cada lección admite hasta %s caracteres. Acórtala.', MAX_LARGO_LECCION))
+
+    @api.constrains('reparto_dias_misma_vendedora', 'reparto_activa_minutos', 'reparto_reasignar_minutos',
+                    'reparto_max_esperando')
+    def _check_reparto(self):
+        for registro in self:
+            if not 0 <= registro.reparto_dias_misma_vendedora <= 365:
+                raise ValidationError(self.env._(
+                    'Los días que un cliente sigue con su vendedora van de 0 (sin memoria) a 365.'))
+            if not 0 <= registro.reparto_activa_minutos <= 480:
+                raise ValidationError(self.env._(
+                    'Los minutos para contar a una vendedora como activa van de 0 (no mirarlo) a 480.'))
+            minutos = registro.reparto_reasignar_minutos
+            if minutos and not 5 <= minutos <= 240:
+                raise ValidationError(self.env._(
+                    'Los minutos para pasar el cliente a otra vendedora van de 5 a 240 (0 = nunca).'))
+            if not 0 <= registro.reparto_max_esperando <= MAX_ESPERANDO_A_LA_VEZ:
+                raise ValidationError(self.env._(
+                    'El máximo de clientes esperándole a una vendedora va de 0 (sin límite) a %s.',
+                    MAX_ESPERANDO_A_LA_VEZ))
+
+    @api.constrains('comentarios_texto_publico')
+    def _check_texto_publico(self):
+        for registro in self:
+            texto = (registro.comentarios_texto_publico or '').strip()
+            if not texto:
+                raise ValidationError(self.env._('Escribe el texto de la respuesta pública a los comentarios.'))
+            if len(texto) > MAX_TEXTO_PUBLICO_COMENTARIOS:
+                raise ValidationError(self.env._(
+                    'El texto de la respuesta pública es de hasta %s caracteres: lo demás va por privado.',
+                    MAX_TEXTO_PUBLICO_COMENTARIOS))
+            if re.search(r'[{}]', texto):
+                raise ValidationError(self.env._(
+                    'La respuesta pública ya no lleva {nombre} ni nada entre llaves: es igual para todos, sin el '
+                    'nombre de nadie. Por ejemplo: «%s»', TEXTO_PUBLICO_COMENTARIOS))
+            if RE_DIRECCION_WEB.search(texto):
+                raise ValidationError(self.env._(
+                    'La respuesta pública no lleva enlaces ni direcciones web (Meta la puede marcar como spam): lo '
+                    'demás va por privado. Si es un punto entre dos palabras, deja un espacio después del punto.'))
+            if (not RE_BUEN_INICIO.match(texto) or RE_PAR_VACIO.search(texto)
+                    or len(re.findall(r'[^\W\d_]', texto)) < 2):
+                raise ValidationError(self.env._(
+                    'La respuesta pública tiene que quedar bien escrita: que empiece con una palabra (puede llevar ¡ o '
+                    '¿ delante) y sin signos vacíos como «¡!». Por ejemplo: «%s»', TEXTO_PUBLICO_COMENTARIOS))
+
+    @api.constrains('comentarios_tope_hora', 'comentarios_publicas_persona', 'comentarios_privadas_persona')
+    def _check_comentarios(self):
+        for registro in self:
+            if not 0 <= registro.comentarios_tope_hora <= MAX_TOPE_COMENTARIOS_HORA:
+                raise ValidationError(self.env._(
+                    'Las respuestas públicas por hora van de 0 (nunca en público) a %s.', MAX_TOPE_COMENTARIOS_HORA))
+            if not 0 <= registro.comentarios_publicas_persona <= MAX_COMENTARIOS_POR_PERSONA:
+                raise ValidationError(self.env._(
+                    'Las respuestas públicas por persona van de 0 (nunca en público) a %s.',
+                    MAX_COMENTARIOS_POR_PERSONA))
+            if not 1 <= registro.comentarios_privadas_persona <= MAX_COMENTARIOS_POR_PERSONA:
+                raise ValidationError(self.env._(
+                    'Las respuestas privadas por persona van de 1 a %s.', MAX_COMENTARIOS_POR_PERSONA))
+
+    @api.constrains('presupuesto_ia_mensual_usd', 'pausa_por_defecto_minutos', 'aviso_espera_minutos')
+    def _check_numeros(self):
+        for registro in self:
+            if not 0 <= registro.aviso_espera_minutos <= 1440:
+                raise ValidationError(self.env._('El aviso de espera va de 0 a 1.440 minutos.'))
+            if registro.presupuesto_ia_mensual_usd < 0:
+                raise ValidationError(self.env._('El tope de IA no puede ser negativo.'))
+            if registro.pausa_por_defecto_minutos < 0:
+                raise ValidationError(self.env._('La pausa no puede ser negativa.'))
+
+    # ------------------------------------------------------------------
+    # Lectura (usada por la API y por el resto del módulo)
+    # ------------------------------------------------------------------
+
+    def _dias(self):
+        self.ensure_one()
+        return frozenset(dia for campo, dia in DIAS_CAMPOS if self[campo])
+
+    @api.private
+    def horario(self):
+        """El horario laboral como objeto puro (ver ``horario.py``)."""
+        self.ensure_one()
+        return H.Horario(
+            inicio=H.float_a_hora(self.horario_inicio), fin=H.float_a_hora(self.horario_fin),
+            dias=self._dias(), zona=self.zona_horaria or H.ZONA_PANAMA,
+            fin_domingo=H.float_a_hora(self.horario_fin_domingo) if self.horario_fin_domingo else None)
+
+    @api.private
+    def regla_seguimiento(self):
+        self.ensure_one()
+        return H.ReglaSeguimiento(
+            primero_horas=self.seguimiento_primero_horas, segundo_dias=self.seguimiento_segundo_dias,
+            solo_horario_laboral=self.seguimiento_solo_horario_laboral, maximo=self.seguimiento_maximo)
+
+    @api.private
+    def canal_activo(self, canal):
+        self.ensure_one()
+        return bool(self.bot_activo_global and canal in dict(CANALES) and self[f'canal_{canal}'])
+
+    @api.private
+    def canales_activos(self):
+        self.ensure_one()
+        return {canal: bool(self[f'canal_{canal}']) for canal, _nombre in CANALES}
+
+    @api.depends('modelo_rapido', 'modelo_inteligente')
+    def _compute_aviso_contributor(self):
+        for registro in self:
+            registro.aviso_contributor = any(
+                'contributor' in (modelo or '').lower()
+                for modelo in (registro.modelo_rapido, registro.modelo_inteligente))
+
+    @api.onchange('proveedor_ia')
+    def _onchange_proveedor_ia(self):
+        """Al cambiar de proveedor, los modelos pasan a los suyos (si seguían siendo los de otro proveedor)."""
+        rapido, inteligente = MODELOS_POR_PROVEEDOR.get(self.proveedor_ia, ('', ''))
+        conocidos = {m for par in MODELOS_POR_PROVEEDOR.values() for m in par if m}
+        if not self.modelo_rapido or self.modelo_rapido in conocidos:
+            self.modelo_rapido = rapido
+        if not self.modelo_inteligente or self.modelo_inteligente in conocidos:
+            self.modelo_inteligente = inteligente
+
+    @api.private
+    def lista_lecciones(self):
+        self.ensure_one()
+        return [linea.strip() for linea in (self.lecciones_aprendidas or '').splitlines() if linea.strip()]
+
+    @api.private
+    def precios_ia(self):
+        """Precios por nivel y tipo; ``None`` donde no hay precio verificado (0 o vacío): nunca una cifra inventada."""
+        self.ensure_one()
+        return {nivel: {tipo: (self[f'precio_{nivel}_{tipo}_usd_mtok'] or None) for tipo in TIPOS_PRECIO}
+                for nivel in NIVELES_IA}
+
+    @api.private
+    def precios_por_modelo(self):
+        """Los mismos precios, por NOMBRE de modelo: ``{'claude-haiku-4-5': {'entrada', 'salida', 'entrada_cache'?}}``.
+
+        Es lo que lee el Worker (``precios_ia`` en ``/config``): calcula el gasto por modelo, no por nivel. Un
+        modelo sin precio de entrada y de salida no aparece (el Worker no lo cuenta como gratis: usa una tarifa de
+        reserva y avisa). Si el rápido y el inteligente son el mismo modelo, vale el más caro, para no subestimar.
+        """
+        self.ensure_one()
+        resultado = {}
+        for nivel, nombre in (('rapido', self.modelo_rapido), ('inteligente', self.modelo_inteligente)):
+            modelo, precios = (nombre or '').strip(), self.precios_ia()[nivel]
+            if not modelo or not precios['entrada'] or not precios['salida']:
+                continue
+            fila = {'entrada': precios['entrada'], 'salida': precios['salida']}
+            if precios['cache']:
+                fila['entrada_cache'] = precios['cache']
+            previo = resultado.get(modelo)
+            if not previo or fila['entrada'] + fila['salida'] > previo['entrada'] + previo['salida']:
+                resultado[modelo] = fila
+        return resultado
+
+    @api.private
+    def telegram_chats(self):
+        """Los chats de Telegram que pueden hablar con Juan: los de la lista y los de quienes vincularon Brian."""
+        self.ensure_one()
+        escritos = re.findall(r'\d{3,20}', self.telegram_chats_permitidos or '')
+        vinculados = self.env['brian.telegram.enlace'].sudo().search([('activo', '=', True)]).mapped('chat_id')
+        return sorted({chat for chat in (*escritos, *vinculados) if re.fullmatch(r'\d{3,20}', chat or '')})
+
+    @api.private
+    def lista_palabras_prohibidas(self):
+        self.ensure_one()
+        return [linea.strip() for linea in (self.palabras_prohibidas or '').splitlines() if linea.strip()]
+
+    @api.private
+    def como_json(self):
+        """La configuración tal como la lee el Worker (``GET /dcasa/juan/v1/config``)."""
+        self.ensure_one()
+        return {
+            'nombre_publico': self.nombre_publico,
+            # Tommalo no cobra ITBMS (DCASA_COBRA_ITBMS=0, dcasa_base.aplicar_sin_itbms): el Worker no le pone
+            # «+ ITBMS» a ningún precio.
+            'cobra_itbms': not sin_itbms(self.env),
+            'bot_activo_global': bool(self.bot_activo_global),
+            'canales_activos': self.canales_activos(),
+            'horario': self.horario().como_json(),
+            'seguimiento': {
+                'primero_horas': _entero_si_se_puede(self.seguimiento_primero_horas),
+                'segundo_dias': _entero_si_se_puede(self.seguimiento_segundo_dias),
+                'solo_horario_laboral': bool(self.seguimiento_solo_horario_laboral),
+                'maximo': self.seguimiento_maximo,
+            },
+            'presupuesto_ia_mensual_usd': _entero_si_se_puede(self.presupuesto_ia_mensual_usd),
+            'proveedor_ia': self.proveedor_ia,
+            'proveedor_respaldo_ia': self.proveedor_respaldo_ia or None,
+            'modelo_rapido': self.modelo_rapido or '',
+            'modelo_inteligente': self.modelo_inteligente or '',
+            'modelos_por_defecto': {proveedor: {'rapido': rapido, 'inteligente': inteligente}
+                                    for proveedor, (rapido, inteligente) in MODELOS_POR_PROVEEDOR.items()},
+            'precios': self.precios_ia(),
+            'precios_ia': self.precios_por_modelo(),
+            'lecciones': self.lista_lecciones(),
+            'mensaje_bienvenida': self.mensaje_bienvenida or '',
+            'texto_privacidad_corto': self.texto_privacidad_corto or '',
+            'palabras_prohibidas': self.lista_palabras_prohibidas(),
+            'pausa_por_defecto_minutos': self.pausa_por_defecto_minutos,
+            'guardar_foto_perfil': bool(self.guardar_foto_perfil),
+            'telegram_chats': self.telegram_chats(),
+            'telegram_abierto': bool(self.telegram_abierto),
+            'comentarios': {
+                'activo': bool(self.comentarios_activo),
+                'facebook': bool(self.comentarios_facebook),
+                'instagram': bool(self.comentarios_instagram),
+                'texto_publico': quitar_nombre((self.comentarios_texto_publico or TEXTO_PUBLICO_COMENTARIOS).strip()),
+                'tope_por_hora': self.comentarios_tope_hora,
+                'publicas_por_persona': self.comentarios_publicas_persona,
+                'privadas_por_persona': self.comentarios_privadas_persona,
+            },
+        }
+
+    # ------------------------------------------------------------------
+    # Conexión con el Worker: URL y secretos (el valor del secreto nunca sale de aquí por la interfaz)
+    # ------------------------------------------------------------------
+
+    @api.model
+    def _parametro(self, clave):
+        return (self.env['ir.config_parameter'].sudo().get_param(clave) or '').strip()
+
+    @api.private
+    @api.model
+    def url_worker(self):
+        return (os.environ.get(ENV_URL) or self._parametro(PARAM_URL)).strip().rstrip('/')
+
+    @api.private
+    @api.model
+    def token_odoo(self):
+        """Token que el Worker presenta a Odoo. Vacío o demasiado corto = no configurado."""
+        token = (os.environ.get(ENV_TOKEN_ODOO) or self._parametro(PARAM_TOKEN_ODOO)).strip()
+        return token if len(token) >= LARGO_MINIMO_TOKEN else ''
+
+    @api.private
+    @api.model
+    def token_worker(self):
+        """Token que Odoo presenta al Worker."""
+        token = (os.environ.get(ENV_TOKEN_WORKER) or self._parametro(PARAM_TOKEN_WORKER)).strip()
+        return token if len(token) >= LARGO_MINIMO_TOKEN else ''
+
+    def _compute_juan_url(self):
+        url = self.url_worker()
+        for registro in self:
+            registro.juan_url = url
+
+    def _inverse_juan_url(self):
+        for registro in self:
+            valor = (registro.juan_url or '').strip().rstrip('/')
+            if valor and not self.env['dcasa.juan.cliente']._url_valida(valor):
+                raise ValidationError(self.env._(
+                    'La dirección del Worker debe empezar con https:// (o http://localhost para pruebas).'))
+            self.env['ir.config_parameter'].sudo().set_param(PARAM_URL, valor)
+
+    def _compute_tokens(self):
+        odoo, worker = bool(self.token_odoo()), bool(self.token_worker())
+        for registro in self:
+            registro.token_odoo_configurado = odoo
+            registro.token_worker_configurado = worker
+
+    def action_probar_conexion(self):
+        """Botón «Probar conexión»: le pregunta su salud al Worker."""
+        if not self.env.su and not self.env.user.has_group('sales_team.group_sale_manager'):
+            raise AccessError(self.env._('Solo Gerencia prueba la conexión con el Worker.'))
+        self.ensure_one()
+        resultado = self.env['dcasa.juan.cliente'].salud()
+        if resultado.get('ok'):
+            canales = resultado.get('canales') or {}
+            detalle = ', '.join(
+                f'{nombre}: {_estado_del_canal(estado)}' for nombre, estado in canales.items()) or 'sin detalle'
+            mensaje = self.env._('El Worker respondió. Canales: %s.', detalle)
+            tipo = 'success'
+            if resultado.get('con_problemas'):
+                # El Worker contesta, pero dice que algo le falta (secretos, un canal): se le pasa tal cual.
+                mensaje = f"{mensaje} {str(resultado.get('mensaje') or '')[:300]}".strip()
+                tipo = 'warning'
+        else:
+            mensaje = self.env._('No pude hablar con el Worker: %s', resultado.get('error') or 'sin respuesta')
+            tipo = 'warning'
+        return {'type': 'ir.actions.client', 'tag': 'display_notification',
+                'params': {'title': self.env._('Conexión con Juan'), 'message': mensaje, 'type': tipo,
+                           'sticky': False}}
+
+
+def _estado_del_canal(estado):
+    """Un canal del informe de salud del Worker en palabras: apagado, sin configurar (qué falta), conectado…"""
+    if not isinstance(estado, dict):
+        return str(estado)
+    if not estado.get('activo', True):
+        return 'apagado'
+    if not estado.get('configurado', True):
+        faltan = ', '.join(str(f) for f in estado.get('faltan') or [])
+        return f'sin configurar ({faltan})' if faltan else 'sin configurar'
+    conectado = estado.get('conectado')
+    return 'conectado' if conectado else ('desconectado' if conectado is False else 'listo')
+
+
+def _entero_si_se_puede(valor):
+    """5.0 → 5 (el Worker espera 5, no 5.0); 5.5 se queda."""
+    return int(valor) if float(valor).is_integer() else valor

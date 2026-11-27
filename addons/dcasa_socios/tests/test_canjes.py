@@ -1,0 +1,120 @@
+from datetime import datetime, timedelta
+from unittest.mock import patch
+
+from odoo import fields
+from odoo.exceptions import UserError
+from odoo.tests import tagged
+
+from .common import SociosCommon
+
+
+@tagged('post_install', '-at_install')
+class TestCanjes(SociosCommon):
+
+    def setUp(self):
+        super().setUp()
+        self.diez = self.premios[10]  # 1,000 puntos = $10
+        self.env['dcasa.movimiento']._asentar(self.padrino, 'ajuste', 1500, 'test', motivo='Saldo de prueba')
+
+    def test_pedir_reserva_los_puntos(self):
+        canje = self.env['dcasa.canje']._pedir(self.padrino, self.diez)
+        self.assertEqual(canje.estado, 'solicitado')
+        self.assertEqual(len(canje.codigo), 6)
+        self.assertEqual(self.padrino.dcasa_saldo, 500)
+        self.assertAlmostEqual((canje.expira_en - canje.solicitado_en).total_seconds(), 72 * 3600)
+
+    def test_no_alcanza(self):
+        with self.assertRaises(UserError):
+            self.env['dcasa.canje']._pedir(self.padrino, self.premios[25])
+
+    def test_un_solo_pendiente_del_mismo_premio(self):
+        self.env['dcasa.canje']._pedir(self.padrino, self.premios[5])
+        with self.assertRaises(UserError):
+            self.env['dcasa.canje']._pedir(self.padrino, self.premios[5])
+
+    def test_canje_minimo(self):
+        # El mínimo frena descuentos en dólares de centavos...
+        descuento = self.env['dcasa.premio'].create({'name': '$1', 'puntos': 100, 'tipo': 'descuento', 'valor': 1})
+        with self.assertRaisesRegex(UserError, 'canje mínimo'):
+            self.env['dcasa.canje']._pedir(self.padrino, descuento)
+        # ...pero un premio de producto cuesta lo que fije Gerencia.
+        llavero = self.env['dcasa.premio'].create({'name': 'Llavero', 'puntos': 100, 'tipo': 'producto'})
+        self.assertEqual(self.env['dcasa.canje']._pedir(self.padrino, llavero).puntos, 100)
+
+    def test_stock(self):
+        cojin = self.env['dcasa.premio'].create({'name': 'Cojín', 'puntos': 600, 'tipo': 'producto',
+                                                 'stock_limitado': True, 'stock': 1})
+        canje = self.env['dcasa.canje']._pedir(self.padrino, cojin)
+        self.assertEqual(cojin.stock, 0)
+        self.assertFalse(cojin._disponible())
+        canje._cancelar_por_socio()
+        self.assertEqual(cojin.stock, 1)
+        self.assertEqual(self.padrino.dcasa_saldo, 1500)
+
+    def test_vence_y_devuelve_los_puntos(self):
+        canje = self.env['dcasa.canje']._pedir(self.padrino, self.diez)
+        with patch.object(fields.Datetime, 'now', return_value=canje.expira_en + timedelta(minutes=1)):
+            self.env['dcasa.canje']._cron_programa()
+        self.assertEqual(canje.estado, 'vencido')
+        self.assertEqual(self.padrino.dcasa_saldo, 1500)
+
+    def test_suspendido_no_canjea(self):
+        self.padrino.action_dcasa_suspender()
+        with self.assertRaises(UserError):
+            self.env['dcasa.canje']._pedir(self.padrino, self.diez)
+
+    def test_el_asistente_de_cobrar_premio_no_trae_rotulos_en_ingles(self):
+        """La venta salía rotulada «Order» (auditoría visual del 2026-11-11)."""
+        rotulos = self.env['dcasa.cobrar.premio.wizard'].fields_get(['order_id', 'codigo'], ['string'])
+        self.assertEqual(rotulos['order_id']['string'], 'Venta')
+        self.assertEqual(rotulos['codigo']['string'], 'Código del premio')
+
+    def test_cobrar_premio_en_la_venta(self):
+        canje = self.env['dcasa.canje']._pedir(self.padrino, self.diez)
+        orden = self.env['sale.order'].create({
+            'partner_id': self.padrino.id,
+            'order_line': [(0, 0, {'product_id': self.producto.id, 'product_uom_qty': 1, 'price_unit': 100})],
+        })
+        self.env['dcasa.cobrar.premio.wizard'].create({'order_id': orden.id, 'codigo': canje.codigo.lower()}) \
+            .action_confirmar()
+        # El premio de $10 son $10 menos a pagar: su base (9.35) más el ITBMS que se suma (0.65).
+        self.assertAlmostEqual(orden.amount_total, 107.0 - 10.0)
+        self.assertAlmostEqual(orden.amount_untaxed, 100.0 - 9.35, msg='El premio rebaja la base, como un descuento')
+        orden.action_confirm()
+        self.assertEqual(canje.estado, 'entregado')
+        self.assertEqual(canje.sale_order_id, orden)
+
+    def test_el_premio_es_de_quien_lo_gano(self):
+        canje = self.env['dcasa.canje']._pedir(self.padrino, self.diez)
+        orden = self.env['sale.order'].create({'partner_id': self.cliente.id})
+        with self.assertRaises(UserError):
+            self.env['dcasa.cobrar.premio.wizard'].create({'order_id': orden.id, 'codigo': canje.codigo}) \
+                .action_confirmar()
+
+    def test_no_se_cobra_dos_veces(self):
+        canje = self.env['dcasa.canje']._pedir(self.padrino, self.diez)
+        ordenes = self.env['sale.order']
+        for _i in range(2):
+            orden = self.env['sale.order'].create({
+                'partner_id': self.padrino.id,
+                'order_line': [(0, 0, {'product_id': self.producto.id, 'product_uom_qty': 1})],
+            })
+            self.env['dcasa.cobrar.premio.wizard'].create({'order_id': orden.id, 'codigo': canje.codigo}) \
+                .action_confirmar()
+            ordenes |= orden
+        ordenes[0].action_confirm()
+        with self.assertRaises(UserError):
+            ordenes[1].action_confirm()
+
+    # --- Cumpleaños ------------------------------------------------------------
+
+    def test_cumpleanos_una_vez_al_anio_y_con_compra_previa(self):
+        self.cliente.dcasa_cumple = '09-29'
+        # 29 de septiembre a las 8 p. m. en Panamá = 30 de septiembre 01:00 UTC.
+        noche = datetime(2026, 9, 30, 1, 0)
+        Canje = self.env['dcasa.canje']
+        self.assertFalse(Canje._felicitar_a_los_de_hoy(noche), 'Sin compra previa no hay regalo')
+        self.factura()
+        self.assertEqual(Canje._felicitar_a_los_de_hoy(noche), self.cliente)
+        self.assertFalse(Canje._felicitar_a_los_de_hoy(noche), 'Una vez al año')
+        self.assertEqual(self.movimientos(self.cliente, 'cumpleanos').puntos, 500)

@@ -1,0 +1,2473 @@
+# Contexto agéntico: errores, incidentes y cómo se resolvieron
+
+Para cualquier agente (o persona) que retome el trabajo en D'CASA. Se lee **antes de desplegar, tocar el arranque
+(`docker/entrypoint.sh`), el borde (`edge/`) o los flujos de GitHub** — junto con `docs/LEEME_PRIMERO.md` (cómo se
+trabaja con la dueña) y `docs/PRIORIDADES.md` (qué sigue). Casi todo lo que falló es de la misma familia: **código nuevo
+sobre una base vieja**, o **una imagen distinta de la que se cree**. Lo marcado **(sin confirmar)** es una deducción de
+los registros, no un hecho comprobado.
+
+Armado el 2026-10-16 a partir de `docs/`, los commits y los registros de GitHub Actions (runs de «Desplegar» y de
+«CI/CD»). Al terminar cada sesión con algo nuevo que aprender, se agrega aquí (incidente, falla de CI o trampa).
+
+## Reglas que salen de todo esto
+
+1. **«Sano» = la versión desplegada responde, la base está al día con su código y la prueba de humo pasó.** No basta un
+   200. `/__edge/health` trae `version`, `base_al_dia` y `humo`; `esperar_salud.sh` los exige. Igual se abre el Inicio
+   después de cada despliegue.
+2. **El código y la base van juntos.** Código nuevo + base vieja = columnas que faltan (`UndefinedColumn`). Código viejo +
+   base nueva = vistas con campos desconocidos, y con `-u` el código viejo **borra** columnas y tablas nuevas con sus
+   datos. Nunca bajar una imagen sin restaurar antes la base.
+3. **`app_version` es el SHA que construyó el CI** (el de la rama, el de la etiqueta de la imagen), nunca el del *squash*
+   en `main`.
+4. **Cloudflare activa el Worker antes que la imagen** y puede arrancar la instancia con variables de un arranque
+   anterior: la versión que manda es la de la imagen (`/opt/dcasa/COMMIT`).
+5. **Toda prueba con fechas congela el reloj** (Panamá es UTC−5: el día cambia a las 05:00 UTC).
+6. **Todo método público nuevo va a la lista blanca** de `addons/dcasa_base/tests/test_superficie_rpc.py` con su motivo.
+7. **Antes de explicarle a la dueña por qué dos cifras no cuadran, hacer la cuenta con los números de sus capturas y con
+   el código que las calcula.** El 2026-10-16 se le dijo que el Inicio no contaba los pedidos viejos S00016–S00021; la
+   cuenta (total de facturas − total del Inicio = $236.88, una sola factura sin pedido) mostró que sí los contaba, y hubo
+   que corregirlo. Una explicación «razonable» sin la resta es una suposición.
+8. **Si después del «sí» de la dueña cambia el código (por ejemplo, por una revisión), decírselo antes de unir a `main`.** El 2026-10-16 el «sí» fue antes de que la revisión independiente encontrara 5 fallas de dinero del bono; se desplegó lo corregido y se le explicó qué cambió antes de cerrar («Sí, termina»).
+9. **Lo que corre en el Inicio o en un sondeo (`setInterval`) se mide en consultas con datos de tamaño real antes de
+   subir, y lleva una prueba de que no crece con los registros.** El 2026-10-23 un acceso nuevo del Inicio y el panel de
+   Bodega (cada minuto) hacían 1.500-1.800 consultas por carga y volvieron lento todo el sistema (incidente 6). En un
+   servidor de ½ vCPU con un solo proceso de Odoo, una pantalla pesada frena a todas las demás.
+10. **Cuando uno llama a otro (Odoo → Worker → IA), el que llama espera MÁS que el plazo del que contesta, y una prueba
+   lo exige.** La varita («Sugerir», 2026-11-06): Odoo se rendía a los 25 s y el Worker no tenía plazo (Meta con
+   herramientas tarda más), así que «a veces» la vendedora veía «el Worker no responde» mientras la IA seguía (y se
+   pagaba). Ahora el Worker contesta antes de 42 s (`PLAZO_TOTAL_MS`, con el borrador o con un error claro) y Odoo espera
+   55 (`TIMEOUT_SUGERIR`); `juan/test/odoo-panel-sugerir.test.ts` lee la línea de Python y exige el margen.
+11. **Un fallo que la persona necesita ver no va en una notificación que se va sola**: queda en la pantalla, dice la
+   causa en corto y ofrece «Reintentar». La dueña no pudo decir qué salía en pantalla porque el aviso duraba segundos.
+12. **Un vigilante no mata lo que avanza.** «Lento» no es «muerto»: antes de reiniciar algo, mirar si hay PROGRESO (algo
+   que se escribe, mensajes que entran), dar minutos de gracia tras cada arranque, no cortar un intento de conexión en
+   curso y espaciar cada reinicio seguido (el doble que el anterior). El 24-nov-2026 el puente QR del CRM de Tommalo
+   pasó 14 h en bucle porque su vigilante lo daba por muerto a los 4 s y lo destruía a los 2,5 min mientras procesaba lo
+   atrasado; cada vuelta encontraba más pendiente. Y **medir por dentro** (memoria, CPU) lo que la plataforma no muestra:
+   sin eso no se supo si el código 137 fue por memoria o por el vigilante. Ver «WhatsApp por QR» abajo.
+
+---
+
+## Incidentes de producción
+
+### 1. 2026-10-16 · Etapas 1 y 2: «Error de servidor» en el Inicio y en Conversaciones (el despliegue dijo «sano»)
+
+> En notas y comentarios viejos este incidente sale como `#97`: era un número de una lista interna, **no** un issue
+> de GitHub.
+
+**Qué vio la dueña** (06:07–06:16 UTC, recién subidas las Etapas 1 y 2): «Error de servidor de Odoo» en el Inicio
+(`dcasa.tablero`), en el panel de cada conversación y en todo lo que lee pedidos de venta. La traza decía
+`psycopg2.errors.UndefinedColumn: column sale_order.dcasa_utilidad does not exist` (y `dcasa_sin_costo`).
+
+**Qué pasó, con los datos que hay:**
+
+1. El despliegue de las 05:47 (run 7 de «Desplegar», `app_version` `fbf375b0…`) subió el Worker y cambió la
+   aplicación de contenedores a la imagen nueva («SUCCESS Modified application»). El chequeo de salud vio un 200 a
+   las 05:49 y dijo «sano».
+2. A las 06:14 la traza muestra el **código nuevo** (`tablero.py`, `_ganancia_de`) sobre una base **sin las
+   columnas nuevas**: el arranque no corrió `odoo -u`.
+3. Causa raíz: el arranque decidía actualizar comparando `dcasa.deployed_version` de la base con la variable
+   `APP_VERSION`. Cloudflare puede arrancar (o reemplazar en un *rollout*) la instancia con las variables de un
+   arranque anterior: la imagen nueva recibió la versión vieja, «coincidía», y no actualizó. Y el chequeo del
+   despliegue aceptaba cualquier 200 (el de la instancia vieja o el de la nueva sin actualizar).
+4. A las 06:16 un redespliegue con `app_version` = `5fa33f4…` (el *squash* de `main`) falló con
+   `IMAGE_REGISTRY_DOESNT_CONTAIN_IMAGE`: la etiqueta de la imagen es el SHA que construyó el CI (el de la rama), y
+   ese de `main` no existe en el registro. El Worker nuevo igual quedó activo (Cloudflare activa el Worker antes que
+   la imagen) y el registro de la aplicación mostraba otra vez la imagen anterior (`bf40605e…`).
+
+**Cómo se resolvió (de raíz), en dos entregas:**
+
+*Arreglo `3570c3a` (el que arregló producción el 2026-10-16, «Desplegar 9»):*
+
+* La imagen sabe quién es: guarda su commit (`/opt/dcasa/COMMIT`) y la huella de su código (`/opt/dcasa/CODIGO`,
+  Odoo + addons). El arranque usa la versión de la **imagen**, no la variable, y actualiza si la huella no coincide
+  con la de la base (`dcasa.codigo_desplegado`).
+* `/dcasa/salud` dice `version` y `base_al_dia`; `.github/scripts/esperar_salud.sh` exige la versión desplegada con
+  la base al día y vuelve a mirar a los 5 minutos (si Cloudflare vuelve a la imagen anterior, el despliegue falla).
+* Pruebas: `probar_esperar_salud.sh` (el chequeo viejo daba «sano» en falso en 5 casos), `/dcasa/salud`, y en CI la
+  imagen real con la base «actualizada con otro código».
+
+*Entrega siguiente (revisión adversarial del arreglo; en pruebas, todavía no en producción):*
+
+* Nunca hacia atrás: con otro código, una imagen más vieja (fecha del commit, `/opt/dcasa/ORDEN`) que la que
+  actualizó la base no la «actualiza» (con `-u` del código viejo Odoo borra columnas y tablas nuevas con sus datos)
+  ni toca sus módulos. Para volver atrás: restaurar y desplegar la versión vieja en **una sola operación**
+  (`docs/OPERACION.md`); salidas de emergencia `DCASA_PERMITIR_BAJAR` y `DCASA_HUMO=0`.
+* Huella vieja: si una imagen anterior a este control marcó la versión después de la huella, la huella no vale.
+* Prueba de humo en cada arranque (`dcasa_base/models/humo.py`): cada campo guardado con su columna y el Inicio y
+  las listas de cotizaciones y conversaciones armados de verdad. Si faltan columnas, actualiza otra vez (también el
+  módulo de Odoo que define el campo).
+* `/dcasa/salud` suma `humo`; el despliegue lo exige y vigila 10 minutos sin dar por sano un sitio caído al final.
+* Pruebas: `test_humo.py` y en CI la imagen real con una columna borrada con los marcadores «al día», una imagen
+  más vieja que la base y `APP_VERSION` atrasada en un contenedor nuevo.
+
+**Lo que hay que recordar:**
+
+* «Sano» = la versión desplegada responde, la base está al día con su código y la prueba de humo pasó. Después de
+  cada despliegue igual se abre el Inicio.
+* `app_version` siempre es el SHA que construyó el CI (el de la rama, el mismo de la etiqueta de la imagen), nunca
+  el del *squash* en `main`.
+* El código y la base tienen que ir juntos: código nuevo + base vieja = columnas que faltan; código viejo + base
+  nueva = vistas con campos que el código no conoce.
+
+### 2. 2026-10-15 · CI #158 a producción: Odoo respondió 500 durante 20 minutos
+
+- **Qué se vio:** CI/CD #158 (main `b09fdc48` = PR #38 + PR #39) desplegó a las 06:30 UTC; tras el corte de la
+  instancia vieja (06:31:55), `/__edge/health` dio `salud_http: 500` (Odoo «Internal Server Error») hasta el límite de
+  20 min (06:51:06). Producción quedó con error hasta que Desplegar run 3 la sanó a las 06:58:45 (unos 27 min; no
+  consta que la dueña lo viera, era de madrugada en Panamá).
+- **Causa raíz (sin confirmar, muy probable):** la misma del incidente 1. PR #38 traía ~56 campos nuevos, 18 vistas,
+  datos y una migración. Ese mismo código en staging (CI #153, `22119f35`) dejó el diagnóstico `odoo.sql_db: bad
+  query: SELECT "res_users"."id", …` (una columna de `res_users` que no existe = base sin actualizar).
+- **Cómo se resolvió:** Desplegar run 3 con la imagen de la rama `5a99f129` (mismo código de PR #38): primero 500 unos
+  2,5 min, luego un reinicio («arrancando») y recién ahí sano. El segundo arranque sí actualizó la base (sin
+  confirmar).
+- **Lección:** «el primer despliegue de una versión deja la base sin actualizar» (este mismo incidente, en la lista vieja de PRIORIDADES) ya había pasado
+  aquí y en staging, un día antes del incidente 1.
+
+### 3. 2026-10-15 · Botones de Brian en Telegram fallaban en producción
+
+- **Qué vio la dueña:** «Vincular mi Telegram» y «Registrar webhook» daban `takes 1 positional argument but 2 were
+  given`; sin webhook, Brian no recibía nada de Telegram.
+- **Causa raíz:** los botones de la cabecera de una lista llaman al método con la lista de ids; los métodos eran
+  `@api.model`.
+- **Arreglo:** commit `b3e75807` (PR #41, en producción con Desplegar run 5): sin `@api.model`, prueba por `call_kw`
+  con `[[]]` y `[[id]]`, y prueba guardia en `addons/dcasa_base/tests/test_superficie_rpc.py`.
+
+### 4. 2026-10-13 · Puerta del equipo en «1»: el personal se quedó sin entrada
+
+- **Qué se vio:** tras CI #132 (18:20 UTC, `30d08696`, PR #32) con `DCASA_PUERTA_OBLIGATORIA = 1`, `/master` respondía
+  «Not Found» después del PIN de Access (el borde rechazó el pase) y por `/web/login` ya no se podía entrar.
+- **Cómo se resolvió:** PR #33 (`1fc7caa5`, CI #134, 19:21 UTC) volvió a «0».
+- **Qué falta:** el motivo nunca se aclaró (ver `puerta_token_rechazado`, campo `motivo`, en los logs del Worker de
+  producción). Volver a encender por pasos «0» → «avisar» → «1» (`docs/SEGURIDAD_ACCESO.md` §8).
+
+### 5. Varias fechas · La app de contenedores aparece «revertida» a la imagen anterior (sin confirmar la causa)
+
+Cada `wrangler deploy` imprime el diff de la app `dcasa-odoocontainer` (`- image` = lo que había, `+ image` = lo
+nuevo). En **5 de 16** despliegues de producción, lo que había **no** era la imagen del despliegue anterior sino la de
+uno antes:
+
+| Despliegue | Esperado en «-» | Encontrado en «-» |
+|---|---|---|
+| CI #136 (2026-10-14 03:17) | `1fc7caa5` (CI #134) | `30d08696` (mismo contenido, otra etiqueta) |
+| CI #147 (2026-10-14 19:12) | `f7dfa349` (CI #138) | `88c54ddd` |
+| CI #150 (2026-10-14 21:04) | `228a2bac` (CI #147) | `f7dfa349` |
+| Desplegar run 5 (2026-10-15 19:58) | `86d98566` (run 4) | `5a99f129` |
+| Desplegar run 8 (2026-10-16 06:16) | `fbf375b0` (run 7) | `bf40605e` |
+
+- **Riesgo:** después de un despliegue «sano», un reinicio posterior del contenedor podía levantar la **imagen
+  anterior**; si la base ya estaba actualizada por la nueva, era código viejo sobre base nueva (DESPLIEGUE.md lo prohíbe:
+  puede romper vistas y datos; con `-u`, el código viejo borra columnas nuevas).
+- **Causa:** desconocida (puede ser un rollout de Cloudflare que se deshace, un *rollback* manual en el panel, u otra
+  cosa). No hay en GitHub ningún workflow que lo explique (Desplegar Juan solo tiene 2 runs del 2026-10-13; el del
+  puente, ninguno).
+- **Qué falta:** que alguien con acceso a Cloudflare mire el historial de *rollouts* de `dcasa-odoocontainer`; y, tras
+  cada despliegue, comprobar la etiqueta de la imagen activa además de `/__edge/health`. El arreglo del incidente 1 ayuda (la salud
+  dice qué versión responde y la imagen vieja no baja una base nueva), pero no impide la reversión.
+
+### 6. 2026-10-23 · Sistema lento y «Se perdió la conexión» tras la tanda del 22 oct
+
+- **Síntoma:** la dueña: «el sistema está bastante lento», y el aviso «Se perdió la conexión. Tratando de
+  reconectar…» seguido. En sus registros del Worker (15:36-15:40 UTC): fotos que contestan 304 tardando 1-21 s, el
+  Inicio 2,5-26 s, y tres `reenvio_fallido` «Error: Network connection lost.» tras 11-15 s.
+- **Causa de la lentitud (medida):** `dcasa_barras` (`3174f9a`) agregó al Inicio el acceso «Bodega» con cuántas
+  entregas esperan; para saber cuáles tienen pago armaba `invoice_payments_widget` factura por factura, y el panel de
+  Bodega hacía lo mismo cada minuto. En local (catálogo real + 270 ventas): 1.511 consultas el Inicio, 1.800 el panel.
+  Con un solo proceso de Odoo y ½ vCPU, eso frena todas las demás peticiones (hasta un 304 de una foto).
+- **El corte de conexión:** entre el Worker y el Durable Object (los eventos con «stateless» no tienen su evento de
+  `OdooContainer`); las peticiones a la par salían bien, así que **no** fue Odoo reiniciándose: medido en local, la
+  memoria virtual con 60 peticiones a la vez llega a ~600 MiB (límite suave 1,5 GiB) y `MALLOC_ARENA_MAX` no cambia
+  nada. Cloudflare recomienda reintentar ese error.
+- **Arreglo:** `_pagos_de_pedidos` saca los cobros de todas las facturas en una búsqueda (Inicio 139 consultas, panel
+  34; igual resultado en los 270 pedidos) y el borde repite las lecturas (GET/HEAD y lecturas de Odoo conocidas, nunca
+  lo que guarda) hasta 2 veces (`2986df5`, `34fea73`). En producción con Desplegar 27 (18:12 UTC).
+- **Después, por la revisión independiente:** solo se repite un corte que llega antes de 5 s (`CORTE_RAPIDO_MS`): uno
+  más tardío quiere decir que Odoo ya estaba trabajando en esa petición (con `workers = 0` la termina aunque nadie
+  espere) y repetirla le suma carga a un servidor ocupado. El registro `reenvio_fallido` anota `ms`: si los cortes de
+  producción siguen llegando tarde, el reintento no los cubre y hay que buscar la causa (no subir el límite a ciegas).
+- **Cómo se halló:** una revisión del diff `8cd21bf..04d7a2a` en paralelo con una base local con todos los módulos y
+  datos de tamaño real, cronometrando cada pantalla lenta del registro (tiempo, CPU y `cr.sql_log_count`) y
+  `cProfile` sobre la peor. La pista de la dueña («algo de lo último que implementamos») era correcta.
+
+### Incidentes anteriores (staging o antes de producción), en una línea cada uno
+
+- **2026-10-01** · El contenedor no arrancaba en Cloudflare: `pg_ctl -l /dev/stderr` falla con ENXIO porque ahí stderr
+  es un socket → `1db6348` (no reabrir `/dev/stderr`; el lint del CI lo vigila).
+- **2026-10-02** · Staging dormido: la página cacheada salía sin estilos (CSS/JS de Odoo daban 503 al despertar) →
+  `5668ac4` (staging 24/7 en ese momento; hoy la doc dice que duerme tras 1 h — sin confirmar el valor vigente).
+- **2026-10-02** · `rootMargin: "--85px"` → SyntaxError y «¡Vaya! Ocurrió un error» al abrir una página ya desplazada →
+  `724da06`, `2c8318e`.
+- **2026-10-07** · Factura PDF sin diseño en staging: wkhtmltopdf pedía estilos a `web.base.url` (pública, inalcanzable
+  desde el contenedor) → `c2cc756` (pide a `127.0.0.1`).
+- **2026-10-09** · SCSS con `min(%, px)` dejó todo el backend sin los estilos de D'CASA («Incompatible units») →
+  `4e7768d` (`unquote()`); lo atrapó la batería completa.
+- **2026-10-10** · Fotos y PDF no llegaban por Telegram en staging: `CANONICAL_HOST` apuntaba a un dominio sin ruta →
+  `46e675d` (por defecto, el anfitrión de `URL_SITIO`).
+- **2026-10-10** · Fusionar contactos fallaba («ya es de…») si la ficha que queda no tenía los datos → `497f0fd`.
+- **2026-10-12/13** · Una factura real de un cliente y sus datos estaban en el repositorio (en un test) → `d903035`
+  (PR #29).
+- **2026-10-13** · Riesgo: con los secretos de producción cargados, un push a `main` habría desplegado sin aprobación
+  («Required reviewers» no está disponible en el plan para repos privados) → `04e9bd6` (producción solo a mano y desde `main`).
+- **2026-10-14** · Pantallas propias (Contabilidad, Guía, Inicio, Juan) no bajaban con scroll en computador: Odoo pone
+  `overflow:hidden` en `.o_action` → `77e5f4e` (PR #35) y `64beb7d` (PR #37).
+- **2026-10-14 y 15** · Staging dio 500/503 en la salud tras desplegar código con campos nuevos: CI #140 y Desplegar
+  run 2 (`b83f515d`, vendedores) y CI #153 (`22119f35`, PR #38; diagnóstico «bad query» en `res_users`). Misma
+  familia que los incidentes 1 y 2 (para el 2026-10-14, sin confirmar). Se agregó el diagnóstico de staging
+  (`a1e89e41`, `5a99f129`).
+- **Despliegue 95 (staging, fecha sin confirmar)** · 20 min con `contenedor: stopped`: la espera visitaba la portada,
+  que sale de la copia del borde y no despierta a Odoo → `esperar_salud.sh` visita `/web/login`
+  (`docs/auditoria/ronda8/crm-juan-brian.md`).
+
+---
+
+## Historial de despliegues a producción
+
+Antes del 2026-10-13 no hubo producción (el intento del 2026-10-02 se omitió por falta de secretos). Hasta el
+2026-10-15 06:30 se desplegó con **CI/CD** (`ci.yml`, «Run workflow» en `main`, `desplegar_en = produccion`, que llama a
+`desplegar.yml` y usa la imagen construida de `main`); desde entonces con **Desplegar** (`desplegar.yml`, imagen ya
+probada en staging, `app_version` = SHA de la rama). «¿Base?» = si el cambio traía campos, vistas, datos, seguridad o
+módulos nuevos (o sea, si necesitaba `odoo -u`). Conteos hechos con `git diff` entre las imágenes desplegadas.
+
+| Run | Fecha UTC | app_version | PR / cambio | ¿Necesitaba actualizar la base? | Resultado | Notas |
+|---|---|---|---|---|---|---|
+| CI #117 | 2026-10-13 02:02 | `651a9a11` | PR #28 «Unir la rama de trabajo a main: sistema completo» (+ commit de up media) | Sí: instalación inicial (base nueva, `-i`) | Sano (~10 min) | Primer despliegue; sin respaldo previo (el Worker no existía) |
+| Desplegar 1 | 2026-10-13 02:54 | `651a9a11` | Lanzado sobre PR #29, pero con la imagen de antes | No | Sano con aviso «En 5 min no vi el cambio de instancia» | Contenedor «no changes»; no cambió nada. digest `2b294d1e…` |
+| CI #119 | 2026-10-13 04:54 | `0cb45043` | PR #29 privacidad (solo un test de `dcasa_invoice`) | No | Sano (~25 s tras el corte) | digest `7c292678…` |
+| CI #128 | 2026-10-13 16:12 | `af8a902f` | PR #30 importador del sistema anterior | **Sí**: módulo nuevo `dcasa_migracion`, ~32 campos, vistas, seguridad | Sano (~2,7 min) | No hay registro de si el primer arranque hizo `-u` (sin confirmar). digest `e1a4570a…` |
+| CI #132 | 2026-10-13 18:20 | `30d08696` | PR #32 puerta del equipo «1» (+ PR #31: pagos con su número) | No (variable del Worker; `dcasa_migracion` sin campos) | Sano, pero `/master` daba «Not Found» | Incidente 4. digest `4fe124c9…` |
+| CI #134 | 2026-10-13 19:21 | `1fc7caa5` | PR #33 puerta vuelve a «0» | No (misma imagen que #132) | Sano | Rescate. digest `4fe124c9…` |
+| CI #136 | 2026-10-14 03:17 | `88c54ddd` | PR #34 importador: clientes repetidos; Brian edita varios productos | No (solo `.py`, sin campos) | Sano | Antes había `30d08696`, no `1fc7caa5` (incidente 5, mismo contenido). digest `4346ed43…` |
+| CI #138 | 2026-10-14 07:02 | `f7dfa349` | PR #35 Contabilidad: pantallas vuelven a bajar (SCSS) + docs | No (solo estáticos) | Sano | digest `9932dafa…` |
+| CI #147 | 2026-10-14 19:12 | `228a2bac` | PR #36 combos nativos, chat, plan de vendedores, Guía, permisos | **Sí**: módulo nuevo `dcasa_guia`, ~121 líneas de campos, 9 vistas, datos, seguridad | Sano (~2,5 min) | Antes había `88c54ddd`, no `f7dfa349` (incidente 5). El mismo código de vendedores dio 500 en staging. digest `5d81ffc3…` |
+| CI #150 | 2026-10-14 21:04 | `9596b8c9` | PR #37 scroll de pantallas propias | No (solo estáticos) | Sano | Antes había `f7dfa349`, no `228a2bac` (incidente 5): pudo correr código viejo sobre la base de PR #36 (sin confirmar). digest `1c7cf1c1…` |
+| CI #158 | 2026-10-15 06:30 | `b09fdc48` | PR #38 «Ronda de mejoras» + PR #39 (solo prueba) | **Sí**: ~56 campos, 18 vistas, datos, seguridad, 1 migración | **Falló**: 500 de Odoo 20 min | Incidente 2. Las pruebas de main (CI #156) habían fallado antes por la fecha (ver CI) |
+| Desplegar 3 | 2026-10-15 06:55 | `5a99f129` | Mismo código de PR #38 (imagen de la rama) | Sí | Sano 06:58 tras 500 y un reinicio | El reinicio sí actualizó (sin confirmar). digest `d8badcc4…` |
+| Desplegar 4 | 2026-10-15 18:43 | `86d98566` | PR #40 Inicio de vendedoras, Actividad, Escáner, nota de entrega fácil, Brian solo para el jefe | **Sí**: campo `dcasa_entrega_facil` (empresa), 2 vistas, datos | Sano (~2,5 min) | Una hora después la app volvía a tener `5a99f129` (incidente 5). digest `378b46b3…` |
+| Desplegar 5 | 2026-10-15 19:58 | `b3e75807` | PR #41 botones de Brian en Telegram (incluye PR #40) | No por sí mismo; arrastra lo de PR #40 | Sano (~2,5 min) | Incidente 3 resuelto. digest `213aa34f…` |
+| Desplegar 6 | 2026-10-16 02:29 | `bf40605e` | PR #42 orden de impresión: entrega → factura → copia | **Sí**: campo `incluir_entrega` en el asistente de impresión, 2 vistas, datos | Sano (~2,4 min) | Si el primer arranque no actualizó, abrir «Imprimir documentos» fallaría (sin confirmar). digest `2912bb69…` |
+| Desplegar 7 | 2026-10-16 05:47 | `fbf375b0` | PR #43 Etapas 1 y 2 | **Sí**: ~12 campos (`dcasa_utilidad`, `dcasa_sin_costo`…), 4 vistas, datos, seguridad | «Sano» **en falso** (7 s tras el corte) | Incidente 1 a las 06:07. digest `f61b9adf…` |
+| Desplegar 8 | 2026-10-16 06:16 | `5fa33f4c` | PR #44 (solo docs): SHA del *squash* de `main` | — | **Falló**: `IMAGE_REGISTRY_DOESNT_CONTAIN_IMAGE` | Respaldo previo hecho; el Worker nuevo quedó activo; la app seguía en `bf40605e` |
+| Desplegar 9 | 2026-10-16 07:20 | `3570c3a1` | Arreglo del incidente 1 (imagen con commit y huella; chequeo estricto) | **Sí**: la huella de la base no existía, así que actualizó todo (aplicó por fin las Etapas 1 y 2) | **Sano y confirmado** 07:22 → 07:27 (versión `3570c3a12e55`, `base_al_dia` true, 5 min de vigilancia) | El primer minuto respondía la instancia anterior (sin versión) y el chequeo nuevo **no** la dio por sana. La dueña confirmó Inicio y conversaciones. Staging igual en CI #171. digest `4e9b9155…` |
+| Desplegar 10 | 2026-10-16 13:12 | `d37af4fd` | Etapa 3, prueba de humo del arranque, «nunca hacia atrás», Conversaciones #25 punto 1, botón «Volver a una versión estable» (PR #46) | **Sí** (Etapa 3 y Conversaciones; la huella cambió y actualizó) | **Sano y confirmado** 13:25 (versión `d37af4fde5b2`, base al día, humo ok, tras 10 min de vigilancia) | Con el «sí» de la dueña. Staging igual en CI #174. digest `015dbd40…` |
+| Desplegar 11 | 2026-10-16 14:57 | `9be426a4` | Inicio: cotizaciones y entregas arriba con acento, «Ganancia bruta», cuadre exacto con Contabilidad; Contabilidad: aviso de utilidad sin costo de ventas, «Vencido» sin negativos | No (vistas, plantillas y estilos; sin campos nuevos) | **Sano y confirmado** 15:11 (versión `9be426a46e15`, base al día, humo ok, tras 10 min de vigilancia) | Con el «sí» de la dueña («tan pronto puedas subir las correcciones a producción hazlo»). Staging igual en CI #178. digest `876ca5f5…` |
+| Desplegar 12 | 2026-10-16 19:25 | `431cbfe8` | Bono por meta de ventas (1 % si se llega a la meta; a la primera planilla del mes siguiente), aviso de pedidos repetidos, avisos del chat «En Odoo» y contador en rojo | **Sí** (modelos y campos nuevos de Nómina, `comision_meta` en la línea; la huella cambió y actualizó) | **Sano y confirmado** 19:38 (versión `431cbfe80d88`, base al día, humo ok, tras 10 min de vigilancia) | Con el «sí» de la dueña («avísame cuando esté y si tienen mi si») y, tras las correcciones de la revisión, «Sí, termina». Staging igual en CI #182. digest `3894d505…` |
+| Desplegar 13 | 2026-10-16 21:49 | `60803c6d` | Inicio de la vendedora: porcentaje de la meta grande, barra y palabras de ánimo (PR #50) | No (plantilla, estilos y datos del Inicio; sin campos nuevos) | **Sano y confirmado** ~22:02 (versión `60803c6d50e3`, base al día, tras 10 min de vigilancia) | Con el pedido de la dueña («sube … a producción en cuanto puedas»). Staging igual en CI #184. Todavía mostraba la meta en dinero y el 1 %: la dueña pidió quitarlos (va en el despliegue siguiente). digest `0818f42a…` |
+| Desplegar 14 | 2026-10-16 23:07 | `7b534ad7` | Vendedora sin cifras de dinero y «Ver mis ventas»; Juan: domingo hasta las 5, inglés, crédito/entregas/descuentos (PR #51) | Sí: campo del domingo en Ajustes de Juan | **Sano y confirmado** 23:20. El Worker de Juan se desplegó aparte (Desplegar Juan, `entorno=production`) a las 23:23 desde `3b678a6` | digest `165e71c3…` |
+| Desplegar 15 | 2026-10-17 00:21 | `256d1222` | Inicio de Gerencia contra el mes pasado; precio y cámara en el Escáner (PR #52) | No (métodos, plantillas, estilos) | **Falló sin tocar nada**: el respaldo previo recibió un 429 de R2 («Reduce your concurrent request rate for the same object») en pgBackRest; el volcado lógico sí se hizo. **Segundo intento sano y confirmado** 00:36 | El script de respaldo previo no reintenta un 500; ante un 429 de R2 basta volver a lanzar «Desplegar». digest `37f59b2e…` |
+
+**Qué puede no haberse aplicado nunca en producción:**
+
+1. **PR #43 (Etapas 1 y 2): aplicado desde Desplegar 9** (07:22). Entre las 05:47 y las 07:22 no lo estuvo
+   (columnas inexistentes a las 06:07-06:16 e imagen revertida a `bf40605e`). PR #44 es solo documentación.
+2. **PR #42, #40, #36 y #30:** necesitaban `-u`; ningún registro de GitHub prueba si el primer arranque lo hizo. El
+   chequeo viejo solo fallaba si la columna que falta la usa `/dcasa/salud` (p. ej. `res_users`), así que un «sano» no
+   lo garantiza (sin confirmar). Los despliegues siguientes cambiaron `APP_VERSION` y probablemente pusieron la base al
+   día en algún reinicio; el primer despliegue con el arreglo del incidente 1 hará `-u` completo y debería cerrar cualquier hueco.
+3. **Reversiones (incidente 5):** el código de PR #35 (CI #138→#147), PR #36 (CI #147→#150) y PR #40 (Desplegar 4→5)
+   pudo dejar de correr durante horas; quedó cubierto por el despliegue siguiente, que lo incluía.
+4. Desde Desplegar 9 (arreglo del incidente 1) `/__edge/health` dice `version` y `base_al_dia`, y ese primer arranque actualizó
+   **todos** los módulos (no había huella en la base): lo que hubiera quedado sin aplicar de PR #42, #40, #36 y #30
+   quedó aplicado ahí. Igual, después de cada despliegue se abren el Inicio, Conversaciones e «Imprimir documentos».
+
+---
+
+## Fallas de CI y cómo se arreglaron
+
+- **Copia de Tommalo, primer despliegue a staging (CI/CD #7 y #8, 2026-11-18/19).** #7: la integración Juan + Odoo
+  rechazó los adjuntos («el dominio tommalo.example no está en la lista de permitidos») porque el Odoo de la prueba se
+  llamaba tommalo.example (`scripts/integracion_juan_datos.py` y `juan/test/integracion/ayuda.ts`) y la lista ya era
+  tommalo.example; y 12 de 5973 pruebas de Odoo daban por hecho datos de D'CASA (horario de las 8:00, «Socios D…», la web
+  de la empresa, «100%» del texto aprobado en la cabecera). Ninguna era un error del sistema. **Lección: al cambiar un
+  dato de la empresa, buscar también en `scripts/` y `juan/test/integracion/`, no solo en `addons/`.** Para leer el log
+  completo de un job: `get_job_logs` con `return_content=false` da un enlace firmado que se baja con curl; `grep "tests
+  when loading"` y `" ERROR .*FAIL: "`. #8: las 8 pruebas en verde, `wrangler deploy` bien, pero «Esperar a que el sitio
+  esté sano» se rindió a los **20 min** en la **primera** instalación (base vacía, contenedor `basic`): a los ~21 min
+  `/__edge/health` ya decía `ok`, versión `9be5e55f643a`, `base_al_dia: true`, `humo: ok`. Como esa espera falló, el CI no
+  desplegó Juan: se lanzó aparte con *Desplegar Juan* (`entorno = staging`, `dry_run` desmarcado). Si vuelve a pasar en
+  una instalación nueva: mirar la salud a mano antes de relanzar nada.
+
+- **CI #181** (`05be252`, 2026-10-16) · 3 FAIL en `dcasa_interfaz`: (a) `test_avisos` ×2: hacer que `base.group_user` implique `mail.group_mail_notification_type_inbox` no cambia `notification_type` (Odoo 19 lo calcula con `group_ids`, los grupos asignados directo, no con `all_group_ids`). Arreglo `132c5ec`: `res.users.create` deja «En Odoo» al usuario interno nuevo y una función de una sola vez pasa a los que ya existían. (b) `test_tablero_lee_la_semana_de_una_vez`: los pedidos repetidos del Inicio hacían un `search` de `sale.order`; ahora `search_fetch` con los campos que usa (una lectura). El log de la API llega cortado (las ~3,000 últimas líneas son del PostgreSQL de servicio): reproducir en local con `scripts/test.sh <módulo>` es más rápido que buscar el traceback.
+
+Últimos 60 runs de CI/CD (#112 a #171). Fallaron: #112, #139, #140, #151, #152, #153, #155, #156, #158, #167
+(cancelados: #109, #116, motivo sin confirmar). Truco para leer los registros de «Tests de Odoo»: las últimas ~500 líneas
+son el log del PostgreSQL de servicio (`FATAL: role "root" does not exist`, duplicados y *checks* que las pruebas
+provocan a propósito: ruido). El resultado real está en la línea `✖ Fallaron la instalación o los tests. Detalle:` y las
+`FAIL:`/`ERROR:` que la siguen.
+
+### Tests de Odoo
+
+- **CI #271** (`98f6c51`, 2026-11-06) · La calculadora de envíos: 1 falla en 4674,
+  `TestHerramientas.test_contrato_para_modelos_pequenos` («269 not less than 260 : cotizar_envio»). La descripción de
+  una herramienta de Brian tiene que tener **menos de 260 letras** y como mucho 5 parámetros (para los modelos
+  pequeños). El agente que la hizo corrió «como el CI» sus módulos, pero no las pruebas de `dcasa_brian`. Arreglo:
+  `3682053` (227 letras). **Regla:** toda herramienta nueva de Brian se prueba con `TEST_TAGS=/dcasa_brian:TestHerramientas`.
+- **CI #211** (`52fa1ec`, 2026-10-22) · Tanda del 22 oct unida (ocho ramas). El registro no se pudo bajar (la API da
+  la dirección del blob y el proxy de esta máquina la bloquea con 403; `get_job_logs` del MCP de GitHub con
+  `tail_lines` sí funciona). Una corrida completa en local halló las causas: (a) `dcasa_existencias` exige motivo en
+  todo ajuste de inventario y el importador (`dcasa_catalogo/inventario_anterior.py`) y las existencias de prueba no lo
+  daban → `74d7099` (`inventory_name` en el contexto); (b) la prueba de «Telegram caído» de las alertas deja a propósito
+  un `ERROR` en el registro y `scripts/test.sh` falla con cualquier `ERROR` → `5c1a96f` (`assertLogs`). **Regla:** un
+  módulo que agrega una exigencia (motivo, grupo, candado) rompe a los demás que escriben ese modelo; buscarlos con
+  `grep` antes de unir, y toda prueba que provoca un `ERROR` lo atrapa con `assertLogs`.
+- **CI #212** (`5c1a96f`) · Las pruebas de Odoo pasaron, pero «Imagen Docker» falló al instalar: `ParseError …
+  copiar_views.xml … action_dcasa_precios_combo no es una acción válida en product.product`. Causa: la rama de combos
+  agregó el botón a `product.product_template_form_view`, y la ficha de la variante (`product_normal_form_view`,
+  `mode=primary`) hereda de ella; el método solo existe en `product.template`. Se notó recién cuando otra rama
+  (copiar) heredó la ficha de la variante y Odoo la validó entera. Arreglo `abfe96f`: el botón hereda de
+  `product.product_template_only_form_view`, con prueba de que la variante carga sin él. **Regla:** un botón
+  `type="object"` en la ficha del producto va en `product_template_only_form_view` salvo que el método exista también
+  en `product.product`.
+
+- **CI #139** (`b1cf3c4d`, 2026-10-14) · Síntoma: `FAIL: TestSuperficieRpc.test_metodos_publicos_en_lista_blanca`
+  (1 de 2440). Causa: métodos públicos nuevos de Vendedores sin anotar. Arreglo: `b83f515d` →
+  `addons/dcasa_base/tests/test_superficie_rpc.py` (lista blanca con motivo; cada acción exige grupo en el servidor).
+- **CI #151** (`2a2e1d2d`, 2026-10-15) · Síntomas: `FAIL` en `dcasa_guia` `test_guia` [cotizacion] y `test_llevame`
+  («lo que más usas»), `ERROR` en `dcasa_conversaciones` `test_atajos_inicio` (×2). Causas: la búsqueda sin tilde no
+  encontraba «cotización»; prueba que dependía del reloj; el atajo de Oportunidades es de Gerencia. Arreglos: `66ab466`
+  (búsqueda), `2c6e978e` (`addons/dcasa_guia/tests/test_llevame.py`), `22119f35`
+  (`addons/dcasa_conversaciones/tests/test_atajos_inicio.py`).
+- **CI #152** (`2c6e978e`) · Quedaban los 2 `ERROR` de `test_atajos_inicio` → `22119f35`.
+- **CI #155 (PR #38) y #156 (main `e717a91d`)**, 2026-10-15 05:33 UTC · Síntoma: 3 `FAIL` en
+  `TestDocumentosIntactos` (`test_factura_simple_pagada_igual`, `test_pedido_confirmado_igual`,
+  `test_pedido_de_compra_igual_salvo_el_qr`). Causa: el HTML aprobado llevaba la fecha del día en que se generó y
+  falló en cuanto Panamá pasó al 15 de octubre (05:00 UTC); CI #154 (04:46) había pasado. Arreglo: `b8b03c0` (PR #39)
+  → `addons/dcasa_invoice/tests/documentos.py` y `tests/aprobado/pedido_confirmado.html` (reloj fijo).
+- **CI #167** (`6bae4798`, 2026-10-16) · Síntoma: `FAIL: TestEquipo.test_el_menu_empleados_tiene_el_icono_de_la_marca`
+  (1 de 3391). Arreglo: `fbf375b0` → `addons/dcasa_equipo/tests/test_equipo.py` («ícono de Empleados»); CI #168 en verde.
+
+- **Una página pública que pide con `fetch` necesita `credentials: 'same-origin'` para sus pruebas de navegador**
+  (enlace para choferes, 2026-11-09): con `'omit'` el navegador no manda la cookie `test_cursor` y el servidor de
+  pruebas IGNORA la petición («has been ignored during test as it does not contain the test_cursor cookie», 400
+  vacío): las pruebas de navegador fallan con «No apareció». En producción da igual si la ruta lee todo con `sudo()`
+  después de validar su llave (la página misma, al abrirse, ya manda las cookies del sitio).
+- **`max_content_length=` en `@http.route` corta antes del controlador**: un cuerpo más grande recibe el 413 HTML de
+  werkzeug (sin las cabeceras propias de la ruta). La prueba espera 413, no el 400 del controlador.
+- **Las pruebas de la Guía (`dcasa_guia`) necesitan todos los módulos instalados**: en una base con solo una parte
+  (p. ej. la de envíos) fallan `planilla`, `seguro-social` y «la barra lateral no tiene Conversaciones», porque esas
+  tareas se esconden cuando su pantalla no existe. No es el cambio: confirmar en el CI, que instala todo.
+- **Una prueba de la portada que necesita una categoría VACÍA tiene que vaciarla toda** (CI #303, 2026-11-09): el CI
+  instala `dcasa_catalogo`, que trae colchones publicados; apagar solo el producto de la prueba dejaba «Colchones» con
+  productos y fallaba solo en el CI. Se apagan todos los publicados de la categoría (`child_of`). Se reproduce en una
+  base con el catálogo (`dcasa_test_amplio`).
+- **Cambiar el catálogo por el de otro negocio (Tommalo, 2026-11-18)** rompe pruebas que contaban con el tamaño del
+  catálogo de D'CASA aunque no lo nombraran: «más de 100 productos en la base» (`test_codigo_publico`), la categoría
+  «Recámaras» que salía del nombre de una cama (importación de Brian, combos de `dcasa_migracion`) y el CSV del
+  inventario anterior leído como datos reales. Se buscan con `rg` por códigos, `leer_catalogo`, `inventario_anterior` y
+  `product_category_`, y se cambian por datos de prueba propios en el mismo commit. Y el formato nuevo de
+  `catalogo.json` obliga a apagar `scripts/importar_catalogo.py`: el flujo «up media» lo corre con cada subida y habría
+  escrito el formato viejo encima del archivo escrito a mano.
+- **No editar los archivos que la prueba lee mientras `scripts/test.sh` corre**: Odoo lee `data/*.json` y los CSV en
+  tiempo de prueba (no solo al instalar) y la corrida queda contaminada (una «línea base» de `dcasa_catalogo` dio 13
+  fallas que no eran del código). Para iterar, editar entre corridas.
+
+### Integración Juan (Odoo real + Worker real)
+
+- **CI #215** (`9541408`, 2026-10-23) · 7 de 40 fallaron: la primera («bienvenida y pregunta por camas queen») con
+  «(sin guion)», y las demás en cadena (`sinGuion` se acumula entre pruebas y sin la primera no hay `convId`: «conversacion_id
+  tiene que ser un número entero»). Causa: desde F5 los nombres se guardan en MAYÚSCULAS y `juan_buscar_productos`
+  desempata por nombre; con el catálogo real cargado, «cama queen» trajo otras cinco camas antes que la de la prueba.
+  Arreglo `75324c5`: el guion busca «cama roble queen». **Regla:** cuando la primera prueba de la historia falla, las
+  otras son ruido; arreglar esa y volver a correr.
+- En esta máquina, `scripts/integracion_juan.sh` se corre **sin** `$S/bin` en el `PATH`: esa carpeta del scratchpad tiene
+  un `curl` y un `npx` falsos de otra prueba y la integración «pasa» sin correr nada (el 23 oct dio «✔ OK» en falso).
+  Con el `curl` y el `npx` de verdad (y `PYTHONPATH` con PyPDF2 2.12.1) corre completa: 40/40.
+
+- **CI #151** · 7 de 40 pruebas de `juan/test/integracion/flujo.test.ts` fallaron (`«conversacion_id» tiene que ser un
+  número entero`, «petición 3 sin paso en el guion», actividades vacías). Arreglo: `2c6e978e` →
+  `juan/test/integracion/historia.ts` («la foto de Juan se pide con el código público»). Relación exacta entre
+  síntomas y arreglo: sin confirmar.
+
+- **CI #173 (2026-10-16)** · 6 de 40 fallaron con «Eso de la conversación no se cambia a mano (seguimiento_proximo)»: el
+  candado nuevo de Conversaciones (#25) bloqueaba a las pruebas, que preparan sus casos escribiendo como **admin**
+  por RPC. Al revisarlo apareció un hueco del candado: se saltaba con la clave del sistema en el contexto, y el
+  contexto lo manda el cliente. Arreglo `6e031e9`: solo sudo o el administrador del sistema cambian esos campos.
+  **Regla:** una clave en el contexto no es seguridad en un modelo donde el usuario tiene permiso de escritura (sí
+  lo es donde el permiso de escritura es 0, como `dcasa.mensaje` y `brian.accion`). Antes de un candado nuevo,
+  buscar quién escribe ese modelo en `juan/test/integracion/`.
+- En local, 2 pruebas de «cotización automática» fallan por la versión de PyPDF2 de esta máquina (3.0.1; Odoo usa
+  2.12.1 en CI): no es del código.
+
+### Lint
+
+- `7b3aef2` (2026-10-03): shellcheck SC2015 («A && B || C») en `archivar_fuentes.sh`.
+- `fb563c7` (2026-10-01): el runner usa shellcheck 0.9, que marca SC2317 en la función del `trap EXIT` (las versiones
+  nuevas la llaman SC2329).
+- `0e2e9e2` (2026-10-09): línea de importaciones más larga de lo permitido (probablemente ruff).
+- (Los runs exactos de estas tres fallas son anteriores a #112: sin confirmar.)
+- Parecido, pero lo vigila una prueba y no el lint: descripciones de herramientas de Brian/Juan por encima del tope
+  (`6bae4798`, tope de 260 caracteres; `ecd76f5`, contrato de herramientas de Juan). Run sin confirmar.
+
+### Imagen y artefactos
+
+- **CI #112** (`04e9bd6d`, 2026-10-13 00:35) · Síntoma: `Failed to CreateArtifact: Artifact storage quota has been
+  hit` (job «Simulacro de restauración»). Causa: cada despliegue guardaba la imagen (~420 MB) como artefacto. Arreglo:
+  `433c873` → `.github/workflows/limpiar-artefactos.yml`, `.github/scripts/limpiar_artefactos.sh`, copias de 1 día y
+  los registros de diagnóstico ya no ponen el run en rojo (`docs/OPERACION.md`).
+- `1db6348` (2026-10-01): imagen que no arrancaba en Cloudflare por `/dev/stderr` (ver incidentes anteriores).
+
+### Despliegue
+
+- **Desplegar 29** (producción, misma imagen `ab94128`, 2026-10-26 22:58 UTC, traslado a `tommalo.example`) · El respaldo
+  previo pidió `https://tommalo.example/__edge/respaldo` y dio `curl: (6) Could not resolve host`: `URL_SITIO` ya era el
+  dominio y sus registros A y CNAME ya estaban borrados, pero el dominio propio del Worker solo se crea en el paso
+  «wrangler deploy», que va después. No se desplegó nada. Con el «sí» de la dueña, **Desplegar 30** con
+  `respaldo_previo = false` (misma imagen: la base no cambia). **Regla:** el día que cambia `URL_SITIO` a un dominio
+  nuevo, el respaldo previo no puede pasar; o se despliega sin él (con el «sí») o antes se respalda con la dirección
+  vieja.
+- **Desplegar 30** (23:04 UTC) · `wrangler deploy` salió bien pero **sin el dominio**: «Deployed dcasa triggers» solo
+  listó workers.dev y los cron. Causa: **Desplegar hace checkout de `app_version`**, no de `main` («HEAD is now at
+  ab94128» en el registro), y `edge/wrangler.jsonc` de `ab94128` no tenía `routes` (entraron en `de1fb04`). «Misma
+  imagen, otro commit» no sirve para cambios de `wrangler.jsonc`. Arreglo inmediato: la dueña agregó los dos dominios a
+  mano (Workers › dcasa › Domains › Add Domain, que es lo mismo que haría wrangler); arreglo de fondo: CI #230 sobre
+  `main` (`741930d`, árbol = `de1fb04`) a staging y Desplegar con ese `app_version`. **Regla:** un cambio del borde
+  (rutas, `vars`, `workers_dev`) se despliega con un `app_version` que lo contenga, o sea con una imagen construida
+  de ese commit.
+- **Desplegar 64** (11 nov, 09:07 UTC; sano a las 09:15; run 42992509876) · PR #109, squash `b8c6044`, `app_version`
+  `cf64f97d898b1da616fc6c82bdd6f6559906e19d`, imagen `sha256:e84667ef…`, CI 332 con staging (run 42984980093). Los 21
+  arreglos de la auditoría visual: solo estilos, JS de pantallas, dos vistas y el rótulo de un campo; con respaldo
+  previo. Bien al primer intento. **Lo que enseñó el camino:** se lanzaron tres CI con staging (330, 331, 332) porque
+  el trabajo siguió mientras corría el anterior y el gancho de cierre de la sesión obliga a subir todo commit y todo
+  cambio sin guardar: la punta de la rama dejó de ser el commit probado y el CI en curso ya no servía para el PR (que
+  se une con `expectedHeadSha`). **Regla:** mientras corre el CI que se va a unir, o no se toca el repositorio, o se
+  acepta desde el principio que lo nuevo se sube y el CI se relanza sobre la punta (un solo despliegue con todo). No
+  intentar «guardar para después» en el árbol de trabajo: el gancho no deja cerrar el turno.
+- **Desplegar 65** (11 nov, 21:20 UTC; confirmado sano a las 21:34; run 43101954871) · PR #110, squash `b8d6a51`,
+  `app_version` `b62903127c5483c8e6bd1cd4700e97a766accfb2`, imagen `sha256:66e84351…`, CI 334 con staging (run
+  43093423535). El Inicio nuevo, el arranque sin pantalla en blanco, el menú del celular, «atrás» dentro del chat, la
+  caja de responder del celular y la lista en tableta; con respaldo previo. Bien al primer intento, **un solo CI**.
+  **Lo que funcionó esta vez:** mientras corría el CI no se tocó el árbol principal; lo que iba terminando (entregas y
+  «Más datos») se unió y se probó en otra copia de trabajo (`local/integracion`), y entró a la rama recién después del
+  despliegue, junto con el `merge -s ours` y los docs. Así el commit probado siguió siendo la punta de la rama y el
+  `expectedHeadSha` valió. Lo listo se desplegó sin esperar a lo que faltaba: dos despliegues chicos en vez de uno
+  grande que retrasara el arreglo que la dueña estaba esperando.
+- **Desplegar 66** (11 nov, 22:36 UTC; confirmado sano a las 22:49; run 43112609143) · PR #111, squash `b66302a`,
+  `app_version` `8859a44eb6316281e327103a0566259fc6e558f1`, imagen `sha256:a3bbe22a…`, CI 336 con staging (run
+  43104407376). «Entregas pendientes» del Inicio igual que Bodega y «Más datos» plegable en la cotización; con respaldo
+  previo. Bien al primer intento. Entre el fin del CI y el `merge -s ours` no se tocó la rama; los avisos de GitHub de
+  «PR abierto» y «PR unido» que llegan a la sesión son el eco de lo que la propia sesión hizo (no piden nada).
+- **Desplegar 67** (12 nov, 02:06 UTC; confirmado sano a las 02:19; run 43138676351) · PR #112, squash `50b343b`,
+  `app_version` `f28c2ccd39abb3aeee1ed853bb1013004d80913f`, imagen `sha256:4a8a7ac0…`, CI 338 con staging (run
+  43131640599). El modo oscuro; con respaldo previo. Bien al primer intento. Mientras corría el CI, los ayudantes
+  nuevos (Juan cotiza envíos; pagos de Costos de IA) trabajaron en sus propias copias, sin tocar la rama.
+- **Desplegar 68** (12 nov, 23:1x UTC; salud sana; run 43325822963) · PR #113, squash `b78d472`, `app_version`
+  `98f8002aab2b11af216c60fa847bc0d161aaf153`, imagen `sha256:f2efed11…`, CI 340 con staging (run 43280069880). Juan cotiza
+  envíos con la promoción, reparto justo y Costos de IA con «Pagar»; con respaldo previo. El CI frenó la primera vez en el
+  respaldo previo de staging (staging dormido: «curl: (56) Recv failure», cuarta vez); se despertó staging con tres
+  `curl …/web/login` y se repitió solo el trabajo fallado («rerun_failed_jobs»): bien. Luego **Desplegar Juan 21** (run
+  43328387534) para el Worker (la guardia del envío y `/odoo/salud` con `mes`).
+- **Desplegar Juan 22** (13 nov, 00:4x UTC; run 43339636718) · PR #114, squash `d5c9ef9`, CI 342 con staging (run
+  43328896843). La segunda puerta de Instagram, apagada sin sus dos secretos. Solo Worker: el diff no tocaba `addons/`,
+  así que no hubo Desplegar de Odoo. Bien al primer intento.
+- **Desplegar 69** (13 nov, 03:04–03:20 UTC; salud sana; run 43356475622) · PR #115, squash `7d965cd`, `app_version`
+  `2ced21ccb09f555da0159f1493867318617100e1`, imagen `sha256:1ad42b80…`, CI 345 con staging (run 43347631246). Juan ya
+  no dice «no lo manejamos» de lo que existe sin publicar. El CI 344 había fallado en el contrato de Brian
+  (`test_contrato_para_modelos_pequenos`): las descripciones de `juan_buscar_productos` (367) y `juan_ver_producto`
+  (271) pasaban de 260 letras. **Lección:** toda herramienta `juan_*` y de Brian cuenta para ese tope; al alargar una
+  descripción, correr ese test antes del CI. Luego **Desplegar Juan 23** (run 43358329275, 03:22 UTC) para el Worker
+  (regla 2 del prompt y la guardia `niega_producto`). Bien al primer intento.
+- **Desplegar 70** (13 nov, 04:29–04:45 UTC; salud sana; run 43365883978) · PR #116, squash `24493be`, `app_version`
+  `70ac6f349a9e8be6f2939f063360de1031272fc9`, imagen `sha256:7c1a9d4c…`, CI 347 con staging (run 43358982543). Los
+  comentarios de Instagram y Facebook, apagados; con respaldo previo. Luego **Desplegar Juan 24** (run 43367600509, 04:47
+  UTC). Bien al primer intento (staging despierto antes del CI con tres `curl …/web/login`). **Lección:** antes de dar por
+  hecho que algo de Meta «no anda» o «sí anda», leer la documentación del campo: los avisos de comentarios piden acceso
+  avanzado por las dos puertas (página e inicio de sesión de Instagram). Y al contar resultados en HTML, no fiarse de un
+  atributo (`itemprop="name"`) cuyo orden cambia: contar la tarjeta (`oe_product_cart`).
+- **Desplegar Juan 25 y Desplegar 71** (14 nov; salud sana a las 00:35 UTC: `{"ok": true, "version": "2bcc23e70c14",
+  "base_al_dia": true, "humo": "ok"}`) · PR #117, squash `894959b`, `app_version`
+  `2bcc23e70c1437d93c4fab310602ef2a71f9b747`, imagen `sha256:99d1039a…`, CI 349 con staging (run 43524742607). Avisos de
+  Telegram ordenados (la noche sin clientes), lote 1 de la web, «Busca con una foto» (módulo nuevo
+  `dcasa_buscar_foto`), el robot como ícono de Brian y el horario de la tienda; con respaldo previo. **Por primera vez
+  Juan antes que Odoo:** Desplegar Juan 25 (run 43533101840, 00:18 UTC; `/salud` con `894959be…`) y después Desplegar 71
+  (run 43533399099). La razón: Odoo nuevo trata `sin_leer` sin motivo como un fallo del lector; si Odoo sube primero,
+  cada imagen que el Juan viejo manda sin motivo levanta un aviso falso. **Regla:** cuando Odoo empieza a esperar un
+  campo nuevo del Worker, Juan va primero; cuando el Worker empieza a llamar una ruta nueva de Odoo, Odoo va primero
+  (o el Worker tolera el 404). Bien al primer intento. La dueña autorizó subirlo sin esperar su visto bueno («Apruébalo
+  y punto»).
+- **Desplegar Juan 26 y Desplegar 72** (14 nov; salud sana a las 07:46 UTC: `{"ok": true, "version": "f461cad33626",
+  "base_al_dia": true, "humo": "ok"}`) · PR #118, squash `ea3bd96`, `app_version`
+  `f461cad33626b07adc2d5a70ca1971aaae595015`, imagen `sha256:cff08b93…`, CI 355 con staging (run 43564565700). Brian de
+  la tienda (módulo nuevo `dcasa_brian_tienda`) y el lote 2 de la web; con respaldo previo. Otra vez Juan primero (run
+  43571228282, 07:28–07:30 UTC; el Durable Object `TiendaSesion` es su migración v2) y Odoo después (run 43571429646,
+  07:30–07:46 UTC). Antes del deploy: tres vueltas de revisión adversarial y cuatro CI (351 falló por una prueba de
+  navegador sin `websocket-client`; 352 y 353 se cancelaron para meter arreglos; 354 falló con todos los módulos por la
+  fecha de `/privacidad` y el xpath de `pie_mi_cuenta`). Prueba de punta a punta en staging con el Worker de verdad.
+  **Lección de la prueba:** en staging hay que esperar `networkidle` antes de tocar la burbuja: sin el JS cargado el
+  botón no hace nada (en un teléfono lento pasaría igual; anotarlo si alguien se queja). Bien al primer intento.
+- **Desplegar 73** (14 nov, 17:39–17:54 UTC; salud sana; run 43622302488) · PR #119, squash `77702bb`, `app_version`
+  `17f0c8295bf842c854c71c4c8222afb146a5aeac`, imagen `sha256:b97f72d0…`, CI 357 con staging (run 43615430952). La
+  burbuja de Brian cambia de pose con la sección en pantalla (solo JS de `dcasa_brian_tienda`; Juan no cambió, así que
+  no hubo Desplegar Juan). **Lección:** el primer intento de squash dio 409 porque escribí de memoria el SHA largo de
+  `expectedHeadSha`; siempre `git rev-parse` antes, nunca completar un SHA a ojo. Bien al segundo intento, sin daño.
+- **Desplegar 77** (16 nov, 13:01–13:2x UTC; salud sana: `{"ok": true, "version": "26b357d3bd51", "base_al_dia":
+  true, "humo": "ok"}`; run 43871897257) · PR #126, squash `a904ec65`, `app_version`
+  `26b357d3bd51d1e64b5fa51fcdbba8cda2cc4280`, imagen
+  `sha256:ebc046c979058cb9d354a4a25179196a356a068b61e989e94c5d5e910894b742`, CI 371 con staging (run 43861779415).
+  El Black Friday: la campaña del sitio, los combos inamovibles con la regla del par y el chat de la web como Andrés;
+  con respaldo previo. **Juan 28 ANTES que Odoo** (el saludo «Hola, soy Andrés» vive en `juan/src/tienda/prompt.ts`;
+  el de la página, en `brian_tienda.js`). Bien al primer intento. **Lecciones:** (1) el paso «Esperar a que el sitio
+  esté sano» del despliegue a staging tardó 16 minutos **después** de que staging ya respondía con la versión nueva
+  (son los 600 s de vigilancia más las vueltas): no hay que darlo por colgado ni relanzar nada. (2) La API de Actions
+  devuelve el estado de una ejecución **cacheado** varios minutos (`updated_at` se queda quieto): para saber si un
+  despliegue terminó, mirar `/dcasa/salud` del sitio, no solo el estado del job. (3) Abrir el PR dispara otro CI
+  aunque el título lleve `[skip ci]` (eso solo vale para los push): cancelarlo, como dice la receta.
+- **Desplegar 76** (15 nov, 19:48–20:0x UTC; salud sana: `{"ok": true, "version": "754aceaf18e7", "base_al_dia":
+  true, "humo": "ok"}`; run 43754485392) · PR #122, squash `b012494`, `app_version`
+  `754aceaf18e7ed66ef1e69ec59a2ab5351a80574`, imagen `sha256:1cfb8e4f226604186ee8298d4c37dd5651a248f96c94119db3ee820b8b033207`,
+  CI 365 con staging (run 43732155027; las pruebas de Odoo del CI tardaron ~45 min). Paleta con bandas en azul noche
+  y pie claro, menú sin «Escríbenos», sección de contacto y el carrito en el chat de la tienda; con respaldo previo;
+  Juan no cambió. Bien al primer intento. **Lecciones:** (1) **la tarifa del visitante:** en esta base la tarifa
+  «Default» no está ofrecida al sitio (`website.pricelist_ids` vacío), así que `request.pricelist` sale vacío y la
+  página muestra el precio sin tarifa, mientras el carrito sí usa la del contacto. Cualquier regla de tarifa (la
+  campaña del sitio) necesita que el sitio la ofrezca (`dcasa.campana._dcasa_tarifa_del_sitio`). (2) Juan y el chat
+  de la tienda dicen `list_price` a secas (`_j_ficha_corta`): un precio especial tiene que pasar por ahí también.
+  (3) Una regla de tarifa de **precio fijo** deja iguales todas las variantes; para bajar lo mismo a cada medida, la
+  fórmula con `price_surcharge` negativo. (4) Las capturas que comparan «hoy» con una propuesta: cuando la propuesta
+  ya está en el código, el «hoy» se simula con un selector más específico que el del código (si no, sale igual).
+  (5) La máquina se reinició dos veces: lo que no está en la rama se pierde con ella; pasar el trabajo a la rama en
+  cuanto se pueda subir sin romper la regla de «nada entre el CI y el squash». (6) La prueba
+  `TestRevisionPdf.test_el_tope_de_cotizaciones_no_se_salta_con_otra_sesion` puede fallar si la corrida cruza el
+  cambio de hora (pasó a las 15:00): es de la hora, no del cambio; repetirla.
+- **Desplegar 75** (15 nov, 08:16–08:3x UTC; salud sana: `{"ok": true, "version": "6c7fdc425be3", "base_al_dia":
+  true, "humo": "ok"}`; run 43693725820) · PR #121, squash `6221175`, `app_version`
+  `6c7fdc425be329adb00180abfc5a20347bf2ff0f`, imagen `sha256:84085a134a139c75cf76db42220b342d958691334551d43fb33dea637eba0065`,
+  CI 363 con staging (run 43689911281). La portada v3 (secciones compactas, carrito como ícono, paleta nueva, chat de
+  vidrio); con respaldo previo; Juan no cambió. Bien al primer intento. **Lecciones:** (1) **las pruebas de navegador
+  solo corren en local**: el CI no instala `websocket-client` y Odoo las salta; para un cambio visual, correr
+  `scripts/test.sh` aquí con `pip install websocket-client` en el venv (encontró 5 fallas que el CI habría dejado pasar:
+  el antetítulo más chico tocaba el hero del contrato visual y el carrito salía ovalado). (2) `.o_dcasa_home .btn` pide
+  `min-height: 3rem` y es más específica que una clase sola: un botón de la portada con otro tamaño necesita un selector
+  de dos clases. (3) La portada tarda 2-3 s en arrancar las interacciones: medir flechas, carriles o burbuja antes de eso
+  da «no está»; esperar a que `.o_dcasa_rail_track` tenga `id` (lo pone `carril.js`). (4) Para capturas del chat con
+  conversación, `dcasa_brian_tienda/tests/worker_simulado.py` corre suelto (`--puerto`, `--token-worker`, `--odoo`,
+  `--token-odoo`) y Odoo con `JUAN_URL`, `JUAN_WORKER_TOKEN` y `JUAN_ODOO_TOKEN`; en esta máquina el puerto 8787 ya está
+  ocupado (usar 8788).
+- **Desplegar Juan 27 y Desplegar 74** (15 nov; salud sana a las 04:02 UTC) · PR #120, squash `3cd053b`, `app_version`
+  `d52a72b7dd9d3de8ab63ab0a7d7a1ca2892e00ec`, imagen `sha256:a224f8c2…`, CI 359 con staging (run 43668175433). Brian
+  siempre activo de noche (`avisar_cerrado` en `/config`; sin la clave, Juan se porta como antes, así que Juan va
+  primero sin riesgo). **Lección:** staging estaba detenido («contenedor: stopped») y `/web/login` daba 503 varios
+  minutos; `GET /` (la tienda guardada en el borde) contesta igual y no lo despierta: hay que insistir con
+  `/web/login` hasta el 200 (unos 4 minutos) antes de lanzar el CI con staging. Bien al primer intento.
+- **Versión estable 4 ensayada en staging** (11 nov, 03:16–03:40 UTC, run 42951600639 de «Volver a una versión
+  estable», lanzado desde la rama de trabajo: el botón solo exige `main` para producción). Estable 4 = imagen de
+  Desplegar 63 (`acda72c1…`, `app_version` `3e2ccfc`) + Juan hasta Desplegar Juan 20. Bien al primer intento.
+- **Desplegar Juan 20** (02:21 UTC del 11 nov, solo Juan) · `/salud` con `c378382` (PR #107, árbol = `f1cba72`, CI #321
+  verde con staging): Instagram prueba subir y enviar en la misma llamada (como Messenger), luego `attachment_id`, luego
+  URL; si nada sale, «Por qué no salió» en Odoo dice qué contestó Meta a cada intento. Juan 19 (solo la subida aparte)
+  siguió dando «(#100) Error al subir el producto». **Confirmado:** la foto llegó por Instagram. Lección: para Messenger
+  e Instagram, subir el archivo en el mismo `me/messages` (multipart `filedata`) es lo que funciona; Meta no logra bajar
+  nuestras URL firmadas (WhatsApp sí).
+- **Desplegar Juan 19** (21:06 UTC del 10 nov, solo Juan) · `/salud` con `f8a6c24` (PR #106, árbol = `b955b2f`, CI #319
+  verde con staging): Instagram sube la foto (`me/message_attachments`, `platform=instagram`) y la manda con su
+  `attachment_id`; si Meta no la acepta, va por URL como antes.
+- **Desplegar Juan 18** (19:09 UTC del 10 nov, solo Juan) · `/salud` con `ac75436` (PR #105, árbol = `4c16cd2`, CI #317 verde con
+  staging): un aviso de WhatsApp sin mensaje ni palomita se anota con su forma («aviso sin mensajes ni palomitas»).
+- **Desplegar Juan 17** (17:55 UTC del 10 nov, solo Juan) · `/salud` con `d40607f` (PR #104, árbol = `cf52548`, CI #315
+  verde con staging; la #314 se canceló para sumar el `fbtrace_id`): 131070 → `take` de Thread Control y un reintento;
+  todo envío rechazado deja código y `fbtrace_id` en el registro; `standby` y `messaging_handovers` solo se anotan.
+- **Desplegar Juan 16** (16:09 UTC del 10 nov, solo Juan) · `/salud` con `ac5beb2` (PR #103, árbol = `a962482`, CI #312
+  verde con staging): si el perfil de Messenger/Instagram no responde (falta «Business Asset User Profile Access»), el
+  nombre sale de la conversación de la página (`me/conversations … fields=participants`).
+- **Desplegar Juan 15** (03:37 UTC del 10 nov, solo Juan) · `/salud` con `7707b53` (PR #102, árbol = `5d19c7c`, CI #310
+  verde con staging): el nombre del cliente de Messenger e Instagram se le pide a Meta (`nombreDePerfil`).
+- **Desplegar Juan 14** (02:28 UTC del 10 nov, solo Juan: Odoo sin cambios) · `/salud` con `4cc4b97` (PR #101, árbol =
+  `3af9123`, CI #308 verde con staging): las fotos y archivos de Messenger se suben a Meta en vez de ir por URL.
+- **Desplegar 63 y después Desplegar Juan 13** (23:26 y 23:43 UTC del 9 nov, `app_version` `3e2ccfc` = SHA de la rama,
+  imagen `sha256:acda72c1…` de CI #305, respaldo previo) · Odoo sano y confirmado 23:43 (versión `3e2ccfc3e9d1`, base al
+  día, humo ok): enlace para choferes, «Colchones» abre WhatsApp y Dependabot (PR #100, `main` = `4a01039`, árbol =
+  `3e2ccfc`). Juan: `/salud` con `4a01039` y las llaves intactas (Messenger recién conectado sigue «configurado»). Se
+  frenó el despliegue mientras WhatsApp no enviaba (para no mezclar cambios con un problema abierto) y se soltó al
+  confirmar que era de Meta: Messenger funcionaba de punta a punta. Antes, la CI #303 y la #304 fallaron por pruebas
+  (ver «Tests de Odoo» y «Flakes»).
+- **Desplegar 61 y después Desplegar Juan 11** (18:45 y 19:01 UTC del 7 nov, `app_version` `e53e5d8` = SHA de la rama,
+  imagen `sha256:4ef8d264…` de CI #296, respaldo previo) · Odoo sano y confirmado 19:00 (versión `e53e5d8b4ebf`): el
+  remitente propio de Camila y el aviso de Resend (PR #95, `main` = `848d314`, árbol = `e53e5d8`). Juan: sin tope de notas
+  de voz. **Lección:** Resend trae el conteo de aperturas y clics **apagado de fábrica** por dominio, y se mete en el correo
+  al enviarlo (lo ya enviado nunca cuenta); va en un subdominio de campañas para no tocar las facturas. «Auto configure»
+  de Resend con Cloudflare puso solos los registros del subdominio, sin tocar los del dominio principal.
+- **Desplegar 60 y después Desplegar Juan 10** (06:44 y 06:59 UTC del 7 nov, `app_version` `274f13d` = SHA de la rama,
+  imagen `sha256:cd0d8a80…` de CI #294, respaldo previo) · Odoo sano y confirmado 06:58 (versión `274f13dff3ee`, base al
+  día, humo ok): citas, reenviados, reacciones y palomitas en el chat, más lo que quedaba de los issues #24 y #25, con
+  dos revisiones adversariales (PR #94, `main` = `6d5dc8b`, árbol = `274f13d`). Juan, después de Odoo: `/salud` con
+  `6d5dc8b`. **Lecciones de la noche:**
+  - Dos agentes en paralelo en *worktrees* distintos que tocan `juan/src/motor/conversacion.ts` chocan en las
+    importaciones y en métodos vecinos; los choques se resolvieron «con los dos lados» y Juan pasó entero (1308).
+  - Para que los arreglos de una revisión no vuelvan a chocar, el segundo agente trabajó **encima de la unión**
+    (`prueba-union-r8-citas`), y el otro solo en su rama con cambios localizados.
+  - El contenedor se reinició 4 veces: un agente cortado se reanuda con un mensaje si el sistema lo ofrece; si no, uno
+    nuevo sigue desde el `git status` del *worktree*. Pedirles commits por grupo de arreglos en verde salvó el trabajo.
+- **Desplegar 59** (03:22 UTC del 7 nov, `app_version` `142c3d9` = SHA de la rama, imagen `sha256:5569ef81…` de CI
+  #292, respaldo previo) · sano y confirmado 03:36 (versión `142c3d9e0c49`, base al día, humo ok): los botones blancos de
+  Sofía ya no se borran al pasar el puntero (PR #93, `main` = `46343c1`, árbol = `142c3d9`). Causa: el SCSS fijaba
+  `background` en `.btn-outline-primary` y Bootstrap pone el texto blanco en `:hover`. **Regla:** al cambiarle el
+  fondo a un botón de Bootstrap, fijar también su `:hover`/`:focus-visible`/`:active`; la prueba lo mide con un
+  `Input.dispatchMouseEvent` de verdad (un `:hover` no se puede forzar desde el JavaScript de la página).
+- **Desplegar 58 y después Desplegar Juan 9** (00:48 y 01:04 UTC del 7 nov, `app_version` `8f3cdc3` = SHA de la rama,
+  imagen `sha256:4b56a22c…` de CI #290, respaldo previo) · Odoo sano y confirmado 01:03 (versión `8f3cdc322808`, base al
+  día, humo ok): Camila etapa 1b, la casilla de novedades que se activa sola al agregar el correo, con las dos
+  revisiones adversariales (PR #92, `main` = `cb541f8`, árbol = `8f3cdc3`). **Juan va DESPUÉS de que Odoo esté sano:**
+  el Worker nuevo llama a `guardar_correo` y `no_quiere_novedades`, que un Odoo viejo no tiene; al revés no se rompe
+  nada (un Worker viejo ignora `permiso_correo`). `/salud` de Juan con `cb541f8`. El CI #289 se canceló a mitad de las
+  pruebas de Odoo para relanzarlo con los arreglos de la segunda revisión (CI #290): una subida en vez de dos.
+  **Lección de la sesión:** el contenedor de la sesión se reinició dos veces; los agentes en *worktree* no pierden su
+  trabajo (queda sin commit en disco) y siguen al reanudarlos con un mensaje, pero los vigilantes y las pruebas en
+  segundo plano mueren: las pruebas largas, en primer plano y en dos pasos (instalar; luego `-u` con las etiquetas).
+- **Desplegar 57** (23:03 UTC del 6 nov, `app_version` `b261ec6` = SHA de la rama, imagen `sha256:90e90217…` de CI
+  #287, respaldo previo) · sano y confirmado (versión `b261ec685690`, base al día, humo ok): la pantalla nueva de Sofía
+  y Brian al día con los 6 arreglos de su revisión adversarial (PR #91, `main` = `24a654f`, árbol = `b261ec6`). Juan no
+  cambió. Se canceló el CI #286 (solo Sofía) para relanzarlo con Brian (CI #287): una vuelta en vez de dos.
+- **Desplegar 55 (fallido) y Desplegar 56** (21:14 y 21:17 UTC del 6 nov, imagen `sha256:5564e4b9…` de CI #282) ·
+  PR #88 («Ver más» en la foto del catálogo y Dependabot; `main` = `513b094`, árbol = `3a1c1d3`). **El 55 falló con
+  `IMAGE_REGISTRY_DOESNT_CONTAIN_IMAGE`** porque se le pasó `app_version` = `513b094` (el *squash*): la misma trampa del
+  2026-10-16 (arriba), ya escrita y repetida igual. Cloudflare activó el Worker nuevo (mismo código probado) y dejó la
+  imagen anterior; producción siguió sana en `3fb5770`. El **56** con `app_version` = `3a1c1d3` (el SHA de la rama que
+  construyó el CI) salió bien: respaldo en 50 s, sano 21:22 y confirmado (versión `3a1c1d3fc144`, base al día, humo
+  ok). **Regla, otra vez:** antes de lanzar Desplegar, copiar `app_version` del registro del CI («El sitio está sano
+  con la versión …» del staging), nunca del resultado del *merge*. **Desplegar Juan 8** desde `main` a la vez: bien
+  (`/salud` con `513b094`; las «7 cosas por revisar» son claves y canales que ya faltaban: `ANTHROPIC_API_KEY`,
+  puente QR, `META_PAGE_TOKEN`). El PR llevaba `[skip ci]`: no hubo CI del PR que cancelar.
+- **Desplegar 54 y Desplegar Juan 7** (18:52 UTC del 6 nov, `3fb5770`, imagen `sha256:29309f79…` de CI #280, respaldo
+  previo) · Odoo sano y confirmado 19:07 (versión `3fb5770cdf1a`, base al día, humo ok): Camila etapa 2 con los 11
+  arreglos de su revisión adversarial (PR #87, `main` = `3195d7d`, árbol = `3fb5770`; migración `19.0.2.0.0`). Juan
+  desde `main` a la vez (`campana_correo` en su prompt): `/salud` con la versión `3195d7d`. El CI del PR (#281) se canceló.
+- **Desplegar 53** (16:15 UTC del 6 nov, `61d5c44`, imagen `sha256:14d30d8e…` de CI #278, respaldo previo) · sano y
+  confirmado 16:30 (versión `61d5c442dffa`, base al día, humo ok): solo documentación (PR #86, `main` = `dc45e48`),
+  desplegada con imagen nueva para que el contenedor arrancara con `RESEND_CAMPANAS_API_KEY`, que la dueña pegó en el
+  panel. El CI del PR (#279) se canceló.
+- **Desplegar 52** (11:13 UTC del 6 nov, `b84e57d`, imagen `sha256:dfbf424f…` de CI #276, respaldo previo) · sano y
+  confirmado 11:27 (versión `b84e57d2dacb`, base al día, humo ok): Camila etapa 1, módulo nuevo `dcasa_camila`, con
+  los 12 arreglos de su revisión adversarial (PR #85, `main` = `0d69999`, árbol = `b84e57d`). Incluye `edge/` (la
+  variable `RESEND_CAMPANAS_API_KEY` en la lista blanca del contenedor). El CI del PR (#277) se canceló. Juan no cambió.
+- **Desplegar 51 y Desplegar Juan 6** (08:59 UTC del 6 nov, `a307425`, imagen `sha256:f0b0b240…` de CI #274, respaldo
+  previo) · Odoo sano y confirmado 09:13 (versión `a30742505947`, base al día, humo ok): la varita («Sugerir») escribe
+  siempre o dice por qué (PR #84, `main` = `237d2f3`, árbol = `a307425`). Juan desde `main` a la vez: `/salud` con la
+  versión `237d2f3` y `whatsapp_cloud` configurado. El CI del PR (#275) se canceló.
+- **Desplegar 50** (07:33 UTC del 6 nov, `3682053`, imagen `sha256:53e76dc6…` de CI #272, respaldo previo) · sano y
+  confirmado 07:47 (versión `3682053cbbbc`, base al día, humo ok): la calculadora de envíos, módulo nuevo
+  `dcasa_envios` (PR #83, `main` = `e924a9c`, árbol = `3682053`). CI #271 había fallado por la descripción de una
+  herramienta de Brian (ver Tests de Odoo). El CI del PR (#273) se canceló. Juan no cambió.
+- **Desplegar 49 y Desplegar Juan 5** (05:46 UTC del 6 nov, `8701e17`, imagen `sha256:64ae4de1…` de CI #264, respaldo
+  previo) · Odoo sano y confirmado 05:59 (versión `8701e17f1afa`, base al día, humo ok): WhatsApp oficial guarda el
+  mensaje antes del 200 a Meta y la documentación unida (PR #82, `main` = `24d3207`, árbol = `8701e17`). Juan desde
+  `main` (`desplegar-juan.yml`, `entorno = production`, `dry_run = false`), a la vez: `wrangler deploy` bien;
+  `/salud` con `whatsapp_cloud` configurado y la versión `24d3207`; el único aviso es el de siempre (falta
+  `ANTHROPIC_API_KEY` de respaldo). El CI del PR (#270) se canceló.
+- **Desplegar 48** (03:42 UTC del 6 nov, `ca5f98f`, imagen `sha256:46c5231f…` de CI #262, respaldo previo) · sano y
+  confirmado 03:56 (versión `ca5f98f69b51`, base al día, humo ok): el mantenimiento (PR #77, `main` = `4f66c2c`,
+  árbol = `ca5f98f`). El CI del PR (#263) se canceló. Las dependencias nuevas de Juan entraron con Desplegar Juan 5.
+- **Primer ensayo de «Volver a una versión estable»** (staging, `estable-3`, run 42149850218, 6 nov) · sano en unos
+  12 minutos, ya con las acciones nuevas de Dependabot. Ver [VERSIONES_ESTABLES.md](VERSIONES_ESTABLES.md).
+- **Desplegar 47** (21:31 UTC del 5 nov, `e97958e`, imagen `sha256:aa3c4c06…` de CI #260, respaldo previo) · sano
+  21:45 (versión `e97958e01847`, base al día, humo ok): «Guardar y responderle» (PR #76, `main` = `700c34a`, árbol =
+  `e97958e`). El CI del PR (#261) se canceló. Juan no cambió.
+- **Desplegar 46** (19:33 UTC del 5 nov, `cbaff7a`, imagen `sha256:14f3fe34…` de CI #258, respaldo previo) · sano
+  19:47 (versión `cbaff7ab9c2d`, base al día, humo ok): Sofía «Guarda sus datos» (PR #75, `main` = `42f379c`, árbol =
+  `cbaff7a`). El staging del CI pasó el respaldo previo; el CI del PR (#259) se canceló. Juan no cambió.
+- **Desplegar 45** (18:12 UTC del 5 nov, `63bcdef`, imagen `sha256:32b31395…` de CI #256, respaldo previo) · sano
+  18:27 (versión `63bcdef9ebbe`, base al día, humo ok): Sofía baja con scroll y la prueba de scroll de toda pantalla
+  propia (PR #74, `main` = `91507ca`, árbol = `63bcdef`). El staging del CI #256 se frenó en el respaldo previo por un
+  **429 de R2**; **Desplegar 44** (staging, mismo digest) salió sano. El PR se unió con los tests ya verdes y antes de
+  que terminara staging, para poder subir la rama sin colar código sin probar; el CI del PR (#257) se canceló.
+- **Desplegar 43** (05:12 UTC del 5 nov, `a1d4b7d`, imagen `sha256:2003322b…` de CI #254, respaldo previo) · sano y
+  confirmado 05:26 (versión `a1d4b7d62fc6`, base al día, humo ok): **módulo nuevo `dcasa_sofia`** (Sofía, la asistente
+  del CRM; PR #73, `main` = `ff2ddd3`, árbol = `2de05a8`). El módulo se instaló solo en el arranque porque ya estaba en
+  `ODOO_MODULES` (docker/entrypoint.sh) en esa misma imagen. El CI que abrió el PR (#255) se canceló: era el mismo árbol.
+  Después, la rama se puso al día con un merge de `main` (el clasificador no deja `reset` + `push --force`).
+- **Desplegar 42** (01:57 UTC del 5 nov, `71d0040`, imagen `sha256:d02db548…` de CI #252, respaldo previo) · sano y
+  confirmado 02:12 (versión `71d0040c988b`, base al día, humo ok): tasa de cierre en el Resumen de Juan (PR #72, `main`
+  = `57d718b`, árbol = `43eed13`). Esta vez el staging del CI sí pasó el respaldo previo.
+- **Desplegar 41** (21:50 UTC del 4 nov, `43a105d`, imagen `sha256:0dde5051…` de CI #250, respaldo previo) · sano y
+  confirmado 22:04 (versión `43a105db925a`, base al día, humo ok): clientes repetidos (buscar por celular, datos del
+  cliente en la cotización y la factura, «Es esta persona»; PR #71, `main` = `23026ec`, árbol = `0350a3d`). **Tercera
+  vez** que el staging del CI se frena en el respaldo previo con staging dormido (61 s); **Desplegar 40** (staging
+  directo con el mismo digest) salió sano. Hace falta que el respaldo previo de staging despierte el sitio y espere.
+- **Desplegar 39** (00:55 UTC del 4 nov, `50b52c6`, imagen `sha256:a167a596…` de CI #247, respaldo previo) · sano y
+  confirmado 01:08 (versión `50b52c6c6247`, base al día, humo ok): Inicio con
+  tres paneles, CRM al chat, vendedoras activas, notas de voz, fotos de varios productos (PR #70). El staging del CI #247
+  se frenó otra vez en el respaldo previo (61 s, staging dormido); **Desplegar 38** (staging directo con el mismo digest)
+  salió sano. Ya van dos veces: si se repite, que el respaldo previo de staging despierte el sitio y espere antes de
+  pedir el volcado.
+- **Desplegar 37** (05:56 UTC del 3 nov, `594522c`, imagen `sha256:fb452fb7…` de CI #245, respaldo previo) · sano
+  05:59 y confirmado 06:10 (versión `594522c77c27`, base al día, humo ok): «Sin leer» = lo que espera a una persona, cotizaciones del
+  chatbot y la web que vencen solas, ventas atribuidas en tres (PR #69). CI #243 salió **rojo** en `TestSuperficieRpc`:
+  el módulo sobrescribía `create` y `action_draft` de `sale.order` sin entrada en `LISTA_BLANCA`. **Regla:** también un
+  *override* de un método público de Odoo (`create`, `write`, `action_*`) en un módulo nuestro va a `LISTA_BLANCA`
+  con el motivo «OVERRIDE …».
+- **Desplegar 36** (04:15 UTC del 3 nov, `b9ded11`, imagen `sha256:25018016…` de CI #240) · sano y confirmado 04:29:
+  notas de voz, stickers, columna ajustable y Origen (PR #68). **Desplegar Juan 4** (04:15, `14be013`) en paralelo,
+  porque cambió `juan/`; Desplegar Juan solo se lanza cuando cambia `juan/`.
+- **Desplegar 35** (03:26 UTC del 3 nov, `d285ee7`, imagen `sha256:710e9d2c…`) · sano y confirmado 03:40: privacidad
+  con Juan y enlace del catálogo (PR #67). El staging de esa imagen salió de **Desplegar 34** (staging directo, 03:10):
+  el despliegue a staging del CI #239 se frenó en el respaldo previo con HTTP 000 a los ~63 s porque staging estaba
+  dormido. **Regla:** si el respaldo previo de staging da HTTP 000 (no 429 ni 503), la imagen ya está construida y
+  probada: lanzar «Desplegar» a staging con su `imagen_digest` en vez de repetir todo el CI.
+- **Desplegar 33** (17:55 UTC del 2 nov, `441635e`, imagen `sha256:c3efff19…` de CI #237, respaldo previo) · sano
+  17:59 y confirmado 18:09 (versión `441635e5b372`, base al día, humo ok): Valor del inventario y lo cobrado por forma
+  de pago (PR #66). En horario de tienda porque la dueña lo pidió «ya mismo»: ~2 min de 503 mientras arrancaba la
+  imagen nueva. El CI #236 se canceló a propósito: la revisión adversarial encontró que faltaba el método en la lista
+  blanca de `test_superficie_rpc.py` (habría salido rojo). **Regla:** todo método público nuevo de un modelo `dcasa`
+  va a `LISTA_BLANCA` con su motivo en el mismo commit.
+- **Desplegar 32** (23:31 UTC del 27, `53c7b18`, imagen `sha256:da338f12…` de CI #231, respaldo previo) · sano y
+  confirmado 23:46: arreglo de «Rastrear inventario» (PR #65).
+- **Desplegar 31** (00:26 UTC del 27, `741930d`, imagen `sha256:efb5f5ac…` de CI #230 sobre `main`, respaldo previo
+  hecho) · sano y confirmado 00:42 (versión `741930d52e2c`, base al día, humo ok, 600 s de vigilancia). «Deployed dcasa
+  triggers» ya lista `tommalo.example (custom domain)` y `www.tommalo.example (custom domain)`: los que la dueña agregó a
+  mano quedaron adoptados sin conflicto.
+
+- **Desplegar 25** (producción, `75324c5`, 2026-10-23 06:38 UTC) · El respaldo previo recibió HTTP 503 («Odoo de
+  producción está apagado») y no se desplegó: producción quedó como estaba. El respaldo no enciende el contenedor
+  (`respaldar` sale si Odoo no está listo) y en producción un 503 es fallo. Esperé al cron que despierta a Odoo
+  (`7 * * * *`) y **Desplegar 26** (07:12 UTC) hizo el respaldo y salió sano y confirmado. Por qué Odoo estaba apagado
+  de madrugada si es 24/7 (después de Desplegar 24, sano a las 02:48): **sin confirmar**; mirar los registros del
+  contenedor en Cloudflare de esa hora. **Regla:** ante ese 503, esperar el minuto 7 de la hora siguiente y relanzar;
+  no desplegar sin respaldo salvo que la dueña lo pida para arreglar una caída.
+
+- **CI #140** (staging, `b83f515d`, 2026-10-14) y **Desplegar run 2** (staging, mismo commit, digest `efbdeae2…`) ·
+  Odoo 500 en `/dcasa/salud` 20 min. Causa probable: base sin actualizar (sin confirmar). Siguiente: `a1e89e41`
+  (diagnóstico solo en staging: `addons/dcasa_sesiones/diagnostico.py`); CI #142 terminó en verde (sin confirmar que
+  ese run desplegó a staging).
+- **CI #153** (staging, `22119f35`, 2026-10-15) · 503 con `odoo.sql_db: bad query: SELECT "res_users"…` (columna
+  inexistente). Arreglo del diagnóstico: `5a99f129` (guarda la causa de PostgreSQL; `esperar_salud.sh` muestra 1500
+  caracteres). Desplegar de nuevo (CI #154) salió sano.
+- **CI #158** (producción) · incidente 2. **Desplegar run 8** · incidente 1 (`IMAGE_REGISTRY_DOESNT_CONTAIN_IMAGE`).
+
+### Flakes (fallas que no eran del código)
+
+- **Respaldo previo de staging con staging dormido** (otra vez el 2026-11-12, CI 340): antes de «rerun_failed_jobs»,
+  despertar staging (`curl https://tommalo-staging.SUBDOMINIO-PENDIENTE.workers.dev/web/login` hasta que conteste 200). El digest de
+  la imagen no cambia al repetir: sale igual en el paso «Resumen».
+
+- **CI #162** (`b3e75807`) · La prueba «vinculado» del puente de WhatsApp leía el estado antes de que WebCrypto guardara
+  la sesión; pasó al repetir. Arreglo: `ac76ef40` → `puente-wa/test/integracion.test.ts` (espera con sondeo).
+- Pruebas que dependen del reloj: `c2fd4a9` (pasar_a_vendedora, fallaba solo un día después de las 17:00 UTC),
+  `2c6e978e` y `b8b03c0` (arriba). Regla: congelar el reloj en toda prueba con fechas.
+- **Local, 2026-10-17** · `dcasa_conversaciones` `TestContratoVisualJuan.test_03_capturas_de_referencia` (pantalla
+  «conexiones» a 390 px) falla en esta máquina con 13.52 % de píxeles distintos **también en `3b678a6`** (sin cambios):
+  es del entorno local (Chromium/fuentes), no del código. La de «hilo» a 390 px dio 2.02 % una vez y pasó en la
+  siguiente corrida. Antes de culpar a un cambio, correrla en la base sin el cambio.
+- 2026-10-18 · `test_en_vivo_es_honesto_y_al_reconectar_se_trae_lo_que_se_perdio` («sin conexión no debería aparecer
+  solo») parecía «falla después de medianoche UTC» y no era la hora: era una carrera de la prueba. Al suscribirse por
+  primera vez, el bus de Odoo repite los avisos de los últimos 50 s (`bus.bus._poll` con `last=0`), y las filas de
+  `bus.bus` de los datos de ejemplo llevan la hora de inicio de la transacción de la CLASE: corrida sola (o entre las
+  primeras de la clase) la pantalla recibía esos 7 avisos ~30 ms antes o después de `bus.stop()` y su refresco (350
+  ms) caía después del POST; en la suite, casi nunca. Arreglo: `PanelUiCase.avisos_anteriores_ya_viejos()` (lo llama
+  `navegador()`) envejece esas filas un día, y `test_al_abrir_la_pantalla_el_bus_no_repite_…` lo comprueba con el reloj
+  congelado 5 s y 10 min después. Regla: una prueba con navegador que afirma que algo NO aparece no puede dejar avisos
+  del bus de antes de abrir la página; y «pasó a una hora y falla a otra» con el mismo commit se repite 3–5 veces
+  antes de culpar al reloj (aquí, sin el arreglo, falló 4 de 10 corridas seguidas entre 01:06 y 01:49 UTC).
+
+---
+
+- **CI #304 (2026-11-09), puente: «espera cada vez más entre intentos» con 4 llamadas en vez de 2.** No era un flake:
+  el ayudante `vigilarAvanzando` adelanta el reloj falso 600 ms por vuelta mientras espera trabajo real, y en una
+  máquina lenta da más vueltas, así que «30 s después» ya pasaba el minuto de espera. Se reproduce adelantando 15 000 ms
+  por vuelta; la prueba ahora vigila con `{ congelarReloj: true }` (los temporizadores corren, `Date.now()` no se
+  mueve). Regla: una prueba que mide una espera no puede depender de cuántas vueltas dé un ayudante.
+
+## Trampas de Odoo 19 / Cloudflare / GitHub ya conocidas
+
+### Esta máquina (sesiones de Claude)
+
+- **Traer commits de D'CASA a la copia de Tommalo (2026-11-24, #130 y #131: pagos, comisión web, reportes).**
+  - **Dos migraciones con el mismo número.** D'CASA subió `dcasa_base` a la 19.0.1.10.0 con su migración (el origen de los
+    pedidos) y esta copia ya tenía su propia 19.0.1.10.0 (los colores de la marca), que staging ya había corrido: con el
+    mismo número, la de D'CASA nunca habría corrido en staging. Va en la 19.0.1.11.0. Al traer algo de D'CASA, comparar
+    las versiones de cada `__manifest__.py` y las carpetas `migrations/` de los dos lados antes de resolver.
+  - **Una hoja nueva de D'CASA que usa variables que esta copia ya no tiene no compila, y tumba TODO el sitio.** `pago.scss`
+    usaba `$dcasa-azul`, `$dcasa-navy`, `$dcasa-hueso`…, que la marca de Tommalo quitó de `dcasa.scss`: el paquete de
+    estilos del sitio entero falla, no solo el pago. Cada hoja nueva de D'CASA se pasa a los tokens `$bc-*` antes de
+    instalar (y `test_website_dcasa` revisa también `pago.scss`).
+  - **Un cambio de texto de D'CASA puede entrar sin conflicto.** «Busca un mueble» (el buscador), «Seguir viendo muebles»,
+    «Un mueble vendido» y «combo cama + colchón» entraron limpios porque esta copia no había tocado esas líneas. Después
+    de resolver los conflictos, buscar en lo añadido `mueble`, `colch`, `cama`, `D'CASA`, `#1340B1`, `Anton`, `Oswald` e
+    `Inter`.
+  - **Las pruebas nuevas de D'CASA suponen sus datos.** Las que esperan puntos de Socios fallan con `puntos.json` en
+    PENDIENTE (se usa `parche_de_reglas_de_prueba()`), `dcasa_socios.premio_desc_10` no existe (se usa
+    `premio_de_prueba(env, 10)`), las que leen `migrations/19.0.1.10.0` leían la de los colores, y las que miden la
+    cabecera, el hero o las categorías de «no encontramos» miden el diseño de D'CASA. Se ponen al día a lo de Tommalo,
+    nunca al revés. El `scripts/test.sh` de esta copia corre las de navegador (el CI no): correrlas aquí.
+  - **El ayudante quedó en una copia de trabajo de `D_Casa_new_word`, no de esta.** La rama se armó allí con
+    `git fetch /home/user/System-Baby-Cale claude/nifty-keller-k8rcmz` (las dos historias comparten `d2ba8ca`), y para
+    juntarla hay que traerla de ese repositorio.
+
+- **Marca Tommalo y la web de tommalo.example (2026-11-19 al 24): lo que mordió.**
+  - **`Write` sobre un archivo que ya existía.** `views/paginas_templates.xml` ya era la plantilla de Contacto y se
+    pisó al crear las páginas nuevas. Se recuperó con `git checkout --` antes de commitear. Antes de crear un archivo,
+    `ls` o `git ls-files` con el nombre; los nuevos llevan un nombre propio (`paginas_tommalo_templates.xml`).
+  - **Una herencia que quita un atributo rompe a otra que lo usa para ubicarse, solo en una instalación limpia.** Se
+    quitó `t-att-aria-label` del `<form>` de la tarjeta de la tienda, y `website_dcasa.tarjeta_nombre_cliente` hace su
+    xpath por ese atributo. En la base actualizada (`-u`) funcionaba, porque las vistas viejas ya estaban antes; en
+    `scripts/test.sh` (base nueva) falló la carga del módulo. Regla: probar la actualización con `-u` y también la
+    instalación limpia. Antes de quitar o cambiar un atributo con xpath, buscarlo con grep en todas las herencias.
+  - **Odoo también dibuja íconos fuera de la cabecera.** La lupa de `website.website_search_box_input` vive en la
+    ventana de búsqueda (Odoo la saca de la cabecera al cargar) y en el catálogo. Un estilo `.o_dcasa_icono` metido
+    dentro de `header#top` dejaba el SVG gigante y negro allí. Los íconos de lucide van con su regla global.
+  - **Un xpath con `hasclass()` no encuentra un elemento con `t-attf-class`.** El `<form>` de la tarjeta de Odoo
+    lleva la clase calculada. Se ubica por otro atributo (`@role='article'`).
+  - **Un ícono de Odoo puede estar en una plantilla APAGADA.** El segundo `oi-settings-adjust` está en
+    `website_sale.floating_bar` (`active="False"`), no en la tira de categorías; el xpath a la tira tumbó la
+    actualización. Antes de heredar, ubicar en qué plantilla está la línea (con awk sobre los `<template`).
+  - **Cuatro ayudantes en paralelo agotaron el límite de 5 horas de uso** (2026-11-19). El trabajo quedó en commits en
+    sus *worktrees* (`/home/user/wt/<nombre>`, ramas `marca-*`) y se juntó en la sesión siguiente sin conflicto. Con
+    ayudantes en paralelo, cada uno commitea a menudo en su rama: lo que no está en un commit se pierde si se corta.
+  - **Las fotos del catálogo entran con el código** (2026-11-24, pedido del dueño): `dcasa_catalogo/data/fotos/` y
+    `poner_fotos` (al instalar y en la migración 19.0.2.1.0) las ponen solo donde no hay ninguna y publican lo que
+    recibe su foto principal. Un aviso («Foto próximamente») o el logo no son una foto: el producto parecería tenerla y
+    saldría de «fotos que faltan».
+  - **Odoo no procesa un WEBP en un campo de imagen** (`tools/image.py`: «don't process WEBP»): no saca los tamaños
+    chicos y `image_128` sería la foto entera. Las fotos de la web (WEBP) se pasan a JPEG, o a PNG si tienen
+    transparencia de verdad (canal alfa < 255), antes de cargarlas.
+  - **El CI salta TODAS las pruebas de navegador** (no tiene `websocket-client`; 837 subtests en la corrida del
+    2026-11-24): una regresión visual pasa el CI en verde. Después de un cambio visual hay que correr la suite completa
+    aquí (`scripts/test.sh` sin módulos, ~1 h 45 min). Así salió que, desde que el − y el + miden 44 px, a 390 px la barra
+    fija de «Agregar al carrito» pasaba a dos filas (127 px) y tapaba la disponibilidad de la ficha.
+  - **Las migas de la ficha llevan el relleno de un botón de Odoo** con un selector más fuerte que el nuestro
+    (`.o_wsale_content_contained .breadcrumb .breadcrumb-item`, 7 px arriba y abajo): una regla con `.breadcrumb
+    .breadcrumb-item` no lo quita; con `#wrapwrap` delante, sí.
+  - **Las capturas de referencia del contrato visual son del sistema entero.** Sacadas con solo `website_dcasa`, la
+    cabecera tenía «Iniciar sesión» y el hero no tenía la tarjetita ni la burbuja del chat: la suite completa daba 3 %
+    de diferencia. El script ahora instala todo y la comparación de píxeles se salta si falta un módulo propio.
+  - **El auditor sin `isMobile` mide las flechas de la foto de la ficha en 32 px**: el 44 px va en
+    `@media (pointer: coarse)`, que solo se cumple en un teléfono de verdad (o con `isMobile` y `hasTouch` en Playwright).
+    Con mouse, 32 px cumple (WCAG 2.5.8 pide 24).
+  - **En staging alguien publicó a mano productos sin foto** (Velvee, Dany Baby y Fular Moon, visto el 2026-11-24).
+    Ningún código publica sin foto: antes de buscar un error, preguntar al dueño.
+  - **La auditoría de la web** (`axe-core` 4.10 con Playwright, más medidas propias de lo táctil de 44 px, la letra de
+    12 px, el desborde y los íconos, a 390, 768, 1024 y 1440 px) encontró casi todo en lo que dibuja Odoo: las tallas
+    en radios de 16 px, los − y + de 34 px, el menú de 38 px, íconos con `role="img"` sin nombre, un rol inválido en la
+    tarjeta y un salto de títulos. Arreglos en `views/accesibilidad_templates.xml` y en la sección «Auditoría» de
+    `dcasa.scss`. Hay que repetirla cada vez que cambia una pantalla.
+
+- **Un `null` en la acumulación de `puntos.json` hacía FALLAR el cobro** (2026-11-18, al dejar todo en PENDIENTE para
+  la copia de Tommalo). `_invoice_paid_hook` → `dcasa.compra._registrar` → `reglas.puntos_de_compra` lanza
+  `FaltaConfigurar` («se niega a acreditar») y ese error subía hasta el registro del pago: «el programa se niega» quería
+  decir «la factura no se puede pagar». Nunca lo vio una prueba porque todas corrían con las cifras de D'CASA. Ahora
+  `_registrar` devuelve vacío si `falta_para_acreditar` (la ficha y su código sí se aseguran: son la llave de Mi cuenta),
+  y `test_pendiente.py` paga ventas del mostrador, de la web y en abonos con el `puntos.json` de fábrica. Regla: una
+  regla de dinero que «se niega» se prueba también con la cifra en `null`, por el camino real del pago. Lo mismo con
+  `canje.vigenciaDelCodigoHoras` (`timedelta(hours=None)` reventaba `_pedir`) y con las plantillas que formateaban
+  `None` (`fmt_puntos(None)` en `/socios`, `'{:,}'.format(None)` en la portada).
+- **Las pruebas de Socios ya no leen las cifras de fábrica**: corren con `reglas_de_prueba()` / `ConReglasDePrueba` de
+  `dcasa_socios/tests/common.py` (las mismas cifras de antes, como datos de prueba) y los premios con
+  `premios_de_prueba()`. Una prueba nueva que necesite que el programa dé puntos usa eso; una que quiera la fábrica tal
+  cual pone `CON_CIFRAS_DE_PRUEBA = False`. `side_effect` (no `return_value`) en el parche: cada llamada devuelve una copia
+  nueva, como el `cargar_reglas` real.
+
+- **La línea del premio de Socios no baja la compra por su valor de cara** (2026-11-17): rebaja la BASE sin
+  impuesto y el ITBMS va encima (base + ITBMS = el valor del premio). Un premio de $10 baja la compra medida sin
+  ITBMS en **$9.35**, no en $10. Medir las dos cosas por igual se equivoca por el impuesto: el aviso al socio dice
+  una cifra que no es y el bloqueo salta en el borde equivocado. La cuenta vive en un solo sitio
+  (`dcasa.canje._dcasa_impuestos_y_base`) justo para que quien crea la línea y quien pregunta «¿cuánto bajaría la
+  compra?» no se separen. El mismo error al revés: el ahorro de la promoción de envío es una BASE y el valor del
+  premio va con ITBMS, así que al compararlos hay que subir el ahorro con los impuestos de la línea del envío (hoy va
+  sin ellos, pero `_dcasa_envio_lleva_itbms()` existe porque puede cambiar).
+
+- **`_dcasa_promocion_sincronizar` solo quita, nunca repone** (2026-11-17): si la compra baja del mínimo, borra la
+  línea de la promoción **y con ella los términos guardados**. Deshacer la bajada no la trae de vuelta, porque la
+  promoción se ofrece al sumar el envío. Quien deshaga una bajada (p. ej. devolver un premio) tiene que llamar
+  `_dcasa_promocion_volver_a_ofrecer()` a mano, o deja al cliente sin el descuento Y sin el beneficio. Y lo que eran
+  términos ya prometidos de una promoción vencida o cambiada no vuelve nunca: se fue con la línea.
+
+- **Una guarda de dinero puesta solo en el camino web deja el mostrador abierto** (2026-11-17, segunda vez que pasa):
+  los premios entran por `_dcasa_usar_puntos_web` (carrito) y por el asistente «Cobrar premio» (mostrador), y el
+  único punto común es `dcasa.canje._aplicar_en_venta`. La guarda del total negativo ya se había tenido que mover
+  ahí por lo mismo. Regla: toda guarda de dinero sobre un premio va en `_aplicar_en_venta`; la del carrito se queda
+  además, para avisar **antes** de reservar los puntos.
+
+- **Diez «fallas» del QR de los documentos son una librería que falta en el entorno virtual, no código**
+  (2026-11-17). En una batería local, `dcasa_invoice` (`TestQrDocumentos`, `TestNotaDeEntregaFacil`,
+  `TestDocumentosIntactos`) y `dcasa_fe_pa` (`TestFlujoSimulado`) dieron 10 errores, todos con el mismo fondo:
+  `ModuleNotFoundError: rlPyCairo` / `_rl_renderPM` desde `reportlab/graphics/renderPM.py`. Es el dibujo del QR.
+  En el servidor de GitHub están y pasan (el job de la imagen Docker incluso comprueba que la factura en PDF sale con
+  el diseño de D'CASA). O sea: antes de ponerse a arreglar, mirar si el error es un `ModuleNotFoundError`; si lo es,
+  no es del cambio.
+
+- **Una copia de trabajo de git (`git worktree`) NO trae el submódulo `vendor/odoo`** (2026-11-17): la batería muere
+  al instante con `can't open file '.../solo/vendor/odoo/odoo-bin'`. No hay que clonar el submódulo otra vez: se
+  corre con `ODOO_DIR=/home/user/D_Casa_new_word/vendor/odoo` apuntando al del repositorio principal, después de
+  comprobar que el SHA del submódulo es el mismo en las dos ramas.
+
+- **Para contar cuántas fotos se ven en un carrusel hay que pararlo primero** (2026-11-17): con 0,4 s entre fotos y
+  1,8 s de fundido siempre hay dos a medio camino, así que la prueba daba «2 != 1» sin que nada estuviera roto. La
+  receta: acortar el tiempo para provocar el cambio, luego alargarlo (`--vitrina-tiempo: 600s`), dejar terminar el
+  fundido y recién ahí contar.
+
+- **La primera foto del carrusel cambia a los 6,5 s de verdad, aunque la prueba acorte el tiempo después**
+  (2026-11-17): el primer cambio ya quedó programado con el valor real antes de que la prueba toque
+  `--vitrina-tiempo`, así que hay que esperar al menos ese tiempo (240 × 50 ms) o la prueba falla con «no cambió».
+  Lo mismo al revés: la prueba de «movimiento reducido» solo prueba algo si espera MÁS de 6,5 s.
+
+- **En el arnés del contrato visual las animaciones están congeladas: no se puede medir el zoom ahí** (2026-11-17).
+  Ese arnés corre con `prefers-reduced-motion: reduce` e inyecta `*, *::before, *::after { animation: none
+  !important; }`, así que medir `animationName` solo comprueba la congelación. El zoom se verifica en
+  `TestCarruselPortada`, en un Chrome normal.
+
+- **Las tres pruebas de `dcasa_guia` que «fallan en local» pasan si se instala `dcasa_nomina`** (2026-11-17). La
+  tarea «planilla» de la Guía es de nómina: sin ese módulo, la búsqueda no la encuentra y tres pruebas fallan. No es
+  una falla real ni hace falta saltarlas: basta sumar `dcasa_nomina` a la lista de módulos de `scripts/test.sh`. Con
+  eso, la batería de la segunda entrega dio 3547 pruebas y 0 fallas.
+
+- **El servidor de GitHub de la sesión vuelve solo cuando el proceso se reinicia** (2026-11-16): tras una hora de
+  «invalid session» en todas las herramientas `mcp__github__*`, el reinicio del proceso de la sesión lo reconectó y
+  volvió a funcionar. Mientras tanto, `git push` seguía sirviendo. O sea: no hay que rehacer ramas ni buscar atajos;
+  se sigue trabajando y subiendo con git, y se reintenta cada tanto.
+
+- **Las pruebas del navegador fallan por carrera cuando la máquina está cargada** (2026-11-16):
+  `dcasa_brian_tienda:TestNotaDeVoz.test_el_tope_lo_recortado_y_los_errores_amables` falló en una batería de 1629
+  pruebas («1 != 0»: el mensaje de la parte anterior llegó al Worker simulado DESPUÉS de contarlos) y pasó sola, 5 de
+  5, en la misma máquina y el mismo código. Antes de dar por mala una prueba del navegador en una batería larga,
+  correrla sola. La prueba cuenta lo que llegó al Worker justo después de un envío: si se vuelve a repetir, hay que
+  esperar a que llegue en vez de contar enseguida.
+
+- **El servidor de GitHub de la sesión puede morirse y no vuelve** (2026-11-16): justo después de que la dueña
+  reconectara la cuenta de GitHub, todas las herramientas `mcp__github__*` empezaron a contestar «invalid session» y
+  siguieron así el resto de la sesión (se reintentó una docena de veces en una hora). `git push` **sí** seguía
+  funcionando (usa otro camino). Consecuencia: no se pueden lanzar los flujos de Actions, o sea **no se puede
+  desplegar**, aunque todo esté probado. El `gh` de la máquina tampoco sirve de salida: su `GH_TOKEN` es inválido.
+  Qué hacer: subir todo a las ramas con `git push` (eso no se pierde), dejar escrito en PRIORIDADES qué rama y qué
+  commit hay que desplegar, y que la próxima sesión lance el CI. **No** borrar ni rehacer ramas por esto.
+- **El repositorio de la plantilla cambió de dueño en GitHub** (2026-11-16) y la dirección vieja redirige.
+  El proxy de la sesión solo autoriza la **vieja**: si se pone la nueva en `git remote set-url`, el push falla con
+  «not in this session's authorized repository set». Hay que dejar el remoto con la dirección vieja; git avisa del
+  traslado y empuja igual al repositorio nuevo. `add_repo` del repositorio nuevo tampoco sirve: la sesión ya tiene uno
+  con el mismo nombre y chocarían en la misma carpeta.
+- **El submódulo `vendor/odoo` se baja con `--depth 1` apuntando a la rama equivocada** (2026-11-16): en un contenedor
+  nuevo, `git submodule update --init --depth 1 vendor/odoo` trajo la punta de `20.0` en vez del commit fijado (Odoo
+  19), y el árbol queda marcado con `+`. Se arregla pidiendo el commit exacto:
+  `cd vendor/odoo && git fetch --depth 1 origin <sha> && git checkout <sha>`. Si antes se cortó un `fetch`, queda un
+  `.git/modules/vendor/odoo/index.lock` que hay que borrar a mano.
+
+- **No unir ramas en el árbol que está leyendo una corrida de pruebas larga** (2026-11-12): una corrida de
+  `scripts/test.sh` sobre el árbol principal tomó el JavaScript nuevo a mitad de camino y dos pruebas de navegador
+  fallaron sin culpa del código. Para la prueba final de un lote, `git worktree add --detach <copia> HEAD` y correr ahí
+  (con `ODOO_DIR=/home/user/D_Casa_new_word/vendor/odoo`, porque la copia no trae el submódulo).
+- **El límite de uso de 5 horas corta a todos los ayudantes a la vez** y el contenedor puede reiniciarse (PostgreSQL
+  queda apagado): al volver, `service postgresql start` y retomar cada ayudante con un mensaje (su trabajo queda en su
+  rama); no lanzar uno nuevo.
+- **El disco se llena con bases de prueba** (2026-11-14): cada `scripts/test.sh` con un `DB_NAME` nuevo deja una base de
+  ~250 MB y cada árbol de trabajo ~1 GB; tras dos días quedaban 600 MB libres. Al cerrar cada lote: `sudo -u postgres
+  dropdb <base>` (y su `~/.local/share/Odoo/filestore/<base>`) de las que ya no corre nadie (mirar `ps aux | grep
+  odoo-bin` antes) y `git worktree remove --force` de los árboles ya unidos.
+- **Ayudantes en paralelo duplican migraciones** (2026-11-13): el del lote 2 de la web y el de los avisos escribieron
+  cada uno su `migrations/19.0.1.5.0/post-migrate.py` en `dcasa_conversaciones` (conflicto add/add al unir; el del
+  lote 2 además repetía el cambio de horario). Se quedó el de los avisos y lo del horario pasó a `post-horario.py`:
+  Odoo corre **todos** los `post-*.py` de la carpeta de la versión. **Regla:** en el encargo de cada ayudante, decir qué
+  módulo sube de versión y quién escribe su migración; al unir, `git diff --name-status` buscando `migrations/`.
+- **Un informe externo (auditoría, otro bot, un amigo) se comprueba en producción antes de tocar nada** (2026-11-13): el
+  informe «D'CASA contra Carbone» decía que la búsqueda y el carrito estaban rotos; en producción no lo estaban (lo que
+  sí fallaba era otra cosa: la lupa escondida en el celular y los resultados con otro diseño). Guiones de comprobación
+  con Playwright en la carpeta de trabajo de la sesión; se arregló solo lo verificado.
+- **Topes por red: IPv4 entera, IPv6 por /64** (2026-11-13). En Panamá los celulares salen por CGNAT: con /24 un tope
+  «por red» junta a cientos de personas de la misma operadora. Una IPv4 cuenta sola; una IPv6 cuenta por su /64 (lo que
+  un hogar o un teléfono recibe entero, así cambiar de dirección dentro no salta el tope). La llave vive en un solo
+  lugar: `dcasa_base/red.py` (`llave_ip`) en Odoo y `llaveDeIp` en el borde y en Juan, con sal del día si se guarda.
+- **Un pase firmado no se ata a la red** (2026-11-13, Brian de la tienda): el navegador habla con dos dominios (Odoo y
+  el Worker de Juan) y el teléfono puede salir por IPv4 a uno y por IPv6 al otro. Atar el pase a la red rompía el chat
+  sin aviso. Se ata a la sesión (`sid`) y a la vida corta (30 min), y los topes por red los cuenta cada lado.
+
+- **Lo que una auditoría por direcciones no ve (2026-11-11):** el recorrido de Playwright abre cada pantalla por su
+  `/odoo/action-<id>` y la mide ya cargada. Así no vio tres fallas que la dueña sufría a diario en el iPhone: la
+  pantalla en blanco mientras carga el Inicio, el menú del celular sin salida y el gesto de «atrás» dentro del chat.
+  Una auditoría de uso tiene que **entrar por `/web/login` como una persona**, mirar lo que hay en pantalla **antes**
+  de que lleguen los datos (retrasar un pedido con `page.route` y capturar), usar el menú con el dedo y probar
+  `page.goBack()` dentro de las pantallas que cambian de vista sin cambiar de dirección. Guiones de ejemplo en el
+  borrador de la sesión (`entrada/entrar.cjs`, `lento.cjs`, `menu.cjs`, `atras.cjs`); el formulario de entrada hay que
+  buscarlo como `form.oe_login_form …` (la página trae también los buscadores del sitio).
+- **Varios agentes a la vez, cada uno en su copia (2026-11-11):** un `git worktree add -b local/agente-x <carpeta>
+  <commit>` por agente (sin `vendor/odoo`: se usa el del árbol principal con rutas absolutas en `--addons-path`), una
+  base propia copiada con `createdb` + `pg_dump | psql` (los adjuntos van en la base: no hay carpeta de archivos que
+  copiar) y dos puertos propios (servidor y pruebas). Sin push desde las copias: el árbol principal une sus ramas
+  locales. Dos avisos: (1) el *stop hook* confirma y sube lo que haya sin confirmar en el árbol principal cada vez que
+  termina un turno, también lo que un agente dejó a medias allí («avance guardado»); (2) si el límite de uso de la
+  cuenta (cinco horas) los corta, su trabajo queda guardado y se reanudan con `SendMessage` al mismo agente cuando se
+  levanta; si de paso se reinició el contenedor, PostgreSQL queda apagado (`service postgresql start`) y hay que volver
+  a levantar cada servidor.
+- **La base de capturas no es una base limpia:** tiene conversaciones y ajustes de ejemplo, así que las pruebas del
+  chat que cuentan «exactamente tres conversaciones» o suponen el reparto apagado fallan allí y pasan en el CI. Para
+  correr esas clases en local, vaciar `dcasa_mensaje` y `dcasa_conversacion` **en la copia propia** (nunca en la de
+  capturas que usan las demás) o escribir las pruebas nuevas con `>= 3`.
+- **Auditoría con Playwright (2026-11-11), para repetirla:** se entra por `/web/session/authenticate`, se abre cada
+  acción del menú con `/odoo/action-<id>` y se mide en la página (ancho del documento, zonas con scroll de costado,
+  textos cortados, botones de menos de 32 px, letra de menos de 11 px). Tres engaños de la medida: (1) el puntero de
+  Playwright nace en 0,0 y abre la barra lateral automática: moverlo antes de capturar; (2) los textos «solo para
+  lectores de pantalla» (`o_dcj_solo_lector`, `visually-hidden`) salen como cortados y de letra chica: no lo son;
+  (3) los asistentes que abren una ventana (`target = new`) no tienen `.o_action` y la espera vence: no es un error.
+  Con varios recorridos a la vez y el mismo usuario, el servidor anota `could not serialize access` (la presencia de
+  Conversaciones): es de la prueba, no del sistema.
+- **Un cambio de JS o SCSS no se ve en un `odoo-bin` ya arrancado** (sin `--dev`): la lista de archivos del paquete
+  queda en caché. Reiniciarlo. Un cambio de XML de datos (una vista) necesita `-u <módulo>`.
+- **Sin espacio para una base limpia:** las pruebas de navegador se pueden correr sobre una base ya instalada con
+  `-d <base> -u <módulo> --test-enable --test-tags=/<módulo>:<Clase> --stop-after-init` (se deshacen al terminar),
+  con el servidor de capturas apagado mientras tanto. No reemplaza al CI: una base usada trae datos que una limpia no.
+- **Borrar worktrees viejos o bases locales lo niega el clasificador** («destrucción local irreversible») si la dueña
+  no lo pidió: se le pregunta. Liberan sin preguntar `npm cache clean --force` y `pip cache purge`.
+- **El worktree de un agente (`isolation: worktree`) nace de `main` (la rama por defecto de origin), no de la rama de
+  la sesión** (2026-11-06: los dos agentes salieron de `700c34a` aunque la rama tenía 10 commits más sin unir). Al unir
+  su rama hay conflictos en lo que la sesión cambió mientras tanto (docs) y sus pruebas no vieron el resto de la rama.
+  Decirle al agente que haga `git merge <rama>` al empezar, o esperar los conflictos y dejar que el CI pruebe la unión.
+- **El proxy bloquea `git push --delete` de otra rama** (2026-11-06). Para borrar una rama ya unida: la dueña, en GitHub
+  › Branches › el ícono de la papelera.
+- **`npm audit fix --omit=dev` poda las `devDependencies` de `node_modules`** (vitest, wrangler, tsc desaparecen y las
+  pruebas no corren): después, `npm ci`.
+- **`pkill -n -f <patrón>` mata el proceso MÁS NUEVO** que calza, que puede ser el vigilante que se acaba de lanzar en
+  segundo plano y no el viejo. Matar por PID.
+- `$!` después de `nohup cd … && python3 odoo-bin … &` es el PID de la subshell, no el de Odoo: al «matarlo» Odoo sigue
+  vivo en el puerto y el siguiente arranque falla con «Address already in use» (y las capturas salen con el código
+  viejo). Arrancar con un script que haga `exec python3 odoo-bin …` o matar por el PID real (`ps -eo pid,args | grep
+  <puerto>`) (2026-10-17).
+- `pkill -f "<patrón>"` mata también la propia shell si el patrón aparece en el comando (sale con código 144 y se
+  pierden las tareas en segundo plano de esa llamada). Matar por PID (`ps -eo pid,args | grep odoo-bin`).
+- Las pruebas de navegador de Odoo se saltan en local («Chrome executable not found»). Para correrlas: un enlace
+  `chromium` → `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` en una carpeta del `PATH` del comando.
+- Un `scripts/test.sh` que arrancó antes de editar el código prueba una mezcla (Python viejo, plantillas nuevas): si se
+  edita durante la corrida, se vuelve a correr.
+- **Disco compartido:** los worktrees viejos (`.claude/worktrees/agent-*`, `/home/user/wt-*`) y las bases de prueba
+  llenan el disco (llegó al 97 % y cortó corridas de agentes con «No space left on device»). Antes de lanzar varios
+  agentes: `df -h /`, quitar worktrees limpios (`git worktree remove`; las ramas quedan) y borrar bases
+  (`PGPASSWORD=odoo dropdb -h localhost -U odoo <base>`).
+- **PostgreSQL local puede quedar apagado** tras una pausa larga de la sesión: `service postgresql start`.
+- **Varios agentes a la vez** comparten 4 CPU y el límite de uso de la sesión: si el límite corta a los agentes, su
+  trabajo queda SIN commit en sus worktrees; se retoma con un agente nuevo que continúe ese worktree (no se borra).
+- **Un 429 de R2** en el respaldo previo frena «Desplegar» sin tocar producción: volver a lanzarlo. Le pasó también
+  al staging del CI #256 (2026-11-05): Desplegar 44 a staging con el mismo digest salió sano.
+- **No subir la rama entre el CI y el *squash* del PR:** el PR toma la punta de la rama, y lo nuevo (sin probar) se
+  colaría a `main`. Mientras tanto se hace commit local; o, si los tests del CI ya están verdes, se une el PR (con
+  `expectedHeadSha` = el commit probado) antes de que termine staging: unirlo no despliega nada, y producción sigue
+  esperando a que staging quede sano (2026-11-05, PR #74).
+- **`main` se une por *squash*:** al traer `main` a una rama que ya tiene ese mismo árbol (p. ej. la integración que
+  se acaba de subir), `git merge` normal choca en decenas de archivos falsos; `git merge -s ours origin/main` lo deja
+  en la historia sin tocar nada (comprobar antes que el árbol de `main` es igual al de un commit de la rama) (2026-10-23).
+- **Monitor y las esperas largas:** un Monitor que vence a los 30 min mata su comando (se perdió así una corrida de
+  pruebas). Las corridas largas van con `nohup` o `run_in_background` y se espera su archivo de resultado.
+- **Medir velocidad en local:** base con todos los módulos (`-i` con la lista del `Makefile`, ~10 min: carga el
+  catálogo real) + ventas, facturas y cobros creados con `odoo-bin shell` (superusuario: con un usuario normal la venta
+  exige celular y correo), y cronometrar con `time.perf_counter`, `time.process_time` y `env.cr.sql_log_count`.
+  Comparar con el código viejo poniendo el archivo de `git show <commit>:<ruta>` y restaurándolo. Una base con datos
+  extra hace fallar pruebas de navegador que dependen de la base limpia (p. ej. el Escáner): confirmar en CI.
+- **El gancho de parada** exige que la rama no tenga cambios sin commit ni commits sin subir. Si hay trabajo que aún
+  no debe ir en la rama (sin aprobar, o la rama está en CI para una subida), se guarda en una rama local
+  (`git checkout -b algo-local`) y en un parche (`git format-patch -1 -o <scratchpad>/parches/`), y la rama designada
+  queda limpia. Cuando toca, se trae con `cherry-pick`.
+- **PDF con estilos en local:** `_render_qweb_pdf` sin servidor sale sin CSS. Levantar Odoo con `--http-port` y poner
+  `report.url=http://127.0.0.1:<puerto>` (parámetro del sistema) antes de imprimir.
+- **Staging puede tardar ~27 min en quedar sano** después de un despliegue (restaurar desde R2 + actualizar módulos):
+  la espera del flujo aguanta 20 min de arranque + 10 de vigilancia; no cancelar antes.
+- El registro completo de un job de Actions no se baja desde aquí (la dirección del blob da 403 en el proxy): usar
+  `get_job_logs` del MCP de GitHub con `tail_lines` (unas 330 líneas alcanzan para ver las pruebas antes del log del
+  PostgreSQL de servicio).
+
+- **Contenedor nuevo, sin Odoo ni dependencias (2026-11-02):** `vendor/odoo` puede venir sin bajar (`git submodule
+  status` empieza con `-`): `git submodule update --init --depth 1 vendor/odoo` (unos minutos). Las dependencias van en
+  un venv del scratchpad **con `python3.12`** (el del CI; con el `python3` de la máquina, 3.13, `rl-renderPM` no compila y
+  `make setup` falla, 2026-11-15), con `psycopg2-binary` y sin `python-ldap` (no compilan sin las librerías del sistema):
+  `grep -v -i "^psycopg2\|^python-ldap" vendor/odoo/requirements.txt > req.txt`. El rol `odoo` de PostgreSQL hay que
+  crearlo (`CREATE ROLE odoo LOGIN SUPERUSER PASSWORD 'odoo'`) y Chromium está en `/opt/pw-browsers/chromium` (enlace
+  `chromium` en el `bin` del venv para las pruebas de navegador). Correr con `PATH=<venv>/bin:$PATH PYTHON=<venv>/bin/python`.
+- **Referencias del contrato visual (`dcasa_conversaciones/tests/referencia/panel-*.webp`): nunca se regeneran en
+  esta máquina** (2026-11-03). Chromium y las fuentes de aquí pintan distinto (la de «conexiones» a 390 px sale 13.7 %
+  distinta sin cambiar código); el CI compara con 6 % de tolerancia y en local con 1.5 %. Se regeneraron una vez y hubo
+  que devolver las de siempre; con las viejas el CI pasó. Desde el PR #69 (`[skip ci]`, «sin leer» pasó a «espera» y
+  «Esperan respuesta») la de «lista» a 390 px quedó vieja de verdad (7.7 % local, 2026-11-06): hay que regenerarla
+  donde pinta como el CI.
+- **`odoo.__WOWL_DEBUG__.root` en el sitio público no está listo cuando `body[is-ready]`** (2026-11-06): en
+  `public_root.js` el `is-ready` puede llegar antes de que `app.mount` termine y se asigne `__WOWL_DEBUG__`. Una
+  prueba de navegador que use el `root` espera las dos cosas; si no, falla a veces en corridas largas («Cannot read
+  properties of undefined (reading 'root')», `test_cabecera_con_la_pagina_abierta_desplazada`).
+- **Juan y las fotos del chat:** el Worker `dcasa-juan` necesita la variable de texto `URL_PUBLICA` (su propia
+  dirección `https://tommalo-chatbot.SUBDOMINIO-PENDIENTE.workers.dev`, sin `/` final) para que Odoo pueda bajar las fotos, notas de voz y
+  stickers; sin ella salía «No se pudo traer 1 archivo». `/salud` de Juan la marca como problema desde el PR #68.
+- **SCSS de Odoo (libsass) no acepta `min()`/`max()` de CSS con unidades mezcladas** (`min(100%, 300px)` → «Incompatible
+  units: 'px' and '%'»): el bundle del backend entero sale con un error y TODAS las pantallas quedan sin estilo (falla
+  `test_bundle_backend_con_la_marca` y, detrás, las pruebas con navegador). Escribirlo como cadena (`#{"min(100%, 300px)"}`,
+  como ya hace `panel.scss`) o evitarlo (2026-11-03).
+- **El servidor de capturas guarda los estilos compilados:** después de cambiar un `.scss`, reiniciar `servidor.sh` antes
+  de repetir las capturas (si no, salen con el estilo viejo).
+- **Un *override* nuevo de un método público de Odoo** (`crm.team.action_your_pipeline`) también va a `LISTA_BLANCA`
+  (`test_superficie_rpc.py`), como `create`/`action_draft` en la tanda anterior.
+- **«Conéctate a Cloudflare y mira las cifras»:** las cifras de Odoo (ventas, inventario) viven en el PostgreSQL del
+  contenedor; ningún conector de Cloudflare las lee. Se responden con una pantalla o con Brian, no desde aquí.
+- **Varios agentes a la vez, puertos y Chrome (2026-11-06, «Brian al día»):** antes de levantar Odoo o correr
+  `scripts/test.sh`, mirar qué puertos usan los otros (`ps -eo args | grep -o "http-port=[0-9]*"`): el 8194 lo tenía
+  otro agente y la corrida murió con «Address already in use» después de instalar. El enlace `chromium` viejo del
+  scratchpad apuntaba a `chromium-1194`, que ya no existe: usar `/opt/pw-browsers/chromium` (enlace a la versión de
+  hoy). Un agente aislado en su worktree no puede correr comandos compuestos con `cd …&&`, heredocs seguidos de otro
+  comando ni `nohup` con variables: se escribe un script en el scratchpad y se corre con su ruta completa.
+- **Medir si algo «tapa» otra cosa en el navegador:** `getBoundingClientRect` no recorta lo que queda escondido por un
+  contenedor con scroll; hay que intersecarlo con el rectángulo de cada padre con `overflow` distinto de `visible`
+  (si no, un enlace oculto debajo del borde de la ficha «choca» con el botón de Brian). `test_boton_no_tapa.py` lo hace.
+- **Una herramienta de Brian que toma candados va en su propia transacción** (revisión adversarial, 2026-11-06): el
+  turno de Brian es UNA transacción de hasta 150 s con llamadas a la IA; lo que una herramienta bloquee ahí (el
+  `pg_try_advisory_xact_lock` de Sofía, las filas de sus propuestas) queda tomado todo ese tiempo y la pantalla falla.
+  Se usa `with self.env.registry.cursor() as cr:` (+ `SET LOCAL lock_timeout`) y se cuenta lo que hizo DENTRO de ese
+  cursor: Odoo usa REPEATABLE READ y la transacción del turno no ve lo que otra confirmó después. En las pruebas, un
+  savepoint (`modules.module.current_test`). Ver `revisar_con_sofia`.
+- **`dcasa_conversaciones` entero tarda ~11 min en esta máquina** (1.253 pruebas con las de navegador, 2026-11-07): pasa el
+  límite de 10 min de una llamada y la corrida se fue a segundo plano. Se corre en dos mitades por clase (las etiquetas
+  `/dcasa_conversaciones:Clase,…` de un script que reparte las clases; ~5 min cada una), después de instalar en una base
+  nueva con `-i … --stop-after-init` (~3 min). En un worktree sin `vendor/odoo`, se usa el Odoo de la copia principal
+  (`/home/user/D_Casa_new_word/vendor/odoo/odoo-bin` con `--addons-path=<ese>/addons,<ese>/odoo/addons,<worktree>/addons`).
+  `scripts/integracion_juan.sh` ya lo busca solo (39 de 40 en ~4 min).
+- **Al cambiar el seguimiento en Odoo, mirar `juan/test/integracion/seguimiento.ts`:** la prueba de integración real
+  esperaba el comportamiento viejo («descartado» → `seguimientos_enviados >= 1`), que era justo el hueco del issue #25. Las
+  pruebas de Odoo pasaban y la integración del CI habría fallado.
+- **Con `-u`, Odoo solo corre las pruebas post_install de los módulos actualizados** (`registry.updated_modules`):
+  `TestSuperficieRpc` (de `dcasa_base`) no corre con `-u dcasa_conversaciones`. Se corre aparte, sin `-u`
+  (`-d <base> --test-enable --test-tags=/dcasa_base:TestSuperficieRpc --stop-after-init`), que mira todos los instalados.
+- **Un atraso se mide desde que se decidió la hora, no desde la hora que dio la cuenta** (revisión adversarial de #25): el
+  seguimiento se calcula desde el último mensaje, así que uno programado tarde («Crear oportunidad» al día siguiente) ya nace
+  «vencido» y se saltaba con una nota de caída. Se guarda `seguimiento_programado_en`; recalcular la MISMA hora lo conserva
+  (si no, cualquier recálculo al volver de una caída, como un cambio de etapa, borraba el atraso), y el siguiente que se
+  programa al saltar uno hereda el atraso (si no, salía en la misma vuelta del cron).
+- **Recordar un rechazo como si fuera la respuesta frena la corrección** (revisión adversarial de #24): el «una vez por
+  turno» de las escrituras recordaba también un 422 («Faltan datos: motivo») y la llamada corregida recibía el mismo rechazo.
+  De lo que solo puede pasar una vez (`pasar_a_vendedora`) se recuerda solo lo que salió bien.
+- **Reservar espacio solo mientras algo se ve:** `body:has(.o_brian_lanzador:not(.o_brian_oculto)) …` dentro de
+  `media-breakpoint-up(lg)` (libsass lo acepta; `:is()` no se probó y se evitó con un `@each`). Así el hueco para el
+  botón flotante no aparece en el celular (donde Brian va arriba) ni con el panel abierto.
+
+- **Un agente aislado en su worktree prueba «en rojo» sin tocar su rama** (2026-11-07, citas y palomitas): `git archive
+  HEAD juan | tar -x -C <scratchpad>/rojo` (o `addons`), se copian encima solo las pruebas nuevas y se corren ahí
+  (`node_modules` por enlace; para Odoo, otra base). Así se ve el rojo del código de antes sin `git stash` (compartido
+  entre worktrees) ni commits de ida y vuelta. Los comandos con `cd … &&`, heredocs o `bash -c` largos los rechaza el
+  aislamiento: van en un script del scratchpad.
+- **El contrato visual (`AUDITAR` de `test_panel_visual.py`) no audita lo transparente** (2026-11-07): un botón con
+  `opacity: 0` que aparece al pasar el mouse («Responder») salía con «contraste 1.00:1». Ahora `visible()` exige opacidad
+  mayor que 0. Y un emoji dentro de una pastilla blanca en la burbuja azul hereda `color: #fff`: hay que darle color de
+  texto aunque el emoji se pinte solo.
+- **Un botón invisible (`opacity: 0`) y con `position: absolute` igual ocupa lugar para el desplazamiento** (revisión de
+  las citas, 2026-11-07): «Responder», puesto al lado de la burbuja del cliente, corría de lado el hilo a 768 px con la
+  lista completa (chat de 467 px), aunque no se viera. La prueba mide `scrollWidth - clientWidth` del hilo a varios anchos
+  (`test_responder_no_corre_el_hilo_de_lado…`). Ojo: por debajo de 1250 px con la ficha abierta la lista se reduce sola,
+  así que «1024 con la ficha» deja el chat en ~560 px, no en ~400. `display: none` no sirve si el botón se alcanza con Tab.
+- **Las referencias visuales que ya fallan en esta máquina** se repiten iguales: «conexiones» a 390 px 13.73 % y «lista»
+  a 390 px 7.68 % sin tocar esas pantallas (2026-11-07). Si sale otra cifra en otra pantalla, sí es del cambio.
+
+- **La marca del panel por empresa (2026-11-18, `dcasa_interfaz`, [MARCA_DEL_PANEL.md](MARCA_DEL_PANEL.md)): lo
+  aprendido.**
+  - **El azul no se cambia con una variable CSS.** En la hoja compilada del panel hay ~420 `#1340B1` en ~280 reglas que
+    Bootstrap y Odoo calcularon al compilar (botones y su color al pasar el puntero, focos, la pestaña de Ajustes, la
+    barra de estado, el chat), además de los `var(--dc-azul-*)`. Por eso los colores de una empresa se aplican
+    **pintando la hoja ya compilada** (`marca/tinte.py`) y enlazándola EN LUGAR de la de Odoo (misma cascada), no con
+    una hoja encima: una hoja encima vuelve a afirmar un color después de una regla posterior del mismo peso y cambia
+    lo que gana.
+  - **Girar el tono a la misma luminosidad HSL rompe el contraste**: un amarillo con la «L» del azul se lee 2.9:1 sobre
+    blanco. El giro (`colores.Giro`) trabaja con la luz relativa de WCAG y respeta lo que en fábrica se leía con blanco.
+  - **Grises fríos ≠ azul.** Los grises de Odoo y las líneas/niebla de D'CASA tienen tono 210–222° pero saturación
+    14–43 %; la escala de la marca, 73–86 %. El corte en 45 % los separa. Las paletas de categorías (calendario,
+    etiquetas, kanban) y los colores del contenido de la web (`o_cc*`, `--o-color-*`) se excluyen por su selector.
+  - **Un campo de imagen leído con `bin_size` queda en la memoria del ORM aparte**: después de escribir la imagen en la
+    misma transacción, `with_context(bin_size=True)[campo]` seguía diciendo `False` (Brian ponía el logo y respondía
+    «de fábrica»). Saber si hay imagen se pregunta a `ir.attachment` (`res_field`), que es una consulta y está al día.
+  - **En una prueba, un `write` que falla en un `@api.constrains` ya quedó escrito en la base** (la restricción corre
+    después del UPDATE): el siguiente `write` de la misma prueba valida contra el valor malo. Cada intento fallido va en
+    `with self.assertRaises(...), self.env.cr.savepoint():`.
+  - **Las pruebas de navegador se saltan en silencio sin `websocket-client`** («skipped … websocket-client module is
+    not installed», nivel INFO): el venv del scratchpad no lo traía; `pip install websocket-client`.
+  - **`ir.actions.act_window.target` ya no acepta `inline` en Odoo 19** (`current`, `new`, `fullscreen`, `main`): la
+    acción que abre una pestaña de Ajustes va sin `target`, con `context: {'module': '<nombre del <app>>'}`.
+
+### Odoo 19
+
+- **Cinco trampas de precios que salieron con la campaña del sitio (2026-11-15/16, `website_dcasa/models/campana.py`):**
+  - Si la opción «Tarifas» (`product.group_product_pricelist`) está apagada, `request.pricelist` llega vacío y la
+    página muestra el precio de lista, pero el carrito sí usa la tarifa del contacto: precio en pantalla y en el
+    carrito distintos. Además, si el sitio no ofrece ninguna tarifa *selectable*, pasa lo mismo.
+    `_dcasa_tarifa_del_sitio` deja la tarifa pública ofrecida; la campaña no crea reglas con la opción apagada, y
+    las pruebas la encienden en su `setUp`.
+  - Una regla de precio fijo aplana las variantes (la king y la queen quedan al mismo precio). La rebaja va como
+    fórmula sobre `list_price` con `price_surcharge` negativo; el tachado sale de `_show_discount_on_shop`.
+  - `ir.config_parameter.get_param` devuelve el valor por defecto tanto si la clave no existe como si vale `''`:
+    para distinguir «primera vez» de «vacío» hay que leer el registro.
+  - Los carritos web en borrador calculan con `now()` (`_get_order_date` de website_sale), pero los pedidos que no
+    son web usan `date_order`: quien pueda escribir `date_order` puede traer un precio de campaña vencido. Se bloquea
+    para quien no cambia precios.
+  - Las reglas se ordenan por `applied_on`, `min_quantity` desc, `categ_id` desc e `id` desc: una regla nueva de la
+    campaña le gana a una vieja del mismo nivel. Por eso no se crea si la tarifa ya trae su propia regla activa para
+    el producto.
+- **Cuatro trampas de la promoción por pares (2026-11-25, `dcasa_catalogo/models/precio_par.py`):**
+  - **Un total exacto con «2 por $35» pide partir la línea** (2 a $17.50 + 1 a $20.00): un precio por caja de 3 cajas
+    ($18.333…) o un descuento en % no cuadran al centavo con 2 decimales. Por eso el precio por par tiene que partirse
+    en dos al centavo (35.00 sí, 35.01 no) y una línea con un número impar de cajas va a precio normal.
+  - **Partir o juntar líneas del carrito de la web: nunca se borra la línea que se acaba de tocar.** Después del
+    `write` de la cantidad, `_cart_update_order_line` llama `_check_validity()` sobre ESA línea (y `_cart_add`, sobre
+    la que creó): si el acomodo la borró, revienta. Las demás del mismo producto sí se pueden cambiar o quitar: el
+    carrito se vuelve a pintar entero desde el servidor después de cada cambio (`website_sale.cart_lines`). Si hace
+    falta borrar una línea recién creada (dos nuevas del mismo producto en un mismo guardado), se termina en
+    `sale.order.create`/`write`. Todo lo que suponía «una línea por producto» hay que revisarlo: el carrito del chat de
+    Andrés (`/carrito/cantidad` ponía la cantidad en la primera línea) y la cotización repetida de Juan
+    (`_j_cotizacion_igual` comparaba línea por línea).
+  - **Un precio mandado al CREAR una línea no cuenta como «a mano»**: Odoo 19 copia `price_unit` en
+    `technical_price_unit` (`_add_precomputed_values`) si no viene. La pantalla manda los dos (el tecleado y el que
+    calculó el sistema). Una prueba que simula un precio tecleado manda también `technical_price_unit` (o lo escribe
+    después de crear la línea).
+  - **El aviso «agregaste…» del carrito** es `precio de la línea × cantidad agregada`: con una promoción que cambia el
+    precio de las cajas que ya estaban (de 1 a 2 cajas, las dos bajan) mentía. Se corrige en
+    `Cart._get_cart_notification_information` con lo que de verdad subió el total.
+- **En un worktree aislado, los comandos compuestos (un `cd` con varios `&&`, heredocs y `odoo-bin shell <<EOF`) se
+  rechazan** («too complex to verify that it stays inside the worktree»): el script va a un archivo del scratchpad y se
+  corre en un comando simple, con rutas absolutas.
+- **Pruebas que dependen de la hora:** `freezegun` está en el venv y en el CI (`with freeze_time(...)`), y la campaña se
+  programa con `ir.cron._trigger(at=...)` en el inicio y el fin exactos además del cron horario.
+
+- **Cuatro trampas de la página que encontró Brian de la tienda (2026-11-13; detalle en BRIAN_TIENDA.md):**
+  - El tema del sitio pone `height: auto !important` a las `<section>` en el celular: el chat quedaba de 640 px con el
+    campo de escribir fuera de la pantalla. Lo flotante va en un `<div role="dialog">`, no en un `<section>`.
+  - El minificador de JavaScript de Odoo se come los espacios del borde de una plantilla de texto (`` `…` ``) metida
+    dentro de otra («abramos(atendemos»). Esos textos se arman con `+`; una prueba (`test_ajustes.py` de
+    `dcasa_brian_tienda`) lo revisa.
+  - `website.page` guarda la portada y las páginas una hora para los visitantes: un cambio del horario de Juan tarda
+    hasta una hora (más lo que guarde el borde) en verse en la página. Lo que tiene que verse al momento sale por JS
+    (el pase) o limpia esa memoria (`set_param`).
+  - Las pruebas que comparan el `/config` de Juan llave por llave fallaron en el CI (con todo instalado) cuando
+    `dcasa_brian_tienda` agregó `brian_tienda`. Arreglo: la prueba saca esa llave antes de comparar
+    (`datos.pop('brian_tienda', None)`). **Regla:** el módulo que agrega una llave a `/config` corre las pruebas de
+    `dcasa_conversaciones` con él instalado.
+- **No meter un `t-call` suelto por `xpath` dentro de la caja de búsqueda de Odoo** (2026-11-13, «Busca con una foto»):
+  con el editor del sitio abierto (quien puede editar el sitio), Odoo dejaba sus marcas de edición en el `t-call` y toda
+  página con la cabecera daba error 500; el visitante no lo veía. Arreglo: la plantilla vacía
+  `website_dcasa.buscador_botones_extra` dentro de un `<span class="o_dcasa_buscador_extra">` (`display: contents`),
+  que se hereda con `position="inside"` (CATALOGO.md). **Regla:** toda plantilla que toque la cabecera se prueba
+  también abriendo la página como administrador con el editor.
+- **En el CI, el trabajo «Tests de Odoo» no tiene `websocket-client`** (2026-11-14, CI 351): Odoo salta los subtests de
+  navegador («websocket-client module is not installed»), pero una aserción escrita después de los subtests corre
+  igual y falla (`0 != 2`). Las pruebas de navegador se saltan enteras al principio cuando no hay navegador, o cuentan
+  dentro de cada subtest. En local sí está instalado: el fallo solo se ve en el CI.
+- **Dos módulos que heredan la misma ruta pisan en orden alfabético** (2026-11-14, CI 354): `dcasa_buscar_foto` y
+  `dcasa_brian_tienda` ponen cada uno la fecha de `/privacidad`; Odoo carga los independientes por nombre y el último
+  gana, así que la foto (13 nov) tapaba a Brian (14 nov). Regla: quien cambia un valor compartido compara y solo lo
+  sube (la fecha más nueva gana), y las pruebas aceptan «esta o una más nueva».
+- **Un xpath que busca un atributo que otra herencia cambia rompe el guardado con el editor** (2026-11-14):
+  `pie_mi_cuenta` buscaba `//a[@href='/my']` y cambiaba el enlace a `/mi-cuenta`. Al guardar el pie con el
+  constructor, la copia del sitio ya trae `/mi-cuenta` y la herencia no encuentra su ancla: error de validación. Se vio
+  solo con todos los módulos instalados (en local con dos módulos pasaba). Regla: el xpath acepta el valor de antes y
+  el de después (`@href='/my' or @href='/mi-cuenta'`), y las pruebas de editor se corren con la lista completa de
+  `Makefile`.
+- **Pruebas que dependen de la hora** (2026-11-13): con la regla «de noche nadie recibe clientes» encendida de fábrica,
+  las pruebas viejas del reparto y de la API dependían del reloj del CI. `tests/common.py` de `dcasa_conversaciones`
+  la apaga (`reparto_nadie_de_noche = False`) y las pruebas de esa regla la encienden con el reloj quieto
+  (`test_avisos_noche.py`). **Regla:** todo interruptor nuevo que dependa de la hora va apagado en el `common` de las
+  pruebas.
+- **Modo oscuro del panel (2026-11-12), cómo está hecho y la regla para lo nuevo:**
+  - **Odoo Community trae el andamio y no la paleta.** El paquete `web.assets_web_dark` (= el claro + los
+    `*.dark.scss`) y la plantilla que lo elige existen; `ir.http.color_scheme()` contesta siempre «light» y la paleta
+    oscura es de Enterprise. D'CASA hereda `color_scheme()` en `dcasa_interfaz/models/ir_http.py`: «dark» solo con la
+    galleta exacta `color_scheme=dark`. Lleva `@api.private` (si no, `TestSuperficieRpc` lo cuenta como método público
+    nuevo). El interruptor (`js/modo_oscuro.js`, en `user_menuitems`) pone la galleta y recarga: el servidor entrega
+    otra hoja, no se cambia en caliente. Las gráficas de Odoo leen la misma galleta.
+  - **Todo lo oscuro vive en `dcasa_interfaz/static/src/oscuro/`** (también lo de Conversaciones, Brian, Sofía…), fuera
+    del alcance de los comodines `static/src/scss/*.scss` de los manifiestos: así la hoja clara no cambia ni un byte
+    (comprobado comparando el CSS compilado). Se nombra solo en `web.assets_web_dark` y en
+    `web.assets_backend_lazy_dark` (sin esta, las gráficas y las tablas dinámicas salen claras).
+  - **Orden de la paleta:** `primary_variables.dark.scss` va DESPUÉS de la de `dcasa_base` (para pisarla) y ANTES de
+    la de Odoo (que es `!default`). `bs_functions.dark.scss` invierte `tint-color`/`shade-color` de Bootstrap (sin
+    eso los avisos salen pastel). El velo y las sombras de las ventanas llevan negro de verdad (con la paleta
+    invertida quedaban lechosos).
+  - **La trampa de `--dc-blanco` y del azul:** en claro `--dc-blanco` es fondo Y letra sobre azul, y los `--dc-azul-*`
+    son tinta Y relleno. En oscuro los azules quedan como tinta (celeste) y cada relleno propio pasa, por selector, a
+    `--dc-relleno` (#3A63CF) con `--dc-en-relleno` (blanco); las cabezas marino, a `--dc-cabeza`. **Regla: una pieza
+    nueva con relleno azul (o amarillo grande) lleva su renglón en `oscuro/`.** `test_los_rellenos_propios_se_leen_de_noche`
+    falla si falta y dice dónde ponerlo. Lo que solo usa los `--dc-*` de superficie, línea y tinta sale bien solo (el
+    armazón del Inicio, el menú del celular, la caja del chat y «Más datos» no necesitaron nada).
+  - **Control de contraste para repetirlo:** `oscuro_d/contraste.cjs` del borrador de la sesión (copia mejorada del
+    de la auditoría): recorre las pantallas en claro y en oscuro y resta. Engaño conocido: a un botón deshabilitado le
+    aplica la opacidad solo a la letra y da menos contraste del real.
+- **El celular al entrar y al navegar (2026-11-11), cómo funciona por dentro:**
+  - **Una acción de cliente que espera datos en `onWillStart` deja la pantalla en blanco mientras tanto.** Odoo no
+    monta nada hasta que esa promesa se cumple: se ve la barra de arriba y el área de trabajo vacía. En una pantalla de
+    entrada (el Inicio) eso parece «no abrió». Pintar primero un armazón y pedir los datos sin esperar
+    (`this.cargar()` en `setup`, plantilla con `t-if="!state.datos"`). El armazón del Inicio usa otra clase raíz
+    (`.o_dcasa_arranque`): `.o_dcasa_inicio` sigue queriendo decir «ya están las cifras» y de eso dependen las pruebas.
+  - **`.o_action_manager:empty::before`** sirve para avisar «Cargando…» mientras Odoo trae la primera pantalla: el nodo
+    de texto vacío que deja OWL no cuenta para `:empty`.
+  - **El menú del celular de Odoo** (`web.NavBar.AppsMenu.Sidebar`, solo por debajo de 768 px) tiene dos caras
+    (`state.isAllAppsMenuOpened`): las secciones de la app abierta y, con el botón «All Apps», la lista de apps. Con
+    una app sin secciones la primera cara sale vacía. D'CASA reemplaza lo de adentro del cajón por
+    `DcasaMenuCelular` (hereda de `DcasaBarraLateral`; se registra con `NavBar.components = {...}`) y conserva el
+    armazón de Odoo (deslizar, fondo que cierra, la «X»). Entre 768 y 991 px sigue el menú de Odoo de íconos arriba; la
+    barra lateral propia empieza en 992 px.
+  - **«Atrás» dentro de una pantalla que cambia de vista sin cambiar de dirección:** poner un paso con
+    `history.pushState({...history.state, dcasaPaso: n}, "")` por cada cosa abierta y escuchar `popstate`. Odoo
+    (`web/core/browser/router.js`) también lo escucha y recarga la acción entera salvo que `router.skipLoad` esté
+    encendido; lo apaga solo después de cada `popstate`, así que hay que reponerlo mientras queden pasos propios (y
+    apagarlo al desmontar). Si lo de arriba se cierra con su botón en pantalla, quitar su paso con `history.go(-n)`
+    (ese `popstate` es propio: no cierra nada más). Ver `dcasa_conversaciones/static/src/js/atras.js`.
+  - **En las pruebas de navegador, un rechazo de promesa sin atrapar hace fallar la prueba aunque Odoo lo «maneje»**
+    (el aviso de «se perdió la conexión» llega tarde para Chrome). Por eso el Inicio atrapa él mismo
+    `ConnectionLostError` y solo deja seguir las fallas del servidor.
+  - **Para simular en una prueba que el servidor tarda o no contesta:** envolver `XMLHttpRequest.prototype.open/send`
+    en la página y retener (o despachar `error` en) el pedido que interesa; `rpc` de Odoo usa `XMLHttpRequest`.
+- **Auditoría visual del panel (2026-11-11), lo aprendido de la interfaz:**
+  - **Fechas de solo números: nunca con el formato de «es-PA».** `Intl.DateTimeFormat("es-PA", {day: "2-digit",
+    month: "2-digit", …})` y `toLocaleDateString("es-PA", …)` dan **mes/día/año** («11/04/26» para el 4 de noviembre),
+    mientras Odoo y el resto del panel escriben día/mes. Estaba en la lista de Conversaciones y en las conversaciones
+    anteriores de Brian (auditoría del 2026-11-11). Las fechas cortas se arman a mano (día/mes/año) o con mes en
+    letras («4 nov», que sí sale bien). `test_panel_interfaz.py` recorre el JS de todos los módulos y falla si alguno
+    vuelve a combinar «es-PA» con `month: "2-digit"` o `"numeric"`. Los `<input type="date">` nativos siguen el idioma
+    del navegador y no se pueden forzar.
+  - **La lista de páginas del sitio (Sitio web › Páginas) no abre sin el grupo de editor.** En Odoo 19 pide los ids con
+    `website.get_website_page_ids` (exige `website.group_website_restricted_editor`) y lee campos de `ir.ui.view`. Darle
+    a Gerencia el ACL de `website.page` no alcanza: sale «Acceso denegado». Mientras la dueña no decida darle lectura
+    de plantillas, el menú va con los del constructor (oculto).
+  - **El buscador de Odoo (Ctrl K) abre en «comandos», no en pantallas.** Para que escribir «facturas» encuentre la
+    pantalla hay que abrirlo con `command.openMainPalette({ searchValue: "/" })`. El atajo de teclado Ctrl+K sigue
+    siendo el de Odoo (modo comandos).
+  - **Botones propios sin `.btn`: poner `border: 0`.** Bootstrap no le quita el marco a un `<button>` pelado: los
+    periodos del Inicio salían con el marco gris del navegador.
+  - **Barra de estado de los formularios en el celular:** Odoo deja un botón y un desplegable de tres puntos
+    (`.o_statusbar_buttons`, con `flex-wrap`) y el estado a la derecha (`.o_field_statusbar`), que se encoge aunque su
+    botón no: se montaba sobre el botón de al lado. Arreglo en `global.scss`: la barra envuelve, los botones no.
+  - **El `<body>` de D'CASA es una rejilla y eso rompía una medida de Odoo.** `computeOptimalDateWidths`
+    (`web/views/list/column_width_hook.js`) cuelga del `<body>` un bloque invisible con fechas de muestra y mide sus
+    `span`. En la rejilla (barra lateral + contenido) el bloque caía en la columna de la barra angosta (68 px), el
+    texto se partía en renglones y medía ~58 px: todas las columnas de fecha con hora quedaban en 75 px («11 nov,…»),
+    en cualquier ancho de pantalla, con la barra en modo automático. Regla: lo que no es hijo conocido de la rejilla
+    ocupa `grid-column: 1 / -1`. Si algo más se mide colgándolo del `<body>`, ya queda cubierto.
+  - **Las listas usan sus propios campos de fecha: `list.date` y `list.datetime`** (`list_datetime_field.js`), no
+    `date`/`datetime`. `getFieldFromRegistry` busca primero `<vista>.<widget o tipo>`. Registrar una copia de
+    `datetime` con otro `listViewWidth` no cambia nada en las listas.
+  - **`listViewWidth` puede devolver `[mínimo, máximo]`.** Odoo fija las fechas en el peor caso (año y segundos: 202 px
+    de contenido). Con `[lo que mide una fecha de este año, el de Odoo]` la columna se encoge cuando la tabla va justa
+    y crece cuando sobra. Ojo con el reparto de Odoo: cuando falta ancho quita **los mismos píxeles a cada columna
+    encogible** (no en proporción), así que una etiqueta corta («Vendedora») se corta igual que un nombre largo. A una
+    columna de etiqueta se le fija el ancho con `width="92px"` en la vista (mínimo = máximo).
+  - **Ancho mínimo por columna solo en el celular:** se hereda `ListRenderer.getActiveColumns` y, con
+    `this.env.isSmall && !this.isX2Many`, se devuelve una **copia** de cada columna de texto con
+    `field: {...field, listViewWidth: [170]}`. La copia se guarda en un `WeakMap` (si cambiara en cada dibujado, Odoo
+    volvería a pintar todas las celdas).
+  - **No forzar `table-layout: auto !important` en las listas:** pelea con el `ResizeObserver` del mismo gancho y la
+    página se queda colgada (la captura no terminó en 30 s).
+  - **El aviso de lista vacía (`ActionHelper`) no sabe si la vista tiene «Nuevo».** Se lo dice el renderizador con
+    `useSubEnv({ dcasaPuedeCrear })` (`props.activeActions.create` en la lista, `props.archInfo.activeActions.create`
+    en las tarjetas). Y la lista solo lo muestra si la acción trae `help`: se hereda `showNoContentHelper` para la
+    lista principal (`!this.isX2Many`).
+  - **`.o_view_nocontent` es absoluto y cubre todo `.o_content`.** Si la vista trae algo arriba dentro del contenido
+    (el tablero de Compras), el aviso se le monta encima en el celular: ahí se vuelve un renglón (`position: static`).
+  - **Dónde baja el scroll en Odoo 19** (para dejar un hueco al final): formulario, `main.o_content` (y dentro,
+    `.o_form_renderer` en columna; con la Actividad al lado pasa a fila); lista, `.o_list_renderer` (solo la cabecera
+    es fija, el pie no); tarjetas, `main.o_content`.
+  - **Una prueba de «al fondo» en las tarjetas debe bajar dos veces:** las fotos llegan tarde y alargan la pantalla.
+  - **En el celular los botones de 44 px de Conversaciones son a propósito** y el botón de copiar de las listas
+    también: no «arreglarlos» sin preguntar.
+
+- **Un límite «entre todas las IP» de una ruta pública con llave se cuenta DESPUÉS de validar la llave** (revisión de
+  seguridad del enlace para choferes, 2026-11-09): contado antes, cualquiera sin el enlace se lo gasta con 404 y deja
+  sin servicio a quien sí lo tiene. Y con `workers = 0` (un solo proceso) una búsqueda cara se protege con un
+  `BoundedSemaphore` sin espera: el que sobra recibe 429 al instante, en vez de frenar todo Odoo.
+- **Camila (2026-11-06, `dcasa_camila`), lo aprendido:**
+  - **Una casilla con `readonly="<el mismo campo>"` no se guarda nunca.** Al marcarla, el modificador se cumple al
+    instante y el formulario deja fuera del guardado los campos de solo lectura: el botón de la nube no se enciende, el
+    `web_save` no lleva el campo y la casilla vuelve a quedar sin marcar. El `readonly` tiene que depender de lo
+    guardado (un campo calculado aparte, p. ej. `dcasa_promos_estado != 'sin'`). La casilla de Meta
+    (`dcasa_meta_eventos`) usa ese patrón: revisar.
+  - **Un booleano calculado con inverso no comparte el método de cálculo con otro campo** que el inverso lee: leer el
+    otro dentro del inverso vuelve a calcular los dos y borra lo que la persona marcó. La prueba con el ORM pasaba
+    porque el otro ya estaba en memoria; con `self.env.invalidate_all()` antes del `write` (como el formulario) falla.
+  - En el navegador, `.o_form_button_save` existe siempre (oculto con `visibility: hidden`, así que `offsetParent` no
+    sirve): para saber si hay un cambio sin guardar, mirar que `.o_form_status_indicator_buttons` no tenga `invisible`.
+  - Una `<iframe srcdoc>` con `sandbox="allow-same-origin …"` (sin `allow-scripts`) deja medir su alto desde la
+    pantalla y no corre nada del correo: así la vista previa crece entera y la pantalla baja con su propio scroll.
+  - `lxml.html.cssselect` necesita el paquete `cssselect`, que no está en las dependencias: en las pruebas, `xpath`.
+  - La base de pruebas trae el catálogo con existencias y fotos: una prueba que escoge productos «elegibles» tiene que
+    despublicar los demás en su `setUpClass`.
+  - Otros agentes usan los puertos 8191 y 8192 en esta máquina: mirar `ps` antes de levantar Odoo (`--http-port`).
+  - **Revisión adversarial del mismo día (12 hallazgos):** un consentimiento o una baja **se mira por correo, no ficha
+    por ficha** (la misma persona tiene fichas repetidas, archivadas o como contacto hijo); un enlace firmado del pie
+    va solo si el destinatario único ES la ficha firmada (si no, quien recibe el correo da el «sí» de otro); un
+    permiso guarda **el correo** al que se dio; con Resend, sacar y dar de baja **por el id** del contacto (por el
+    correo, otra grafía da 404 y se traga); antes de mandar un *broadcast*, volver a listar el segmento; una revisión
+    de texto tiene que quitar (no volver espacio) los caracteres invisibles y rechazar letras de otro alfabeto; un
+    token de URL se valida con una expresión ASCII antes de `int()` o `compare_digest` (si no, 500).
+  - La herramienta Edit escribe `​` como el carácter invisible (no como la secuencia): para dejar escapes en una
+    prueba, un script de Python en el scratchpad que reemplace `chr(…)`.
+  - **Etapa 2 (mismo día), lo aprendido:**
+    - `crm.lead.dcasa_temperatura` guarda `'1'`, `'2'`, `'3'` (frío, tibio, caliente: `crm_reglas.FRIO/TIBIO/CALIENTE`),
+      no `'tibio'`/`'caliente'`. Usar las constantes: con el texto, el filtro no encuentra a nadie y un `create` con ese
+      valor da «Wrong value».
+    - En Odoo 19 la línea de venta usa `tax_ids` (no `tax_id`). `JUAN_ODOO_TOKEN` en las pruebas necesita 32
+      caracteres o más (si no, `/dcasa/juan/v1/*` contesta 503 «Juan no está configurado»).
+    - **OWL borra el texto que es solo espacio entre dos nodos con salto de línea**: `a <strong t-esc="n"/>⏎<t>clientes</t>`
+      sale «5clientes». Poner el espacio dentro del `t-esc` (`' clientes.'`).
+    - **El diálogo de Odoo en el celular va a pantalla completa y no tiene `.btn-close`** (cierra con
+      `.oi-arrow-left`), y su `aria-label` se traduce («Cerrar»): en las pruebas, `.btn-close, .oi-arrow-left`.
+    - En una prueba de navegador, esperar `.o_camila_guardar.disabled` justo después de tocar «Guardar» se cumple al
+      instante (el botón se apaga mientras guarda): esperar a que el siguiente botón (Previsualizar) se encienda.
+    - Volver a cargar la pantalla para deshacer una casilla que el servidor rechazó **borra el aviso del motivo y lo
+      que la persona escribió sin guardar**: devolver la casilla a su estado en el mismo evento (`ev.target.checked`).
+    - `_dcasa_nombre_cliente` cambia «ZZCM SILLÓN» por «Zzcm Sillón»: comparar sin mayúsculas en el navegador.
+    - Para capturas, `scrollIntoView` mueve también los contenedores con `overflow: hidden` de Odoo (la barra de arriba
+      desaparece y queda una franja gris): bajar solo el contenedor con scroll de la pantalla (`scrollTop`). Para ver
+      «Camila está escribiendo…», un servidor de capturas que arranca con la IA de prueba lenta (`time.sleep`) y su
+      guion fijado antes de `server.start` (mismo proceso); `page.route` con `sleep` del API síncrono no sirve.
+    - El PostgreSQL de esta máquina puede quedar apagado tras un reinicio del contenedor: `service postgresql start`.
+  - **Revisión adversarial de la etapa 2 (mismo día), lo aprendido:**
+    - **`pg_try_advisory_xact_lock` se suelta con el primer COMMIT** (`transaccion.confirmar` a mitad de la petición):
+      no sirve de turno para algo que confirma por el camino. Y una búsqueda hecha en la misma transacción usa la
+      «foto» de REPEATABLE READ del comienzo: no ve a la otra campaña que confirmó después. Turno = candado de
+      **sesión** (`pg_try_advisory_lock`) + volver a mirar después del COMMIT.
+    - **Un candado de sesión que no se suelta queda pegado a la conexión del grupo de Odoo** (Odoo no hace
+      `DISCARD ALL` al devolverla): ninguna campaña podría volver a salir hasta que esa conexión se cierre. Soltarlo
+      SIEMPRE en un `finally` (y, si la transacción quedó con error, ROLLBACK y luego soltar). Una prueba que lo toma
+      con un cursor aparte tiene que hacer `pg_advisory_unlock_all()` antes de cerrarlo.
+    - Con un servicio externo que procesa en segundo plano (Resend), «contestó error» no es «no salió», y «canceled» no
+      es «nadie lo recibió»: el registro de a quién le salió se suelta solo si nunca se llamó a «send». Un 404 al
+      preguntar el estado es «ya no existe» (lo borraron allá), no un error que trabe todo.
+    - Un campo «de solo lectura» en la vista se escribe igual por RPC: si solo lo debe escribir el código, quitarlo en
+      `create`/`write` salvo una marca de contexto que sea un objeto de Python (lo que llega por RPC es JSON).
+  - **Etapa 1b (mismo día), lo aprendido:**
+    - Para preguntar algo «al confirmar» sin poder trabar la venta: devolver el cuadro DESPUÉS de `super()` (la venta
+      ya quedó hecha y se confirma con la petición) y solo con una marca en el `context` del botón de la vista
+      (`position="attributes"` sobre `(//header/button[@name='action_confirm'])[1]` y `[2]`). Lo que seguía (el cuadro
+      «Imprimir documentos» tras pagar) va guardado en el cuadro y se devuelve al contestar.
+    - En una prueba con una vendedora, la venta tiene que ser SUYA (`user_id`): con «cada vendedora ve solo lo suyo»,
+      `action_confirm` falla con «Estos registros están restringidos» (`dcasa_socios` hace `check_access('write')`).
+    - En el celular, los botones de la cabecera de un formulario (salvo el principal) van en el menú «⋮»
+      (`.o_statusbar_buttons .dropdown-toggle`): una prueba de navegador a 390 px tiene que abrirlo.
+    - La X de un cuadro de Odoo se esconde con `.modal-content:has(.mi_clase) .modal-header .btn-close` (y
+      `.oi-arrow-left` en el celular); `:has()` funciona en el Chromium de las pruebas.
+    - Para probar «en rojo» un módulo sin tocar el árbol: `git archive HEAD addons/<módulo> | tar -x -C <scratch>`, se
+      copian ahí solo las pruebas nuevas y esa carpeta va PRIMERO en `--addons-path` (Odoo toma el primer módulo que
+      encuentra).
+    - Una herramienta de Juan que agrega OTRO módulo (aquí `dcasa_camila`) rompe tres pruebas que no son del módulo:
+      el catálogo exacto de Juan en `dcasa_conversaciones` (`test_api` y `test_herramientas`: ahora restan
+      `DE_OTROS_MODULOS`), la respuesta exacta de `/mensaje` (resta `CLAVES_DE_OTROS_MODULOS`) y el contrato de
+      `dcasa_brian` (`test_contrato_para_modelos_pequenos`: la descripción de una herramienta, menos de 260 letras; el
+      detalle va en los parámetros y en el prompt). Solo se ven con los módulos instalados juntos: correr la lista
+      completa, no solo el módulo propio.
+    - Algo que se dispara «cuando una persona agrega un correo» (la activación automática de las novedades) se decide
+      por `self.env.uid` (interno y distinto de `SUPERUSER_ID`), no por `env.su`: el código de la vendedora suele
+      escribir con `sudo()` y el `uid` sigue siendo el de ella. Así quedan fuera solos los crones, los scripts, las
+      migraciones y los datos de los módulos (corren como `SUPERUSER_ID`), y también las pruebas que crean fichas con
+      `self.env` (que es `SUPERUSER_ID`): las pruebas viejas no cambian y las nuevas usan `with_user(vendedora)`.
+      Además: `import_file`, `install_mode`, `registry.ready` y una sola ficha por escritura.
+    - Una ficha de usuario nuevo se crea por `_inherits` dentro de `res.users.create`: para que no se active nada ahí,
+      `res.users.create` pone una marca en el contexto (`dcasa_promos_sin_auto`).
+    - La revisión adversarial encontró cinco puertas más (la carga del sistema anterior, fusionar, empleados,
+      proveedores, el chatter): algo automático sobre `res.partner` va **por invitación** (una marca que ponen solo los
+      caminos de una persona: `web_save` de la pantalla, Sofía, Juan), no con una lista de excepciones.
+    - `cr.savepoint()` hace `flush()` ANTES del SAVEPOINT: dentro de un `try/except` que traga errores, un conflicto o
+      una restricción de lo pendiente de QUIEN LLAMA (la venta, el pago) se disfraza de aviso propio y deja la
+      transacción abortada (la venta falla callada y Odoo no reintenta). `self.env.cr.flush()` antes del `try` (no
+      `env.flush_all()`: ese solo escribe los datos del ORM, y el `cr.flush()` del savepoint corre además los precommit
+      de quien llama, como el seguimiento; y un savepoint que falla hace `cr.clear()` y borra los precommit pendientes).
+    - Al CREAR desde la pantalla, el navegador manda todos los campos: un booleano calculado llega en `False` aunque
+      nadie lo tocara. Leerlo como «la persona lo desmarcó» solo cuando la pantalla lo iba a mostrar marcado.
+    - Un cron que vuelve a anotar un «sí» (Sofía, 30 días hacia atrás) no puede borrar un «no»: el «no» lo borra solo
+      un acto explícito y nunca uno más nuevo que el «sí».
+    - `odoo.tests.Form` guarda con `web_save` y corre los onchange de verdad: sirve para probar lo que pasa «desde la
+      pantalla» sin navegador.
+- **Calculadora de envíos (2026-11-06, `dcasa_envios`), lo aprendido:**
+  - Un `<input type="number" step="0.1">` dentro de un `<form>` **bloquea el envío** si el valor no es múltiplo del paso
+    (7.04): el navegador no llama al `submit` y no hay error visible. Lo atrapó la prueba en el navegador; ahora
+    `step="any"` (el servidor redondea).
+  - Un `fields.Float` guarda `0.0` cuando se le escribe `None` (no `NULL`): «sin medir» no se puede distinguir de «0 km».
+    Va un booleano aparte (`km_medido`); las coordenadas (0, 0) se leen como «sin coordenadas» (es el golfo de Guinea).
+  - Leer por SQL algo que el ORM acaba de escribir (p. ej. un `ir.config_parameter` con `set_param`) necesita
+    `flush_model()` antes: si no, se lee el valor viejo.
+  - `export_data` (el «Exportar» de las listas) exige `base.group_allow_export` (o administrador). **Desde la ronda del
+    2026-11-20 Gerencia lo trae**, pero solo baja `account.move`, `account.move.line`, `account.payment`, `sale.order` y
+    `sale.order.line`: el permiso de Odoo es global, así que el límite vive en `_export_rows`
+    (`dcasa_base/models/exportar.py`, `MODELOS_QUE_EXPORTA_GERENCIA`), que también corta las relaciones a `mail.*`,
+    `ir.*`, `hr.*`, `res.users`, `res.partner.bank`, etc. (por una factura se llegaría al mismo volcado). Un campo
+    calculado no guardado sí sale en la exportación. El xlsx del exportador escribe los textos como texto, nunca como
+    fórmula (`dcasa_base/excel_seguro.py`). La ruta `/json/1/…` del núcleo pide el mismo permiso y no pasa por el límite:
+    solo existe con `web.json.enabled` o datos de demostración (confirmar que no está puesto en producción).
+  - Portar fórmulas de JavaScript: `round()` de Python redondea los medios al par (`Math.round` hacia arriba),
+    `toFixed` mira el valor exacto, `toLocaleString('es-PA')` pone la coma de miles también en 4 cifras, `.length`
+    cuenta en UTF-16 (un emoji vale 2) y `sum()` de Python 3.12 compensa los decimales (el CI usa 3.12): sumar con un
+    bucle. La paridad se prueba corriendo el JavaScript real en node (`scripts/envios/paridad.mjs`).
+  - En JavaScript, `objeto[palabra]` lee el prototipo: el HTML de envíos se caía al buscar «constructor»
+    (`ABREV['constructor']` es una función). En Python, `dict.get` no tiene ese problema.
+  - `TEST_TAGS=/dcasa_interfaz:TestScroll` no corre nada: la clase es `TestInicioScroll` (un filtro que no calza no da
+    error, da cero pruebas). Revisar en el registro que las pruebas pedidas aparecen como «Starting …».
+- **Plantillas OWL: no hay `String()`, `Number()` ni otros globales de JavaScript** (`ctx.String is not a function`
+  rompe la pantalla entera). Un número en `t-att-value` ya sale como texto. Y **`<select t-model>` no marca la opción
+  al dibujar** (pone el valor antes de que existan las opciones): cada `<option>` lleva también `t-att-selected`, como
+  en Conversaciones. Las dos las atrapó la prueba en el navegador de «Guarda sus datos» (2026-11-05), no las de Python.
+- **Una plantilla de texto `` `…` `` dentro de `${…}` pierde sus espacios en producción** (pantalla de Sofía,
+  2026-11-06): el minificador de Odoo (`rjsmin`, el paquete sin `?debug=assets`) no entiende la plantilla de adentro y
+  la aprieta: `` `${a}${b ? ` (${b})` : ""}` `` sale «p. m.(la pidió…». Con `debug` se ve bien, por eso no se nota al
+  programar. Concatenar con `+` o armar la parte de adentro aparte. Se comprueba con
+  `python -c "from rjsmin import jsmin; print(jsmin(open('archivo.js').read()))"`. Quedan tres casos viejos en
+  Conversaciones (`reparto.js`, `resumen.js`, `catalogo.js`: «1 h30min»); se dejó como tarea aparte.
+- **Probar el scroll de verdad, no con `scrollTop`:** `scrollTop = N` mueve aunque la rueda y el dedo estén bloqueados.
+  La rueda: `Input.dispatchMouseEvent` (`type: 'mouseWheel'`). El dedo: `Input.dispatchTouchEvent` (`touchStart`, unos
+  20 `touchMove` subiendo y `touchEnd`) con `Emulation.setTouchEmulationEnabled`; `Input.synthesizeScrollGesture` NO
+  mueve nada en Chrome sin pantalla (2026-11-06). Con `overflow-y: hidden` los toques no bajan (la prueba distingue el
+  bug). Ver `dcasa_sofia/tests/test_sofia_pantalla.py`.
+- **Capturas de «cargando»:** `page.route` con `sleep` no sirve (ya anotado); demorar el XHR en la página con
+  `context.add_init_script` que envuelve `XMLHttpRequest.prototype.send` (el RPC de Odoo 19 usa XHR, no `fetch`).
+- **Que la pantalla no salte al resolver una tarjeta:** dejarla en su lugar con el mismo alto (medido con
+  `getBoundingClientRect` en el clic y puesto como variable CSS) diciendo lo que pasó, y cerrarla después con una
+  animación de alto (con `margin-bottom` negativo igual al `gap` de la lista, para que el último paso no salte).
+  `overflow-anchor: none` en las tarjetas evita que el navegador reacomode la vista por su cuenta.
+- **Leer datos de lo que escribe la gente (nombres, fechas, correos) da falsos positivos que no se ven en las pruebas
+  felices:** «Muy amable» o «Calle Principal» parecen un nombre; «entréguenmelo el 15/11», «cama 3/4» o «el cumpleaños
+  de mi mamá» parecen un cumpleaños; «te envié la cotización a tu correo, ¿la recibiste?» parece un pedido de datos.
+  Una revisión adversarial con frases reales de chat los encontró todos (Sofía, 2026-11-05). **Regla:** lo que se lee
+  de un chat se propone, nunca se guarda solo; la lectura suelta solo vale para la respuesta directa a un pedido; y
+  cada regla de lectura lleva pruebas de lo que NO debe leer.
+- **`enviar_respuesta` (y todo lo que llama a `dcasa.mensaje._enviar`) confirma la base A MITAD de la petición**
+  (`transaccion.confirmar` antes de llamar al Worker): suelta los candados `FOR UPDATE` y deja escrito lo de antes. Si
+  después algo choca, Odoo repite la petición entera y el cliente puede recibir el mensaje dos veces. Lo que marque
+  «ya se hizo» (Sofía: la propuesta aprobada) se escribe ANTES de enviar, con `flush_all()`, para que quede en la misma
+  confirmación (revisión adversarial, 2026-11-05). Las pruebas no lo ven: en pruebas no se confirma nada.
+- **Probar en el navegador algo que llama al Worker de Juan:** en `HttpCase` el servidor corre en el mismo proceso,
+  así que basta `patch.object(type(self.env['dcasa.juan.cliente']), 'sugerir', return_value=...)` (y `configurado`)
+  alrededor de `browser_js`. Para capturas en la base de prueba (sin Worker), Playwright `page.route` sobre
+  `/web/dataset/call_kw/dcasa.conversacion/sugerir_respuesta` (y decirle a la dueña que ese texto es de ejemplo).
+- **Lo que llega tarde se guarda donde se pidió, no donde se está mirando** (la varita, 2026-11-06): la caja escribía
+  el borrador en `almacen.borrador` (= la conversación a la vista) al volver la respuesta; si la vendedora cambiaba de
+  chat mientras Juan escribía, el borrador de una clienta caía en la caja de otra, y lo que ella tecleaba mientras
+  esperaba se pisaba. El estado de «Sugerir» vive en el almacén por conversación (`sugerencias[id]`, `borradorDe(id)`),
+  no en el componente. Pruebas en el navegador con un Worker de mentira que tarda (`self.rutas[...] = función`).
+- **La revisión de la marca: `quitarGraves` no quita fugas** (`analizarOracion` no mira `fuga`, y `analizar` se detiene en
+  la primera fuga sin buscar lo demás). En el bot da igual (una fuga se cambia por `TEXTO_FUGA`), pero en el borrador de
+  «Sugerir» la frase copiada del prompt pasaba entera con el aviso «Quité información interna». `revisarBorrador` ahora
+  quita las oraciones con fuga (`detectarFuga`) y revisa el resto.
+- **Pasar un texto de una pantalla a otra (Sofía → chat): nunca en `params` de la acción.** Odoo guarda la acción en la
+  pestaña y en la dirección: al recargar volvía a aparecer el mensaje ya enviado, y cualquiera podía armar un enlace con
+  un texto. Va por `sessionStorage`, se lee una vez y se borra, con vencimiento y solo para esa conversación.
+- **Botón arriba del tablero o de la lista sin JS:** `<header><button ... display="always"/></header>` dentro de
+  `<kanban>` (o en el `<header>` de la `<list>`); el método recibe un recordset vacío y devuelve una acción.
+- **El servidor de capturas corre los crons** (el CRM automático enfría los clientes inventados y Juan les programa
+  seguimientos): `servidor.sh` ahora va con `--max-cron-threads=0`, y los datos de prueba del CRM con `dcasa_auto_off`.
+  Y en Playwright, mover el puntero lejos del menú lateral antes de cada captura (si no, el menú queda abierto encima).
+- **Datos de otra ficha editables en un documento (2026-11-04, `dcasa_contactos/models/datos_del_cliente.py`):**
+  (1) un `related` con `readonly=False` reescribe la ficha **en cada guardado que lo incluye**, y el formulario manda
+  todos los campos no-readonly al crear el documento o al cambiar el many2one, aunque estén invisibles: con datos
+  viejos mal escritos ya no se guardaba ni una cotización nueva. (2) Con `compute` + `inverse`, **un solo método para
+  varios campos borra datos**: mientras Odoo corre el inverso, todos los campos de ese mismo cálculo quedan protegidos
+  y se leen vacíos (el inverso los «ve» cambiados a `False` y los escribe). Cada campo con su propio cálculo e inverso
+  (fábrica `metodos_del_dato`), y los booleanos que el inverso necesita, en otro cálculo. (3) `vat` de un contacto con
+  `parent_id` sube a la empresa (campo comercial). Lo encontró la revisión adversarial; las pruebas que crean con
+  `Form` y datos viejos malos lo cubren.
+- **Un `@api.onchange` sobrescrito sin el decorador deja de ser onchange** (Odoo los junta con `getmembers` buscando el
+  atributo `_onchange`): al sobrescribir uno, repetir `@api.onchange(...)` con los mismos campos.
+- **Cambiar de registro dentro de un `FormViewDialog`** (p. ej. «Crear y editar» → «Es esta persona»): desde un widget,
+  `record.model.load({resId, resIds})` y luego `model.root.update(cambios)`. Al guardar, el diálogo llama
+  `onRecordSaved(record)` con el registro cargado y el many2one queda con ese id (`relational_utils.js`,
+  `update([{...record.data, id: record.resId}])`); «Descartar» lo deja vacío.
+
+- **Valuación del inventario en Odoo 19:** ya no existe `stock.valuation.layer`. El valor oficial es
+  `product.product.total_value` (y `avg_cost`), calculado según el método de costo (estándar o promedio: unidades ×
+  `standard_price`; FIFO: lo que queda de cada entrada) y medido en
+  `products._with_valuation_context()` (ubicaciones propias que se valoran, sin mercancía de terceros). Lo usa
+  *Valor del inventario* (`dcasa_interfaz/models/inventario_valor.py`) (2026-11-02).
+- Marcar «Rastrear inventario» (`is_storable`) en un producto que ya tuvo movimientos corre `_reset_inventory`: crea
+  quants del historial y los aplica a cero **en el entorno del usuario**. Cualquier regla nuestra sobre
+  `stock.quant._apply_inventory` (motivo, Gerencia) le aplica: por eso `dcasa_existencias` le pasa su motivo
+  (2026-10-27, PR #65). Escribir «A la mano» en el mismo guardado es otro ajuste, humano, y sigue pidiendo motivo.
+- `invoice_payments_widget` / `_dcasa_pagos()` es caro (una consulta y varias lecturas por factura): nunca en un bucle
+  sobre muchas facturas; para «¿tiene cobro?» buscar `account.partial.reconcile` de todas las líneas por cobrar a la vez
+  (`dcasa_barras/models/bodega.py`, `_facturas_con_cobro`) (2026-10-23). Ojo: ni la nota de crédito ni el asiento
+  de diferencia de cambio (`exchange_move_id` de una conciliación) son cobro; el globito los marca `is_refund` e
+  `is_exchange`.
+- **`/web/dataset/call_kw/<modelo>/<método>` obedece al cuerpo** (`params.model` / `params.method`), no a la URL: lo que
+  decida por la ruta (el borde, una lista blanca) tiene que comprobar que el cuerpo pide lo mismo.
+- **Un precio puesto a mano en una línea de venta** se nota porque `technical_price_unit` (lo que calculó el sistema)
+  ya no es igual a `price_unit`. Lo que se muestre a partir de un valor guardado al armar la línea (un ahorro, un
+  «precio normal») solo vale mientras la línea siga al precio del sistema; si no, se muestra la línea tal cual
+  (combos, 2026-10-23).
+- `producto.with_context(...).display_name` dentro de un bucle calcula cada nombre por separado (con `website_sale` y
+  variantes, varias consultas cada uno): sacar el recordset con el contexto una vez y leerlos todos juntos.
+- Contar consultas en una prueba: `env.flush_all()` antes (si no, cuenta lo pendiente de guardar) y una vuelta de
+  calentamiento después de crear productos (crear productos limpia cachés de Odoo).
+
+- **La cámara del lector de códigos de Odoo puede salir en blanco en iOS** (Chrome en iPhone es WebKit): el video pide
+  el 100 % de una grilla que mide lo que mide el video (WebKit lo resuelve a cero de alto) y, fuera de `isIOS()`, el
+  recuadro usa un `::after` blanco con `mix-blend-mode`, que WebKit no mezcla con la cámara. Arreglo en
+  `dcasa_barras/static/src/scss/camara.scss`: video a su tamaño natural, fondo negro y recuadro con borde y sombra, sin
+  mezclas. Para probarlo, Playwright con WebKit o el agente de usuario de un iPhone (2026-10-19). **No bastó**: en el
+  iPhone pasó de blanco a negro, leyendo códigos igual. WebKit no pinta ese video aunque le llegan los cuadros (el
+  lector los saca con `drawImage`); `camara.js` los copia a un lienzo encima del video (Desplegar 23). Lección: si el
+  lector lee pero no se ve, el problema es de pintado, no de la cámara; y en esta máquina no hay WebKit (solo
+  Chromium), así que la prueba final es el iPhone de la dueña (lo confirmó el 2026-10-22: ya se ve).
+- **Una factura de cliente creada sin pedido no aparece como cotización abierta** y Caja no la encuentra para cobrar:
+  `account.move.create` rechaza una `out_invoice` sin `sale_line_ids` si quien la crea no cobra
+  (`_dcasa_puede_cobrar`), y «Nuevo» se esconde en Facturas con `get_view` (2026-10-19). Las pruebas o datos que crean
+  facturas sueltas tienen que hacerlo como alguien que cobra.
+- **Una prueba que cruza dos módulos solo corre en la unión** (`skipUnless` del otro módulo): la de los ids de Meta
+  (`TestContratoId`) falló la primera vez que corrió, en la unión, porque el otro paquete había agregado después un
+  interruptor apagado de fábrica. Al unir paquetes, mirar qué pruebas dejan de saltarse (2026-10-17).
+- **El píxel de Meta manda la dirección completa de la página** (y la anterior como «de dónde vino»): un enlace del
+  portal lleva `?access_token=`. Las páginas con datos de la persona no llevan píxel y, con el píxel encendido, llevan
+  `<meta name="referrer" content="origin">` (`dcasa_meta_eventos/models/website.py`, 2026-10-17).
+- **Algo que se evalúa en el layout de todas las páginas no puede lanzar**: si falla, cae todo el sitio. La compuerta
+  de la política de privacidad de Meta renderiza una plantilla; si no se puede, responde «no está lista» (2026-10-17).
+- **Al fusionar fichas, Contactos copia campo por campo** los datos `dcasa_*` con `copy=False`: un registro de varios
+  campos que deben ir juntos (fecha, dónde y quién) se saca de esa lista y se pasa entero (`partner_merge.py` de Meta).
+- Los *bundles* de assets no se vuelven a armar con el servidor andando: tras cambiar SCSS o JS, reiniciar Odoo antes
+  de mirar o capturar (2026-10-17).
+- **Unir dos ramas que no se veían** (tanda 2, 2026-10-18): una rama cuya base es de la historia vieja (antes del
+  *squash* a `main`) se trae con `git cherry-pick` de sus commits, no con `merge`. Y después de unir, revisar lo que
+  cruza: las notas de crédito, que ahora hace solo Gerencia, llevan a Gerencia como «Vendedor» (Odoo pone a quien la
+  hace si la ficha del cliente no dice otra, `_compute_invoice_default_sale_person`). Todo lo que reparte ventas por
+  vendedora mira el pedido y, en una nota, su factura (la que revierte o la conciliada), nunca el «Vendedor» de la nota
+  (`ventas_bases._duenas`).
+- **Al revertir una factura** (`_reverse_moves`), Odoo no copia el «Vendedor» (`invoice_user_id` es `copy=False`): la nota
+  de crédito queda a nombre de quien la hace (Gerencia). Para saber de quién es una nota, mirar la factura que revierte
+  (`reversed_entry_id`). `_reverse_moves(valores)` deja la nota en borrador y **sin conciliar**; con `cancel=True` la
+  publica y la concilia (la factura queda `reversed`). Las líneas de la nota sí copian `sale_line_ids` (2026-10-17).
+- **Una factura sin «Vendedor» elegido** toma el vendedor del cliente o, si no tiene, a quien la crea
+  (`_compute_invoice_default_sale_person`): lo cargado por un script queda a nombre de quien lo corre (OdooBot en un
+  `odoo-bin shell`). Por eso el Inicio manda las facturas del sistema anterior (`dcasa_historica`) a «Sin vendedora».
+- **«Ventas» de Contabilidad = apuntes de cuentas de tipo `income`**, por su fecha contable (`date`). Las facturas lo igualan
+  con `amount_untaxed_signed` solo si todas sus líneas van a ingresos y el ITBMS tiene su cuenta: en una prueba, un
+  impuesto sin cuenta deja el ITBMS en ingresos y Contabilidad «suma» el impuesto.
+
+- `notification_type` («Por correo» / «En Odoo») sale del grupo `mail.group_mail_notification_type_inbox` asignado **directo** al usuario (`group_ids`); un grupo implícito no lo cambia. Para cambiarlo se escribe `notification_type` (su inverso pone el grupo).
+- Campo, vista o dato nuevo sin `odoo -u` = `UndefinedColumn` y pantallas rotas: nunca dar por buena una versión sin
+  comprobar que la base se actualizó con **ese** código.
+- `-u` con código más viejo que la base borra columnas y tablas nuevas y sus datos: nunca desplegar una imagen vieja
+  sin restaurar antes la base.
+- Botones de cabecera de lista llaman con la lista de ids: un método `@api.model` falla (incidente 3).
+- Método público + `sudo()` = puerta abierta por RPC; todo método público nuevo va a la lista blanca de
+  `test_superficie_rpc.py` con su motivo.
+- SCSS `min(%, px)` rompe el bundle entero: usar `unquote()`.
+- `.o_action` tiene `overflow:hidden`: las pantallas propias necesitan la regla fuerte para hacer scroll. Volvió a pasar con Sofía (2026-11-05): ahora `dcasa_interfaz/tests/test_scroll.py` revisa TODA plantilla cuya raíz lleva `o_action` y falla si no tiene `.o_web_client > .o_action_manager > .<clase>.o_action { overflow-y: auto; > * { flex-shrink: 0; } }` (excepciones con su porqué: Conversaciones, Vista previa, Armar combo en diálogo). En el navegador, `scrollTop = N` funciona aunque la pantalla tenga `overflow: hidden` (lo bloqueado es la rueda y el dedo): la prueba mira `getComputedStyle(...).overflowY`.
+- wkhtmltopdf pide estilos a `web.base.url`: en el contenedor debe ser `127.0.0.1`.
+- PyPDF2 deja escapes octales al fusionar PDF: comparar con `textos()`.
+- Panamá es UTC−5: el día cambia a las 05:00 UTC; las pruebas con fecha se congelan.
+- El asistente de fusión copia datos mientras la ficha que se borra existe: la que queda también necesita la excepción
+  del candado; y si dos fichas se apuntan entre sí, Odoo borraba la que queda.
+- `read_group` está deprecado: usar `_read_group`.
+- Owl solo deja usar en las plantillas los globales `Math`, `Array`, `Object`, `Date`, `RegExp`, `console` y `window`:
+  `String(x)` en un `t-att-*` falla en el navegador. Hacerlo en un método del componente (2026-10-17).
+- Un archivo que hereda un modelo (`_inherit`) se importa después del que lo define: si `tablero.py` importa constantes
+  de `ventas_bases.py` (que hereda `dcasa.tablero`), el registro dice «Model 'dcasa.tablero' does not exist». Las
+  constantes van en el archivo que define el modelo (2026-10-17).
+- Para probar algo «hasta la misma hora», la hora de registro (`create_date`) se pone por SQL en la prueba (Odoo no deja
+  escribirla) y el reloj se pasa como argumento (`_comparar(..., ahora=...)`): nada depende de la hora real.
+- Enviar por Telegram hace `COMMIT` y destruye los savepoints.
+- `with cr.savepoint():` primero hace `cr.flush()`, que **corre** los `precommit` pendientes (seguimiento del chatter,
+  avisos del bus); si después se deshace, `cr.clear()` borra solo lo que se agregó adentro. No es una pérdida (una
+  revisión del 2026-10-17 lo creyó y su propia prueba lo desmintió); sí es que esos `precommit` corren antes del commit.
+  `savepoint(flush=False)` no corre nada pero tampoco limpia la caché: no usarlo para «que esto nunca falle».
+- `/mail/message/post` (chatter, también del portal) publica con `sudo()` y deja pasar el `context` del navegador: un
+  permiso que mire `env.su` ahí lo tiene cualquiera; se mira `env.uid`/`env.user`.
+- `limit_memory_soft` mide memoria virtual (VMS), no RSS: no dimensionarlo con el tamaño del contenedor.
+- Un `xpath` que busca por texto (`//h3[text()='…']`) falla con el sitio en `es_419` (el texto ya viene traducido) y
+  rompe la página: anclar por estructura (`//a[@href='/shop/print']/preceding-sibling::h3[1]`). En la prueba,
+  `_get_combined_arch()` devuelve un `Element`: compararlo con `etree.tostring(...)` (2026-10-17).
+- Un texto más largo en la barra de anuncios desbordó el celular en producción (426 px a 360/390) con CI #194 en verde;
+  la misma `TestMovilSinDesborde` falla en local con ese código. **(sin confirmar)** la diferencia es el entorno del
+  CI (fuentes); mientras tanto, todo cambio de texto en la cabecera se prueba en local a 360 y 390 antes de subir
+  (2026-10-17).
+- Sin el grupo «Editor y diseñador» del sitio (nadie lo tiene: el sitio se edita por código) **ninguna** pantalla de
+  Ajustes se guardaba («No tienes permiso para modificar registros "Sitio web"»): `group_gmc_feed` de website_sale es
+  campo de grupo (recibe valor de `default_get`) y related a `website_id.enabled_gmc_src`; ese valor por defecto entra
+  después del filtro de `res.config.settings.create()` y el ORM lo escribe en el sitio como el usuario aunque no cambie.
+  Arreglo en `website_dcasa/models/res_config_settings.py` (si no cambia no se escribe; no abre permisos). Las pruebas
+  de Ajustes como superusuario (`self.env['res.config.settings'].create({})`) no lo ven: probar como administrador sin
+  diseñador y por el camino del navegador (`website_dcasa/tests/ajustes_navegador.py`) (2026-10-17).
+- **Quitar una implicación de grupo en una base que ya existe**: borrar la línea `(4, ref(…))` del XML no la quita (el
+  `-u` solo agrega); hace falta `(3, ref(…))` o una migración. Y si esa implicación es un **interruptor de Ajustes**
+  (como «Cada vendedora ve solo sus documentos», 2026-10-17), el XML del rol **no la nombra nunca** (ni `(4)` ni `(3)`):
+  cada despliegue la volvería a poner o a quitar. Se quita una sola vez en la migración (`dcasa_base` 19.0.1.8.0).
+- `res.groups._remove_group(g)` (lo que usan los campos `group_*` de Ajustes) quita `g` de **todos** los grupos que el
+  grupo implica y que lo tengan directo: para mover la implicación de un solo rol, escribir `implied_ids` de ese rol
+  con `Command.unlink`/`Command.link`. Odoo 19 calcula los grupos implícitos al vuelo (`all_group_ids`): cambiar lo que
+  implica un rol cambia al instante lo que ve cada persona, sin tocar su ficha.
+- Las reglas de registro de grupo se suman con «o»: una sola `[(1, '=', 1)]` (las de Facturación) abre todo. Para
+  «solo lo suyo» hay que estrechar las de fábrica (`<function … write>`, son `noupdate`) y colgar las de «toda la
+  tienda» de otro grupo (`sales_team.group_sale_salesman_all_leads`).
+- Con «solo sus documentos», si la ficha del cliente dice «Vendedor: B», Odoo pone a B como dueña de la cotización o
+  factura que crea A y la creación **falla por permisos** (A no puede leer lo que acaba de crear): `dcasa_base` fija como
+  dueña a quien crea si solo ve lo suyo. Despachar la entrega del pedido de otra vendedora sí funciona (comprobado).
+- Las pruebas que crean pedidos o facturas como superusuario y luego los leen **como vendedora** fallan con «solo lo
+  suyo» (quedan a nombre del superusuario): crearlos con `user_id` / `invoice_user_id` de ella.
+- **Una rama unida con `main` se vuelve a probar entera, no se hereda el verde de antes de unir** (revisión del
+  2026-10-17): la suite de `permisos-vendedoras` estaba verde *antes* de unir `main`; después de la unión (celular y
+  correo obligatorios, `dcasa_contactos`) `TestSoloLoSuyo` y `TestInterruptorSoloLoSuyo` fallaban en `setUpClass` —
+  las pruebas principales de permisos no corrían— y otras tres de las dos ramas chocaban (clientes sin celular ni
+  correo; una vendedora cobrando o imprimiendo una factura que no era suya). Arreglo `7a89d89` (solo datos de prueba).
+- **Lo compartido que lee lo restringido** (revisión adversarial del 2026-10-17): una plantilla o un cálculo de algo que
+  ven todas (la entrega) que lee el pedido o la factura **sin `sudo`** revienta con «solo lo suyo» para la vendedora que
+  no es la dueña. Pasó con la nota de entrega fácil (`stock.picking._dcasa_facturas_para_entrega`): imprimir la nota del
+  pedido de otra daba error de permisos. Se lee con `sudo` **solo** lo que se imprime (como hace Odoo con
+  `o.sudo().sale_id.client_order_ref`). Probarlo siempre *como la otra vendedora*, no como superusuario.
+- **Una suma por SQL (`cr.execute`) no pasa por las reglas de registro**: «Ventas atribuidas» del Resumen de
+  Conversaciones le daba a la vendedora la suma de toda la tienda. Toda suma nueva por SQL de facturas o pedidos se
+  acota a mano con `res.users._dcasa_solo_lo_suyo()` (lo suyo y lo sin vendedora).
+- **Los pedidos de la web** (`website_sale`) se asignan al confirmarse (o al quedar el pago pendiente) con
+  `_compute_user_id` y `force_user_recomputation` al `website.salesperson_id` (en una base nueva, `base.user_admin`) o a
+  la vendedora de la ficha. Desde el 2026-10-17 `website_dcasa/models/pedido_web.py` los deja **sin vendedora** (salvo
+  la vendedora que confirma, o un «Vendedor» del sitio puesto a mano). Una prueba con `user_id: False` sin `website_id`
+  no imita la web: se crea con `website_id` y se confirma como superusuario o como la persona.
+- **«Solo Gerencia» o «solo Caja» no se puede hacer con reglas de registro** (se suman con «o», y Caja y la Vendedora
+  con el interruptor apagado comparten «todos los documentos»): va en Python, en el servidor, antes de `super()`
+  (`dcasa_base/models/cobros.py`). Odoo crea el `account.payment` y **después** revisa las reglas: para que el mensaje
+  claro salga antes que el «no tienes permiso» genérico, se mira el tipo en los `vals` (con los `default_` del contexto)
+  antes de crear. Y `account.move.write({'state': 'draft'})` por RPC pasa a borrador sin el botón: también se vigila.
+- **Odoo cruza solo** el pago en línea de un pedido con su factura al publicarla (`sale` `_post` →
+  `js_assign_outstanding_line`, como quien publica). Una regla que frene cruzar cobros tiene que dejar pasar ese caso
+  (`pago_en_linea_de_su_factura`: el pago es de una transacción de esa misma factura), o la vendedora no podría
+  facturar. Con «solo lo suyo» encendido la vendedora no ve ese pago y Odoo no lo cruza: la factura se publica por
+  cobrar y Caja le aplica el cobro desde la factura (comprobado en una base de prueba el 2026-10-17).
+- **`assertRaisesRegex` no deshace nada en las pruebas de Odoo** (es el de `unittest`); `self.assertRaises` sí abre un
+  savepoint. Si el error salta después de escribir (una revisión al final de un pago), con `assertRaisesRegex` lo escrito
+  se queda y la prueba ve un estado que en la vida real se deshizo: usar `assertRaises` y mirar el mensaje
+  (`negado(...)` en `test_reglas_gerencia.py`), y `invalidate_all()` antes de releer.
+- **Unir `main` cuando `main` trae en un *squash* lo que la rama ya había unido** da conflictos «add/add» en muchos
+  archivos: resolver con una fusión de tres vías cuya base sea la punta vieja que la rama unió
+  (`git merge-file` o `git merge-tree --merge-base=<punta vieja>`), y comparar el árbol resultante (2026-10-17).
+- **Los ganchos de conciliación** (`_reconcile_pre_hook` / `_reconcile_post_hook` de `account.move.line`) ven todos los
+  caminos que cruzan cobros (asistente, banco, saldo a favor, Brian): sirven para avisos que no deben frenar (el primer
+  abono menor a la mitad que entra por el banco). Un aviso en el gancho va en `savepoint` y nunca hace fallar el pago.
+- **Esconder un botón según quién mira** (2026-10-18): la caché de vistas de Odoo es la misma para todos los usuarios
+  (`_get_view_cache`), así que no se decide en el XML con Python: se usa un campo calculado con
+  `@api.depends_context('uid')` (`dcasa_es_gerencia`, `dcasa_puede_cobrar`, `account.payment.dcasa_puede_tocar`) en
+  `invisible`, `groups` en el botón o en la acción (`group_ids` saca la acción del menú «Acción»), o se cambia el arch
+  **después** de la caché en `get_view` (`account.payment`: `create="0"` para quien no cobra). En la prueba se mira como
+  el navegador: el nodo tiene que venir en `get_views` y ni él ni lo que lo contiene pueden estar invisibles con los
+  valores del registro vistos por ese usuario (`TestBotonesSoloAQuienPuede._se_ve`).
+- **Un cobro de Odoo 19 sin cuenta de cobros por depositar no deja asiento** (`payment_method_line_id.payment_account_id`
+  vacío): no queda como «Créditos pendientes» y el asistente «Pagar» no muestra la diferencia
+  (`show_payment_difference`). En una prueba que necesite eso, ponerle la cuenta al método del diario.
+  `invoice_has_outstanding` se calcula con las reglas de quien mira: con «solo lo suyo» encendido la vendedora no ve el
+  cobro de otro y le da `False`.
+
+- **WhatsApp Cloud da un id (`wamid`) por burbuja y por foto**, y Odoo guarda una respuesta de Juan como UN mensaje: para
+  las palomitas y las citas hace falta la tabla `dcasa.mensaje.parte` (un `wamid` por fila, único por conversación). Un
+  cliente puede citar o reaccionar a la burbuja 2 de 3 (2026-11-07).
+- **Las palomitas de Meta pueden llegar antes de que Odoo conozca el mensaje** (la de «enviado» llega en un segundo y la
+  respuesta del bot se registra por la cola del Durable Object): Odoo devuelve `desconocidos` y Juan los reenvía a los 5 y
+  10 s, dentro de `waitUntil`. Sin eso, el ✓ de las respuestas del bot se perdía casi siempre.
+- **WhatsApp Cloud no avisaba un envío a medias** (lanzaba un error común): el motor reintentaba todo y el cliente veía
+  dos veces la primera burbuja. El adaptador ahora lanza `EnvioParcialError` como Telegram (2026-11-07).
+- **Resend trae el conteo de aperturas y clics APAGADO por dominio** (2026-11-07: Camila decía 0 «Abrieron» y 0
+  «Tocaron» en todas las campañas). Se enciende por dominio (Domains › Configuration › Enable tracking metrics) y solo
+  vale con el subdominio de seguimiento (`links`) configurado y verificado (su CNAME en Cloudflare con la nube gris). Se
+  aplica al enviar: lo que ya salió sin conteo dirá 0 para siempre. No encenderlo en el dominio de las facturas: el
+  píxel y los enlaces cambiados irían también en las facturas. Camila tiene su propio remitente (`dcasa_camila.remitente`)
+  y avisa leyendo `GET /domains` (`docs/CAMILA.md` §1d).
+- **La sesión de Resend de `dcasa_correo` ignora el `From` de Odoo** (`mensaje_a_resend` usa siempre el remitente de
+  Ajustes): poner `email_from` en un `mail.mail` no cambia nada. Para que un correo concreto salga de otro remitente (la
+  prueba de Camila) se hereda `dcasa.correo._sesion` y se mira una marca del contexto que es **un objeto de Python**
+  (por RPC solo llegan textos y números: nadie la imita; prueba `test_la_marca_de_la_prueba_no_viaja_por_rpc`).
+- **Las pruebas de `dcasa_base` (como `TestSuperficieRpc`) no corren con `-u dcasa_camila`**: Odoo solo corre las
+  `post_install` de los módulos que actualiza, y actualizar `dcasa_base` arrastra a todos. Para revisar la lista blanca
+  de RPC en local sin eso: `odoo-bin shell` con `T.metodos_de_dcasa(env) - set(T.LISTA_BLANCA)` (debe dar vacío).
+- **Portada en carrusel (2026-11-16), lo aprendido:**
+  - Una *Interaction* de Odoo 19 aplica su `dynamicContent` **antes** de `start()`: una bandera que decide una clase
+    (`t-att-class`) se pone en `setup()`; si se pone en `start()`, la clase no aparece hasta el siguiente evento.
+  - El hero de siempre vive en un bloque editable (`oe_structure_dcasa_hero`): lo nuevo va en su propia plantilla con
+    `t-call`, y el bloque editable dentro de un `<t t-else>` propio (no con `t-else` en el `div`): una vista guardada
+    con el editor lo reemplaza por su id, y si la condición estuviera en el `div` se perdería y saldrían los dos heros
+    (prueba `test_con_el_editor_del_sitio_abierto_la_portada_abre`, con un usuario diseñador: recibe las marcas del editor
+    sin `enable_editor`).
+  - Algo que cambia la portada sin tocar una vista (el carrusel, el horario) va en `website.page._get_cache_key`: Odoo
+    guarda la portada de los visitantes hasta una hora.
+  - Sembrar datos «una sola vez» en una base que ya tiene el módulo: `<function>` en un archivo de datos **sin**
+    `noupdate` (los `noupdate` solo corren al instalar) y una marca en `ir.config_parameter`; así no pisa lo que Gerencia
+    cambie después. `dcasa_codigo_publico` solo se da al crear el producto (después no se cambia): en las pruebas, se
+    crean productos con el código.
+  - En las pruebas con `lxml`, `contains(@class, "o_dcasa_cine_cinta")` también encuentra `o_dcasa_cine_cintas`: para
+    una clase exacta, `contains(concat(" ", @class, " "), " clase ")`.
+  - Una foto con `height: 100%` dentro de una celda de *grid* estira la fila a su alto natural (una foto vertical
+    dejaba el hero de 1500 px y la etiqueta fuera de la pantalla): las diapositivas van con `position: absolute;
+    inset: 0` y el alto lo ponen el bloque o la pantalla. Una foto vertical o cuadrada no llena una pantalla ancha
+    sin cortar la cama o dejarla bajo el texto: en la computadora la foto llena su lado y el texto va en su bloque.
+  - Sobre una foto clara la píldora ahumada no se lee: el carrusel no lleva la clase `o_dcasa_hero` (la que la vuelve
+    ahumada) y la regla que la hace «nacer ahumada» excluye la portada con `:has(.o_dcasa_hero_vitrina)`.
+  - El contrato visual de Juan (`dcasa_conversaciones/tests/test_panel_visual.py`) es la clase `TestContratoVisualJuan`
+    (no `TestPanelVisual`). Su script de referencias reescribe las seis: se suben solo las que cambiaron de verdad. La
+    pantalla `.o_dcj_p.o_action` lleva a propósito una barra de desplazamiento fina que el `PREPARAR` de la prueba no
+    alcanza a esconder: a 390 px sale en Conexiones (en un teléfono real va encima del contenido).
+
+### Lo que enseñó la ronda del 19 al 20 de noviembre (facturas, ventas por día, portada, Tilopay, comisión web)
+
+Seis piezas en paralelo, cada una con su revisor independiente (las pruebas del revisor se copian al módulo y no se debilitan).
+Lo que quedó escrito para no repetirlo:
+
+- **Un permiso chico que Odoo agranda sin avisar.** Darle a Gerencia escritura sobre `website` (para los segundos del
+  carrusel) le abría, con poderes de superusuario, **toda acción de servidor del sitio que no tenga grupo** (p. ej. el correo de
+  carritos abandonados). Quien puede escribir en un modelo puede ejecutar a mano sus acciones sin grupo. Se resolvió con un
+  modelo propio (`dcasa.portada.ajustes`) y **ningún** permiso sobre `website`; una prueba corre todas las acciones del sitio.
+  Regla: antes de dar escritura sobre un modelo ajeno, listar sus `ir.actions.server` sin `groups_id`.
+- **En Odoo 19 `write()` ya no llama a `_write`.** Las guardas de integridad van en `write()` y `create()`; las llaves internas
+  (objetos privados que por RPC no se pueden mandar) son lo que distingue «lo hizo el flujo real» de «lo escribió alguien».
+- **`pg_advisory_xact_lock` no basta con REPEATABLE READ** (la transacción ya tiene su foto): para que dos propuestas o dos
+  liquidaciones no se pisen se escribe una **fila candado** (`dcasa.web.candado`); el segundo recibe un error de
+  serialización que Odoo repite por RPC. Probar con **dos transacciones reales**, no con dos llamadas seguidas.
+- **Cada llamada lenta a un tercero retiene una conexión de la base** (con `workers=0` y `db_maxconn=48`). Tilopay lento más
+  60 hilos llenaba el grupo y la tienda entera daba `PoolError` (71 de 80 sondeos fallaban). Arreglo: tope global de llamadas a
+  la vez (6 + 2 de reserva), las rutas web solo consultan lo reciente (3 h), freno por conexión y por IP. Siempre medir con un
+  Tilopay de mentira lento y un control (mismas peticiones sin llamar al tercero). Detalle: `docs/TILOPAY.md`.
+- **Un campo guardado con un nombre traducible se calcula con idioma fijo** (`DCASA_LANG`), no con el de quien dispara el
+  recálculo; y en el `onchange` un registro nuevo calcula desde `_origin`.
+- **Excel**: lo que escribió un cliente puede empezar con `=`: el xlsx escribe cadenas con `write_string`. Los libros propios
+  (Reponer) apagan `strings_to_formulas` y `strings_to_urls`.
+- **Odoo da por pagada una factura con un pago en borrador o rechazado** (`payment_state`); un campo calculado sobre pagos debe
+  mirar el estado del pago y decir «Sin pago registrado» cuando la factura figura pagada sin pagos detectados.
+- **«Cobro» tiene una sola definición** (`dcasa.tablero._dominio_de_cobros`, solo clientes: `partner_type = customer`); la
+  columna de facturas, «Ventas por día» y la «Caja de hoy» la reutilizan: si se cambia, se cambia ahí.
+- **Corte por fecha de pago, en hora de Panamá.** Una comisión (y el bono y el programa de vendedores) se corta por el día del
+  cobro en Panamá, no por la fecha de la factura ni por UTC; «Rige desde» es el inicio de ese día.
+- **Pruebas del revisor y de Chrome:** `action_done` de una actividad deja su propia nota (contar mensajes después); `t-att-x="null"`
+  de OWL pinta «null»; `\d` de Python acepta cifras no ASCII (usar `[0-9]`); un `ERROR` en el log de una prueba pone en rojo todo
+  `scripts/test.sh` aunque la aserción pase (silenciar con `mute_logger` el error esperado); bajo carga fallan por tiempo, sin
+  culpa del código, `TestOrdenarProductosEnElNavegador`, `TestNotaDeVoz` y las cuatro de `test_actividad`/`test_comparar`/
+  `test_cotizacion_celular`/`test_estadisticas` (repetidas solas pasan).
+- **El límite de uso de 5 horas mata a los ayudantes en pleno trabajo** (pasó dos veces). Cada árbol de trabajo guarda su avance en
+  un commit «WIP» cada pocos pasos y se une a la rama de trabajo, para que otra cuenta pueda seguir. Reanudar con `SendMessage`.
+- **Disco:** cada árbol de trabajo pesa ~1,1 GB (`fuentes/` y `up media/`) y cada base de pruebas ~250 MB. Quitar los árboles de
+  revisores terminados (guardando aparte sus pruebas sueltas) antes de lanzar la batería completa.
+
+### Lo que enseñó la cuarta revisión de la comisión web (2026-11-20)
+
+- **Una guarda de `create` que solo mira `vals` se salta con un `default_*` en el contexto.** Odoo aplica los defaults del
+  contexto DESPUÉS (`_add_missing_default_values` → `default_get`), y por RPC cualquiera manda `context={'default_<campo>': …}`.
+  Cada guarda de integridad que protege un campo (el origen de una venta online, el enlace factura-pedido
+  `sale_line_ids`/`invoice_lines`) necesita su `default_get` que lo descarte sin la llave interna. Se había hecho para las marcas
+  de origen en la 2ª revisión y se olvidó para el enlace en la 3ª: la 4ª lo encontró con Caja, Nómina y Gerencia fabricando una
+  comisión de 500.00. Al cerrar una puerta, buscar **todas** las puertas del mismo campo (`create`, `write`, `default_get`,
+  `copy(default=)`, `load`, comandos anidados) y probar cada una.
+- **Un formulario con `edit="0"` en Odoo 19 no muestra el botón «Guardar» de un registro nuevo** (el `FormStatusIndicator` solo
+  se pinta con `canEdit`) y los campos de uno ya guardado no se pueden escribir. La pantalla de versiones de la comisión quedó
+  sin cómo guardar ni cómo escribir el motivo para anular, y nadie lo vio porque la prueba de navegador nunca guardaba nada. La
+  solución es dejar el formulario editable y poner `readonly="id"` en los campos que no se editan. Toda prueba de pantalla que
+  diga «no se guarda solo» debe **guardar con el botón** en otra prueba y debe **caer sin el parche** (control que registra otra
+  vez la vista normal con `force: true`).
+- **Lo que el servidor recalcula no es «alguien tocó el carrito».** `_recompute_prices` de Odoo, «Actualizar precios» y el
+  cron de la campaña (`website_dcasa`, corre como OdooBot, un usuario interno) escriben `price_unit` y `discount` de carritos
+  de visitantes; con la llave `PRECIO_DEL_SISTEMA` (`dcasa_base.models.venta_online`) no cuentan. Quien teclea el precio, el
+  descuento o la lista de precios, sí. Todo proceso nuevo que reponga precios de carritos va con esa llave.
+- **Un `quantize` de `Decimal` con la precisión normal (28 dígitos) falla con 1e30:** `a_centavos` usa precisión amplia y toda
+  cifra que llega de afuera pasa antes por `calculo.numero_finito` (nan, inf, texto, enteros enormes) y por el límite del
+  libro (21,474,836.47).
+- **El «costo por línea» medido sin vaciar la caché engaña:** una guarda que lee `price_unit` adelanta el recálculo de Odoo,
+  no lo agrega. Medir siempre con `env.flush_all()` dentro de la medición y contra el mismo cambio sin el gancho.
+
+### Lo que enseñó la quinta revisión de la comisión web (2026-11-20)
+
+- **Odoo marca una sublista de x2many como no editable si el usuario no puede escribir el modelo hijo, aunque el padre sea
+  editable.** `ir.ui.view._postprocess_access_rights` pone `edit="False"` en el `<list>` cuando no tiene `edit` escrito y el
+  usuario no tiene `write` sobre el comodelo (`dcasa.web.reparto` tiene `write=0` a propósito: una versión guardada no se
+  edita). «Agregar una línea» abre entonces un diálogo con el campo del padre (`Reglas`) obligatorio y sin poder llenarlo. Si
+  el hijo solo se crea desde el padre (comandos `create` al guardar), la sublista lleva `edit="1"` (solo pantalla; el servidor
+  sigue negando todo por `write()`/`unlink()` y la ACL). **Toda prueba de pantalla debe recorrer el camino que enciende la
+  función de verdad** (guardar una versión con porcentaje y dos personas, con clics), no el camino vacío (una versión en
+  pausa): las rondas 3 y 4 solo guardaban una pausa y la primera versión con cobro era imposible desde la pantalla. Un tour de
+  Odoo 19 va en `static/tests/tours/*.js` con `'web.assets_tests': [...]` en el manifiesto y se corre con `HttpCase.start_tour`.
+  Control para que la prueba caiga sin el arreglo: una vista heredada que quita el atributo (`<attribute name="edit"/>`) y un
+  `browser_js` que comprueba que «Agregar una línea» abre un diálogo en vez de una fila.
+- **Un documento que dice «lo cubre el aviso de X» se verifica con una prueba que el aviso existe.** El límite de que lo
+  facturado de un pedido online se puede editar (precio, cantidad o un anticipo fijo mayor que el pedido) estaba escrito como
+  «cubierto por el aviso de Ventas del sitio» y ese aviso no existía para ese caso. Ahora es el campo `facturado_distinto`
+  (`venta.py::_facturado_distinto`): compara precio y descuento de la línea de la factura con los de su línea de pedido, la
+  cantidad facturada en firme (`qty_invoiced_posted`, que Odoo no guarda y ya trae las notas de crédito restadas) con lo
+  pedido o entregado, y los anticipos (`price_subtotal` de las líneas `is_downpayment`: la factura de anticipo es positiva y
+  la deducción en la final, negativa; las notas de crédito restan) con lo que vale el pedido. Es una señal, no un freno; si
+  Gerencia decide el freno, la comisión se calcula sobre el menor entre pedido y factura (`_componentes`).
+- **`float_round` desborda con 1.8e308 y `fields.Datetime.to_datetime`/`Date.to_date` dan `ValueError`/`TypeError` con lo que
+  no es fecha.** Todo valor que llega por RPC se valida antes de que Odoo lo convierta (`reglas._fecha_hora_cruda`,
+  `liquidacion._validar_fechas_crudas`, opciones de los `Selection` en `_validar_cifras_crudas`, el reparto en
+  `DcasaWebReparto.create`): mensaje claro y traducible, nunca un error de Python. Los extremos válidos (año 1, año 9999) se
+  aceptan y se aguantan (`date.min - 1 día` desbordaba al armar).
+- **`create` que usa un contexto interno como llave debe devolver los registros con el entorno de quien llamó**
+  (`versiones.with_env(self.env)`): si no, lo que devuelve arrastra la llave y deja pasar las guardas de lo creado.
+- **El puerto de pruebas se comparte:** dos sesiones usaron el 8652 a la vez (`Address already in use`). No matar lo ajeno:
+  esperar a que se libere (`while fuser 8652/tcp; do sleep 5; done`) o usar otro puerto.
+
+### Lo que enseñó Yappy directo (2026-11-20, `dcasa_pago_yappy`)
+
+- **`--test-tags /dcasa_pago_yappy` no corre NINGUNA prueba, y nadie se entera.** La expresión regular de Odoo toma una etiqueta
+  que termina en «?py» por la ruta de un archivo `.py` (el punto sin escapar). «0 pruebas, todo bien» es un error. Se usa la etiqueta
+  sin barra (`dcasa_pago_yappy` o `dcasa_pago_yappy:Clase`) y `scripts/test.sh` ya lo hace solo. Mirar siempre el conteo de pruebas.
+- **La tienda de Odoo 19 lista MÉTODOS de pago, no proveedores.** Dos proveedores con el mismo código de método dan una sola fila
+  (la del primer proveedor que la cubra). Y `website_dcasa` reactiva y enlaza al proveedor manual **cualquier** método con código
+  `yappy`. Por eso el directo tiene su propio código (`yappy_directo`, también llamado «Yappy») y retira al manual en
+  `_get_compatible_providers`; así la clienta nunca ve dos «Yappy».
+- **Ya existía un diario «Yappy» (`dcasa_base`, código `YAPPY`).** El proveedor nuevo lo reutiliza (se busca por código, luego por
+  nombre y banco, y solo si no hay se crea): un segundo diario partiría la conciliación en dos.
+- **`assertRaises` deshace el savepoint de lo que hizo la llamada:** lo que el código dejó escrito antes de levantar la excepción
+  desaparece en la prueba. En producción el controlador atrapa el `ValidationError` y hace `commit` (para que el estado quede); en
+  las pruebas, un ayudante (`iniciar_y_fallar`) usa `try/except`.
+- **Un aviso perdido es un pago perdido:** el bloqueo de la fila es de **espera** (`SELECT … FOR UPDATE`), nunca `SKIP LOCKED`; y la
+  orden de Yappy se guarda y se **confirma** (`commit`) antes de llamar a Yappy, para que un corte no deje un cobro sin dueño.
+- **`b64decode` de Python es permisivo** (acepta basura sin quejarse): la clave secreta se valida con una expresión regular antes de
+  decodificarla. Y el `orderId` del aviso no se recorta (`'S0008\n'` es otra orden, no la misma).
+- **Los registros de depuración de Odoo llevan los parámetros del SQL** (un celular, por ejemplo): las pruebas de «no hay datos en el
+  log» usan `assertLogs('odoo', level='INFO')`, no `DEBUG`.
+- **Una base de desarrollo con datos de pruebas a mano rompe pruebas que dependen de «lo que hay»**: «nace apagado» (el proveedor
+  quedó en prueba), el tope global de cobros por hora (había cobros viejos) y la tarea de «sin aviso» (cobros sin aviso de otra
+  sesión). Las cuentas de pruebas se hacen con una **base nueva** (`scripts/test.sh`), y las que cuentan cosas globales parten de lo
+  que ya hay (se corre la tarea una vez en `setUp`, se fija el tope en «lo que ya hay + 2»).
+- **Pruebas de Chrome:** esperar a `is-ready` del `<body>` y a las animaciones antes de medir (una caja que se abre con animación
+  mide 0 de alto un instante); el campo de Yappy se abre **después** de montar el botón. El `<btn-yappy>` de Yappy no se puede
+  correr en las pruebas (carga reCAPTCHA y Firebase): se simula con un elemento personalizado y las capturas lo dicen en la leyenda.
+- **Los guiones de capturas no se corren a la vez:** el de limpieza del uno cancela el pedido en vuelo del otro y la captura del
+  «pagado» salió «Cancelado». Uno por uno.
+- **El CSS `:has()` sirve para esconder la barra pegajosa de «Pagar» solo cuando Yappy está elegido** (su botón vive dentro de la
+  fila): sin eso queda una barra blanca vacía en el celular.
+- **Lo que Yappy no documentó (§8 de `docs/YAPPY.md`)** no se supone: vigencia del token, `Bearer`, `paymentDate` (segundos o
+  milisegundos), reintentos y código de respuesta del aviso, IPs de origen y el campo del código de error. El ejemplo de su
+  documentación trae un anfitrión de CDN que no responde (`bt-cdn.yappycloud.com`); los que sirven son `bt-cdn.yappy.cloud` y
+  `bt-cdn-uat.yappycloud.com`. `confirmationNumber` no va firmado; `E007` (orden ya registrada) no es un fallo.
+- **Dos cambios que tocan a todos:** el aviso de Yappy es un `GET` abierto (no hay cuerpo ni cabecera que firmar): el borde lo deja
+  pasar entero (`/payment/yappy/` en `NEVER_CACHE_PREFIXES`) y, si Odoo no está listo, contesta **503** (nunca 200) para que Yappy pueda
+  reintentar.
+
+### Lo que enseñó la segunda revisión de Yappy (RV6, 2026-11-20, `local/yappy-fix`)
+
+- **Registrar el cobro a mano Y recibir el aviso tardío cobra el mismo dinero dos veces**, y la actividad «sin aviso» seguía abierta
+  invitando a repetirlo. Ahora hay UNA instrucción para Caja (el botón «Confirmar que el dinero entró», que reutiliza el camino del
+  aviso: `_process` → `_apply_updates`) y un aviso `E` sobre un pedido que ya tiene dinero por otra vía (factura con pagos, otro cobro
+  en línea) o que está cancelado va a **revisión humana**: nunca crea un segundo cobro ni dice «Confirmamos tu pedido». Si se cambia la
+  política de Caja, se cambian a la vez la actividad, `docs/YAPPY.md` §3.4 y la Guía (decían tres cosas distintas).
+- **Un menú escondido no protege un dato.** La vendedora tiene permiso de leer `payment.transaction` (por `account.group_account_invoice`) y leía
+  por RPC el celular de Yappy de todas las clientas: la restricción va en el CAMPO (`groups=`), y también hay que revisar lo que se
+  copia en otros sitios (la nota «Qué compró» del chatter lo llevaba). Un campo con `groups` se escribe con `sudo` sin problema.
+- **`_post_process` de Odoo no es idempotente:** llamarlo dos veces sobre una transacción hecha vuelve a dejar el mensaje «el pago ha sido
+  registrado» (la tarea de Odoo solo toma las que tienen `is_post_processed=False`). En una prueba, una sola vez.
+- **Un tope «cuenta y escribe» no es estricto bajo `REPEATABLE READ`:** cada petición cuenta con la foto de antes de que las otras
+  escribieran. Se arregló «tocando» la fila del pedido (`UPDATE … SET write_date = write_date`) antes de contar: la que llega después
+  espera y recibe «no pude serializar», y Odoo repite la petición con una foto nueva. La prueba con conexiones de verdad es opt-in
+  (`DCASA_PRUEBA_CONCURRENCIA=1`).
+- **`limpiar` tapa como si fuera un token cualquier cadena de 32 letras, números y puntos** (un dominio de 34 caracteres salió «[…]» en el
+  registro, justo lo que había que ver): los dominios que se muestran usan `_dominio_para_el_registro`.
+- **Normalizar un dominio sin abrir la puerta:** la lista de «las 16 maneras» eran 8 y no cubría `http://`, las mayúsculas ni `:443`.
+  Ahora se normaliza lo que llega con una expresión regular **acotada** (`re.ASCII`: sin la «K» del signo Kelvin) y se compara en tiempo
+  constante; la batería hostil del revisor (813,375 candidatos) se corre con un juez escrito aparte y con `urllib`.
+- **Reflujar líneas largas con un guion de texto es peligroso:** rompió el JavaScript que vive dentro de cadenas de Python en una prueba.
+  Después de cualquier reflujo automático, mirar el diff y correr `ruff`.
+- **El borde en un árbol nuevo (`git worktree`) no trae `node_modules`:** se enlaza el del árbol principal (`ln -s …/edge/node_modules`);
+  `npm ci` en el árbol principal no hace falta repetirlo.
+- **Staging sin dominio propio:** `web.base.url` (`staging.tommalo.example`) no llega al Worker, así que lo que Odoo manda a un tercero
+  como dirección de retorno (el aviso de Yappy) no llega. `YAPPY_URL_BASE` (no secreta, solo staging, ignorada en producción) lo cubre.
+- **Chrome:** `Input.dispatchMouseEvent` mueve el ratón de verdad (sirve para medir `:hover` y `:active`); `beforeunload` se prueba
+  despachando el evento y mirando `defaultPrevented`. La prueba de 360 y 390 px de la fila (`test_en_el_celular_la_fila…`) es
+  intermitente en esta máquina con otras sesiones corriendo: repetirla sola antes de culpar al código.
+
+### Lo que enseñó la tercera revisión de Yappy (RV7, 2026-11-20, `local/rv7-arreglos`)
+
+- **Un permiso de fábrica de Odoo puede abrir una puerta que ningún menú muestra.** `account_payment` deja a Facturación (que la Vendedora
+  trae implícita) leer, escribir y crear `payment.transaction`; con un `write(state='done')` el cron confirmaba el pedido y creaba el
+  cobro sin dinero. La regla va en `dcasa_base/models/cobros.py` (siempre desplegado, y `payment` ya está debajo de `sale`): quien no
+  cobra no escribe estado, monto, entorno, proveedor, cobro, pedidos/facturas ligados ni `dcasa_*` (**ojo: esa primera versión era una lista
+  negra y no bastó; la cuarta revisión la volvió lista blanca vacía y cerró la otra mitad: ver «Lo que enseñó la cuarta revisión»**); **lo
+  del sistema pasa porque corre con `sudo`** (`env.su`). La prueba de que `sudo` no se rompe son los flujos HTTP del aviso (el usuario es el público, con `sudo`): la
+  mutación «la regla también mira a `sudo`» tumbó 34 pruebas de ellos de un golpe. Un método público nuevo en `dcasa_base` tiene que
+  entrar a `LISTA_BLANCA` de `test_superficie_rpc.py` (hasta un `write`).
+- **Hay una prueba de `dcasa_base` que busca `env['account.payment'].sudo()` en todo el código** y exige `out_invoice`/`out_refund` cerca
+  (`test_el_codigo_propio_no_se_cuela_por_sudo`). Un `sudo()` sobre pagos que solo cuenta dinero y nombra un cobro en una alerta es
+  legítimo, pero la prueba lee el texto: se dejó un comentario que dice, de verdad, por qué ese `sudo` solo mira pagos de cliente entrantes.
+- **«Reclamado» y «en pausa» no son lo mismo.** `_dcasa_apartado_reclamado` (dinero, factura, entrega) borra la fecha de vencimiento del
+  apartado y deja de vigilarlo; un cobro de Yappy abierto no es eso: solo hay que **saltar** el pedido esta noche. Gancho nuevo
+  `_dcasa_apartado_en_pausa` (`website_dcasa`). Antes, un solo cobro abierto a las 2 a. m. dejaba el pedido apartado para siempre.
+- **Nunca copiar a una actividad (ni a un campo que lee Caja) texto que mandó quien llama a una dirección abierta.** El aviso falso con
+  texto en `domain` dejaba hasta 100 caracteres del cliente en el pendiente de Caja. Ahora `_dcasa_yappy_anotar_rechazo` recibe el
+  **código** del motivo y guarda una frase fija (`motivo_para_caja`); el texto recibido queda solo en el registro del servidor. Y el
+  pendiente no afirma «Yappy sí avisó»: dice «no se pudo aceptar ningún aviso… Mira Yappy Comercial».
+- **Un botón de confirmación tiene que coincidir con lo que dice el pendiente.** Al exigir que Yappy haya recibido la orden (R7-6), el
+  pendiente de un borrador sin identificador de Yappy ya no puede mandar a pulsar un botón que se va a negar: tiene su propio texto.
+- **Un cobro suelto (un `account.payment` sin factura) no dice a qué pedido pertenece:** se cuenta por cliente, en el diario Yappy y
+  creado después de abrirse el cobro. Es una regla gruesa a propósito (falla hacia la revisión humana, nunca hacia un segundo cobro).
+- **`_post_process` sobre una transacción PENDIENTE no es inocuo:** manda la cotización (`action_quotation_sent`: el pedido pasa a
+  «enviado») y arma el correo. En una prueba de un proveedor genérico, no se llama sobre pendientes.
+- **Si una prueba escribe con el ORM y después cambia fechas con SQL (`envejecer`), hay que vaciar antes (`flush_recordset`):** si no, la
+  caché pisa la fecha vieja al vaciarse y el cron «no encuentra nada».
+- **`crear_usuario(…, 'base.group_portal')` de `dcasa_base/tests/test_roles.py` revienta** (suma `base.group_user` y choca con portal):
+  para un portal en las pruebas, `new_test_user(env, login=…, groups='base.group_portal')`.
+- **Máquina compartida:** instalar los 32 módulos en una base nueva, sin pruebas, tardó unos 4 minutos; después, `-u` de los módulos tocados con
+  `--test-tags` de clases sueltas son ~2 minutos. Las mutaciones se hacen sobre una **copia** de `addons/` (carpeta aparte en el
+  `--addons-path`), nunca en el árbol de trabajo.
+
+### Lo que enseñó la cuarta revisión de Yappy (RV8, 2026-11-20, `local/rv7-arreglos`)
+
+- **Una relación muchos-a-muchos tiene DOS lados y el permiso se revisa en cada uno.** R7-1 cerró `payment.transaction.write` (incluso con
+  `sale_order_ids` e `invoice_ids` en la lista), pero la misma tabla de relación se escribe desde `sale.order.transaction_ids`
+  (`groups='account.group_account_invoice'`, que la Vendedora trae) y `account.move.transaction_ids` (sin grupo): ligar un cobro ajeno a un
+  pedido hacía que Bodega viera «pagado» una entrega sin cobrar; ligarlo a una factura hacía que, al publicarla Caja, Odoo la diera por pagada
+  con el dinero de otro cliente; soltar el cobro propio escondía un pago. Regla: al cerrar un campo relacional, buscar el campo espejo en
+  el otro modelo (`grep -rn "relation='...'"`) y cerrarlo también, en `write` Y en `create`.
+- **Lista blanca, no lista negra.** Una lista negra de campos de dinero dejó abiertos `partner_id` (a quién se le acredita), `landing_route`
+  (el navegador de la clienta hace `window.location = landing_route`: un `javascript:` corría en su sesión), `state_message` y otros. Si
+  ningún flujo legítimo de quien no cobra escribe ahí (todo corre con `sudo`), se niega TODO y se acabó la lista. Se comprobó que ninguna
+  prueba legítima se rompe.
+- **El `create` de `account.move` SÍ necesitaba guardia (se corrige un error de la vuelta anterior).** En RV8 se escribió aquí que «crearla a mano con
+  el cobro de otro ya lo cierran dos reglas» y que «la mutación no distinguía el guardia (siempre caía otra antes)»: **solo se había probado con
+  `out_invoice`**. La regla «quien no cobra no hace facturas sueltas» mira solo `out_invoice`; con un recibo de venta (`out_receipt`) y el cobro ligado
+  la creación pasaba, y luego `write(move_type='out_invoice')` (sin guardia) lo volvía factura y, al publicarla Caja, Odoo conciliaba el cobro ajeno
+  con ella (RV8b, R9-2). Lección: **al decidir que una guarda es redundante, probar TODOS los valores del campo que la regla vecina filtra** (aquí
+  `move_type`: `out_invoice`, `out_receipt`, `out_refund`), no solo el caso a mano. El miedo de «romper `sale._create_invoices`» era infundado:
+  crea la factura con `sudo` (comentario del propio Odoo: la vendedora factura sin derechos de facturación) y `sudo` pasa la guarda; lo prueba la
+  prueba «la vendedora crea la factura de un pedido cobrado y sale con su cobro» y la mutación «la guarda también contra `sudo`» la tumba.
+- **Un `default_<campo>` del contexto no pasa por `vals`** (por RPC cualquiera manda el contexto; Odoo lo aplica al crear, después de mirar lo que llega
+  al `create`). Una guarda en `create` que mira `vals` se salta con `with_context(default_transaction_ids=[...])`. `enlace_factura.py` ya lo documentaba
+  para `sale_line_ids`; la guarda de `transaction_ids` del pedido no lo hizo (R9-1). Regla: **comprobar DESPUÉS de crear, mirando lo que el registro
+  trae**, no solo `vals`.
+- **Los métodos PÚBLICOS del core que corren con `sudo` después de mirar solo el ACL** (`payment.transaction.action_refund`, `action_capture`, `action_void`)
+  se saltan una regla de `write`/`create`: hay que sobrescribirlos y negarlos aparte (R9-3), y anotarlos en `LISTA_BLANCA` de `test_superficie_rpc`.
+- **`scripts/test.sh` y el CI cuentan como FALLA toda línea de registro con nivel ERROR o CRITICAL** (regex `^[0-9-]+ [0-9:,]+ [0-9]+ (ERROR|CRITICAL) `),
+  aunque Odoo diga «0 failed». Una prueba que provoca un error a propósito (un aviso rechazado, que el controlador escribe a nivel ERROR) debe
+  capturarlo con `assertLogs` (y comprobar el mensaje). Al terminar, correr los módulos con `odoo-bin` y contar esas líneas con la misma regex: tiene que dar 0.
+- **El CI usa Python 3.12 y esta máquina 3.11** (hay `/usr/bin/python3.12`): una prueba que dependa de QUÉ excepción lanza Python (`dict[:10]` da `TypeError` en 3.11
+  y `KeyError` en 3.12) pasa aquí y falla allá. Evitarlo.
+- **Caracteres invisibles en un archivo de prueba:** escribirlos tal cual, o con `\uXXXX` por una herramienta que decodifica las secuencias, deja caracteres de
+  formato REALES en el archivo (ruff los marca: PLE2502/PLE2515, y no se ven al revisar). Se arman con `chr(0x202E)`.
+- **TRAMPA de las pruebas de permisos: bajar la caché antes de cada intento del usuario sin permiso** (`env.flush_all();
+  env.invalidate_all()`). Con la caché «tibia» (el proveedor ya leído por otro usuario en la misma transacción de la prueba) el ORM no
+  vuelve a revisar el permiso del comodelo y un `create` prohibido PASA; en una petición real la caché está fría. Esto engañó incluso al
+  revisor (falso positivo en el shell) y es por lo que `payment.transaction.create` se negaba «por casualidad». **Matiz que se descubrió al
+  escribir la prueba:** `assertRaises(AccessError)` de Odoo (`tests/common.py`, `_assertRaises`) YA limpia la caché antes de entrar, así que
+  con él la trampa no aparece (y una prueba «con caché tibia» escrita con él no distingue nada: la mutación no caía); aparece con
+  `try/except` o con `assertRaises(UserError)`. Para probar el caso tibio hay que usar `try/except` y exigir el mensaje de la regla, no el
+  del core. Las pruebas de `test_transaccion_de_pago.py` llaman a `self.frio()` y la de `create` mide las dos cachés.
+- **Quien cobra tampoco crea transacciones por su cuenta en el core:** crear una `payment.transaction` lee `payment.provider` (solo
+  administrador). La regla nueva niega el `create` a quien no cobra y no le quita nada a Caja/contabilidad: ya no podían crear.
+- **Comparar el monto para decidir si un cobro suelto es «de este pedido» NO es seguro:** un anticipo de otro pedido y un cobro parcial de
+  este se ven igual, y «suelto ≥ total» dejaría pagar justo el caso que duplica dinero. Quedó como texto (el pendiente dice las dos salidas) y
+  nota en YAPPY.md §14. Arreglarlo de verdad exigiría que el cobro suelto diga a qué pedido pertenece.
+- **A la clienta no se le afirma lo que no se sabe:** «tu pedido ya figuraba como pagado» solo cuando hay una factura del pedido con pagos
+  u otro cobro en línea hecho; con solo un cobro suelto, «encontramos otro pago a tu nombre y el equipo lo revisa». `_dcasa_yappy_dinero_de_otra_via`
+  ahora devuelve `(frase, es_seguro)`.
+- **Todo texto que escribió la clienta y va dentro de una frase de instrucción para Caja** (el nombre, el celular, un valor personalizado de un
+  producto) se cita con `resumen.cita`: entre comillas, una sola línea, sin comillas propias, recortado a 60 caracteres. La nota del pedido
+  (`nota_de_pago`) sigue con el texto completo: ahí es información, no una orden pegada a la frase.
+- **Varias corridas de Odoo a la vez, con la máquina libre:** `createdb -T <base> <copia>` y copiar la carpeta del filestore
+  (`~/.local/share/Odoo/filestore/<base>`) deja una copia lista; cada mutación va en su propia copia de `addons/` y su propia base y puerto.
+
+### Lo que enseñó contrastar el informe de ChatGPT con el código y hacer el audio y el video (2026-11-20)
+
+- **Quién produce cada cifra del informe.** Las respuestas de Brian (el asistente del sistema, herramientas de solo lectura) alimentaron la auditoría.
+  «Último acceso» de una vendedora = `res.users.login_date` (`dcasa_brian/models/herramientas_usuarios.py`): mide el **inicio de sesión**, no que
+  trabaje; no prueba que no entre. El margen y la ganancia salen de `dcasa_base/models/utilidad.py` (`dcasa_utilidad`, **solo líneas con costo**) y de
+  `dcasa_interfaz/models/ventas_bases.py::_ganancia_de_filas`; el «costo de ventas en cero» del informe es otra cosa (la contabilidad), no se cruzan. Las
+  tasas de conversión (1.95 %, 1.05 %, 2.03 %) son atribuciones a 30 días y por periodos distintos (`dcasa_conversaciones/models/panel_calculos.py`):
+  no se comparan entre sí. Los pedidos de la web entran **sin vendedora** (`website_dcasa/models/pedido_web.py`, desde 2026-10-17) y las cotizaciones del
+  chatbot y de la web se cancelan solas a los 3 días (`cotizacion_dias_abierta`).
+- **«Cero oportunidades ganadas»:** el CRM automático (`dcasa.juan.ajustes.crm_automatico`, por defecto encendido) solo marca «ganada» si la oportunidad
+  tiene una cotización vinculada con factura **pagada** (`crm_lead.py::_dcasa_ganar_si_hay_pago`, cron cada 15 minutos). Si el interruptor está apagado o
+  las cotizaciones no están vinculadas a su oportunidad, da cero aunque se venda. **Hay que mirarlo en el sistema en vivo**, no se deduce del código.
+- **Mi primera lectura fue errónea** (presenté la diferencia de $129.99, el margen de 41.4 % y los «sin acceso» como fallas): se corrigió leyendo la
+  conversación y el código. Antes de decirle a la dueña que un número del informe está mal, rastrear de dónde sale en el código y en lo que contestó Brian.
+- **Audio y video para los jefes, sin pagar** (receta; los archivos y el guion llevan cifras de la empresa y **no** van al repositorio, que es público):
+  `piper-tts` en un `venv` (`pip install piper-tts num2words`), voz `es_MX-claude-high` (Hugging Face `rhasspy/piper-voices`; el proxy de la sesión deja
+  bajarla), 38 minutos de voz se generan en ≈ 5 minutos; una diapositiva por «beat» (voz + imagen), la duración de cada diapositiva = la de su audio; diapositivas
+  en HTML 1920×1080 con la marca (Anton y Oswald salen de `addons/website_dcasa/static/src/fonts/`, Inter es del sistema) capturadas con Playwright; `ffmpeg`
+  `concat` de imágenes + audio normalizado (`loudnorm`), `-tune stillimage -crf 28`: 38 minutos pesan ≈ 30 MB (mp3 a 64 kbps ≈ 18 MB). Trampas: los números
+  hay que decirlos en palabras y **con género** (`mil trescientas sesenta y una propuestas`, `veintiún mil`) y los nombres propios con su pronunciación
+  (`Brian`→«Brayan», `Odoo`→«Odú», `Yappy`→«Yapi», `ChatGPT`→«Chat Yi Pi Ti», `D'CASA`→«De Casa»); para revisar el diseño sin abrir 63 imágenes, planillas de
+  miniaturas con `ffmpeg … -t 9 -vf tile=3x3 -frames:v 1` (sin `-t`, ffmpeg se queja de «más de un archivo»). No se puede **escuchar** desde aquí: la dueña confirma
+  cómo suena.
+- **Voz profesional por la agencia (Calendario_Marketing):** `generar_locucion` suelta admite hasta 5,000 caracteres por llamada y la primera llamada solo
+  cotiza (1,118 caracteres con la voz Emma = US$0.25, ≈ US$7.30 para las 8 tandas del guion); **solo con el «sí» de la dueña** se repite con `confirmado=true`.
+  No está comprobado que el audio se pueda bajar al contenedor para meterlo en el video local; quedaría por la plataforma de la agencia.
+- **El contenedor «reiniciado» no siempre mata lo que corre de fondo:** tras el aviso de reinicio la batería de Odoo (un solo proceso) seguía viva y su `dropdb`
+  de relanzamiento falló con «being accessed by other users» (eso evitó borrar la base en uso). Antes de relanzar algo largo: `pgrep -fa odoo-bin` y mirar la hora
+  de la última línea del log. En cambio un `ffmpeg` largo lanzado en primer plano **sí** murió (código 137, archivo sin `moov`): lanzar lo largo con `nohup` a un
+  archivo temporal y renombrar al terminar.
+
+### Cloudflare
+
+- **Un secreto nuevo del panel del Worker `dcasa` no llega a Odoo hasta que el contenedor arranca otra vez**
+  (`edge/src/index.ts`: `envVars` se arma en el constructor y solo se usa al arrancar; producción no se duerme). Guardar
+  el secreto en el panel no basta, y Desplegar con la **misma** imagen tampoco: el contenedor queda «no changes». Hace
+  falta un despliegue con imagen nueva (2026-11-06, `RESEND_CAMPANAS_API_KEY` de Camila). Además, el nombre tiene que
+  estar en la lista blanca de `variablesDelContenedor` (`edge/src/handler.ts`).
+- «Network connection lost.» en `reenvio_fallido` = se cortó el enlace Worker → Durable Object (el evento «stateless»
+  no tiene par en `OdooContainer`); no implica que Odoo se cayó. Las lecturas se repiten en `reenviar` (2026-10-23).
+- Cloudflare puede arrancar la imagen nueva con las variables del arranque anterior (`APP_VERSION` atrasada).
+- `wrangler deploy` activa el Worker antes que la imagen: si la imagen falla, el Worker nuevo ya quedó.
+- La app de contenedores apareció 5 veces con la imagen anterior (incidente 5): comprobar la etiqueta activa.
+- Un 200 de la salud justo después del despliegue puede ser de la instancia vieja; un «sano» a segundos del corte es
+  sospechoso.
+- La portada sale de la copia del borde y no despierta a Odoo: la espera debe tocar `/web/login`.
+- En Containers, stderr es un socket: no reabrir `/dev/stderr` por ruta.
+- `CANONICAL_HOST` tiene que ser donde el sitio responde de verdad.
+- **Dominio propio del Worker (`routes` con `custom_domain: true`, 2026-10-26):** `routes` se **hereda** en los
+  entornos con nombre (staging necesita `"routes": []` o se lleva el dominio); con `routes` y sin `workers_dev`, wrangler
+  apaga workers.dev (poner `"workers_dev": true`); no se crea si el nombre ya tiene un A o CNAME (se borran justo antes);
+  el token necesita *Zone › Workers Routes › Edit* (el de GitHub, `dcasa-github-deploy`, está en *My Profile › API
+  Tokens*). Cloudflare crea solo el registro DNS y el certificado.
+- Las variables del panel se aplican al reiniciar; desplegar con `--keep-vars` para no borrarlas.
+- `DCASA_PIN_PEPPER` y `PGBACKREST_CIPHER_PASS` nunca se rotan; si la consulta de secretos falla, abortar.
+- Puerta del equipo en «1» dejó `/master` en «Not Found»: subir por pasos «0» → «avisar» → «1».
+- **`/master` de producción (incidente 4), revisado el 2026-10-18:** código, variables y nombres de los cuatro secretos
+  iguales en staging y producción (registros «Secretos a subir…» de Desplegar 18 y CI #196), y la ruta de producción es
+  `/master` (GitHub tapó «/master» con `***` en el título del commit del CI #132: el enmascarado de secretos sirve de
+  prueba sin leer el valor). Lo distinto solo puede ser la aplicación de Access de producción (dirección) o su AUD en
+  `production` (lo más probable: el de staging, o la app puesta en `tommalo.example` como decía SEGURIDAD_ACCESO §8.4). El
+  rechazo del borde era el mismo 404 en «0» y en «1». Desde `a7725a2` `/master` dice el motivo (código `audiencia`,
+  `sin token`…) y `/__edge/health` trae `puerta`. Guía: docs/PUERTA_MASTER.md.
+
+- **Durable Objects y el eco de Meta (issue #24, 2026-11-07):** mientras el objeto espera un `fetch` (la Send API de Meta),
+  atiende otras peticiones: el webhook con el **eco** de lo que se está mandando puede entrar antes de que la Send API
+  conteste o entre una burbuja y otra. Lo que el motor necesita para reconocerlo se escribe en SQLite **antes** de enviar
+  (`emitir` → `vuelo:*`), no después; lo de después (ids, mensajes) llega tarde para ese eco. Meta además devuelve el texto
+  sin la negrita de WhatsApp: se compara normalizado.
+- **SDK de IA 7 (`ai`): `result.response.messages` es SOLO el último paso**; los mensajes de todos los pasos (llamadas a
+  herramientas y resultados) están en `result.responseMessages`. Con el primero, la pasada de corrección no veía nada.
+- **Claude rechaza llamadas a herramientas en el historial si la petición no trae las herramientas**: la segunda pasada sin
+  herramientas (`sinTexto`) recibe lo consultado como texto (`consultasComoTexto`); la de corrección, con herramientas, recibe
+  la ronda tal cual (`rondasDeHerramientas`, sin el borrador rechazado). `test/motor/sdk-anthropic.test.ts` vigila cómo
+  queda la petición.
+
+### WhatsApp por QR (Baileys, `puente-wa/`)
+
+Lecciones de la caída del CRM de Tommalo (24-nov-2026, informe completo resumido en
+[JUAN_PUENTE.md](JUAN_PUENTE.md) § F). Este puente salió de ese CRM y **nunca se ha desplegado**; los arreglos quedaron
+hechos y probados con un WhatsApp de mentira (`test/carga.test.ts`), sin desplegar nada.
+
+- **La firma del bucle se ve en lo que escribe la sesión, sin abrir el contenedor**: si solo se escriben pre-keys de 5 en
+  5 (Baileys reponiendo llaves al conectar, `MIN_PREKEY_COUNT = 5`) y nada más, está dando vueltas; si se escriben
+  sesiones, identidades, LID o se BORRAN pre-keys (una clienta nueva cuyo mensaje se descifró), trabaja. El Durable
+  Object cuenta eso minuto a minuto (`wa_actividad`, solo cuentas) y es su medida de progreso y la de la alarma.
+- **En Baileys 7, `append` = lo que WhatsApp guardó mientras el socket estaba caído** (`node.attrs.offline`), no
+  historial (el historial va por `messaging-history.set`). Tirar todo `append` como «historial» dejaba sin respuesta a
+  quien escribía durante cualquier corte, aunque fuera de segundos. Ahora lo de ≤ 15 min se atiende y el resto se avisa.
+- **`syncFullHistory: false` no apaga el historial**: el `shouldSyncHistoryMessage` por defecto baja todo menos FULL
+  (RECENT incluido, lo pesado). Apagarlo TODO tampoco: Baileys avisa que se queda sin los mapas iniciales de LID. Se
+  dejan INITIAL_BOOTSTRAP, PUSH_NAME y NON_BLOCKING_DATA (`contenedor/lib/historial.mjs`).
+- **Las pre-keys solo crecen**: Baileys 7 marca como «subidas» las que genera ANTES de subirlas, y en un bucle cada
+  vuelta suma 5 que nadie usa (15.934 en el CRM; lo sano ≈ 800). Podar es seguro si se conservan las ~1.000 de
+  **número** más alto (no por fecha: las 812 del vínculo tienen la misma hora), con respaldo y sin tocar `creds`; si
+  alguna faltara, Baileys pide el reenvío con una pre-key nueva. Destrabó el CRM a los 8 min, pero el mecanismo exacto
+  no está demostrado: por eso la poda automática es semanal o de emergencia (`src/poda.ts`), no a cada rato.
+- **Baileys junta lo que llega al conectar** (`ev.buffer()` hasta el aviso `CB:ib,,offline` o 30 s) y lo entrega en un
+  solo evento de cientos de mensajes: se atiende en tandas cediendo el turno, para que el proceso siga contestando.
+- **`@cloudflare/containers` 0.3.7 no soporta `scheduling_policy: "durable_object"`** (no pasa `image`/`instance` a
+  `ctx.container.start()`); `default` está obsoleta desde noviembre de 2026 y la política es inmutable. Como el puente
+  nunca se desplegó, el cambio cuesta $0 si se hace antes del primer despliegue real (JUAN_PUENTE.md, apartado G).
+- **Con QR, lo que crece con el volumen es justo lo que lo tumba** (llaves, avalancha al volver, un solo proceso por
+  número, riesgo de bloqueo). Canal principal: la API oficial de Meta; el QR, de respaldo.
+
+### WhatsApp oficial (Meta)
+
+- **Una prueba con una cuenta que tiene papel en la app o en el portafolio NO prueba nada para los clientes**
+  (2026-11-12). Mientras la app no tenga acceso avanzado (revisión de la app + verificación del negocio), Meta solo manda
+  los avisos de Messenger e Instagram de quien tiene papel; el 9 y 10 nov se dio por «conectado» con cuentas de los
+  jefes y de la agencia, y a los clientes nunca les llegó nada (cero POST a `/webhooks/meta`). Probar SIEMPRE con una
+  cuenta sin ningún papel (ni en la app, ni en el portafolio de D'CASA, ni en el de la agencia).
+
+- **«No llegó» con el código 131042 («Business eligibility payment issue») = problema de PAGO de la cuenta de WhatsApp
+  Business en Meta, no del sistema ni de la IA** (2026-11-07 a 09: dos días de mensajes sin entregar sin que nadie se
+  enterara). Juan escribe bien y Meta no lo deja salir; algunos clientes sí reciben (probablemente los que entran por un
+  anuncio de «Enviar mensaje», que no pasan por el cobro). Se ve pasando el puntero sobre la etiqueta roja «No llegó» (el
+  globito trae el motivo y el código). En business.facebook.com › Facturación y pagos › **Cuentas de mensajes** (no la
+  cuenta de anuncios: se pagan aparte) D'CASA tenía tres cuentas «DCasa Pty» **sin método de pago** y una con una
+  **línea de crédito prestada por Callbell**: lo más probable es que esa línea se cortara. Se arregla en Meta (tarjeta
+  propia y predeterminada en la cuenta del número, saldo pendiente, información fiscal), no en el código. Lo que ya salió
+  con «No llegó» no se reenvía solo. Desde el 2026-11-09, los de la cuenta (131042 pago, 131031 bloqueo, 131048 spam)
+  avisan a Gerencia por Telegram una vez cada 6 h por código (`dcasa.mensaje._avisar_problema_de_cuenta`).
+- **Para leer datos de producción sin la base**: Brian por MCP (solo lectura) no tiene el detalle de los mensajes; el
+  motivo de un «No llegó» lo ve quien está en la pantalla (globito) o el formulario del mensaje (`error_envio`).
+
+- **131070, «Message failed to send because another app is controlling this thread now»** (2026-11-09 desde las
+  16:00, nada salía): no es del sistema. Ese día el número estaba «Conectado» y con calidad «Alta» pero **sin cuenta de
+  mensajes** («Add a Messaging account»; «Messaging limits: No disponible»), probablemente porque Callbell retiró la
+  suya al pedirle que quitara su línea de crédito. Meta no tiene el 131070 en su lista oficial de errores. Si sigue
+  después de ligar una cuenta de mensajes propia: el «Agente de negocios de Meta» (cuando está encendido, él controla las
+  conversaciones y los mensajes del cliente llegan en el campo `standby`, no en `messages`) u otra app en el número.
+  Probar otro canal (Messenger) al mismo tiempo separó «Meta» de «nuestro sistema» en minutos.
+- **El aviso «Quedó por enviar: el Worker no respondió» sale para cualquier fallo** (también cuando Juan respondió con
+  un error de Meta): el motivo real está en la burbuja del mensaje («No se pudo enviar: …») o en
+  *Conversaciones › Conexiones* › «Por revisar» (el aviso de «Probar conexión» solo muestra el primero de la lista).
+- **Cambiar `META_VERIFY_TOKEN` no rompe WhatsApp**: el token de verificación solo se usa cuando Meta verifica un
+  webhook (el GET); los avisos se firman con `META_APP_SECRET`. Si se pierde, uno nuevo en Cloudflare y el mismo en Meta.
+- **Messenger: «(#100) Error al subir el producto» = Meta no pudo bajar el adjunto de la URL** (2026-11-09: el texto
+  salía y la foto no; la misma URL firmada de tommalo.example sí la baja WhatsApp). Juan ahora baja el archivo y lo sube
+  en la misma llamada a `me/messages` (multipart con `filedata`); si no logra bajarlo, va por URL como antes.
+- **El 131070 NO es una app suscrita** (auditoría del 10 nov con el Explorador de la Graph API, solo GET): `subscribed_apps`
+  de la WABA 1313438470854835 trae solo «D'CASA Juan»; el número sale CONNECTED, CLOUD_API, GREEN (`name_status`
+  DECLINED, `code_verification_status` EXPIRED). Los registros de Cloudflare de `dcasa-juan`: avisos POST 200 que siguen
+  llegando, 404 al enviar el 9 nov 14:17–17:02 (el número «no estaba» un rato) y 131070 desde las 16:02. El 131070 es
+  del «thread control» de Meta (el que trajo Meta Business Agent): el control de la conversación lo tiene un rol que no
+  se ve en ninguna pantalla (el agente de Meta o un «escalation partner», p. ej. el proveedor anterior); `take` solo lo
+  puede hacer el escalation partner. Se resuelve con soporte de Meta (o el proveedor anterior), no en el código.
+- **131070 = la app no es la principal en el «Enrutamiento de conversaciones»** (Conversation Routing de WhatsApp,
+  documentado por Meta el 2026-09-23; guías de Cliengo y respond.io, 2026-11-10): solo el dueño del hilo envía; los demás
+  reciben 131070 «incluso con el hilo libre». **Quitar un proveedor (Callbell) no actualiza el enrutamiento y Meta no
+  elige otro principal**: se elige a mano en Meta Business Suite; no hay API pública. Thread Control (`POST
+  https://api.facebook.com/business/whatsapp/phone_numbers/<PHONE_NUMBER_ID>/thread_control`, `X-API-Version: 1.0.0`,
+  `{messaging_product, action: take|release|pass, to}`): `take` solo para el «socio de escalamiento» (si no, 2494191).
+  El webhook `standby` NO trae `value.messages`: trae `value.standby.{messages|message_echoes|statuses}` (y los
+  contactos dentro de `standby`); viene apagado hasta que el negocio da «visibilidad en espera», y Meta pide no
+  contestarlo. `messaging_handovers` (`control_taken`/`control_passed`) va solo a la app que PERDIÓ el control. Juan 17
+  pide el control al recibir 131070 y anota todo esto en el registro sin datos de nadie.
+- **Después del 131070, «salir» volvió antes que «entrar»** (10 nov): un envío desde el Explorador de la API Graph con la
+  app «D'CASA Juan» llegó al celular, pero los mensajes al número (doble palomita) no llegaban al webhook. Volver a
+  suscribir la app a la WABA (`POST /<WABA>/subscribed_apps`, sin parámetros; no borra nada) hizo que Meta volviera a
+  llamar al webhook. Soporte de Meta (chat): tras cambiar de proveedor, el número tarda **hasta 7 días** en
+  desvincularse de la app y del activo anterior. El proveedor anterior (Callbell) propuso eliminar el número y volver a
+  registrarlo: último recurso (SIM, PIN de dos pasos, se pierden límite, calidad y plantillas).
+- **El arreglo del 131070 fue «redireccionar conversación»** (10 nov, tarde): con una cuenta ADMINISTRADORA del
+  portafolio (la de BukoFlow no lo veía), en Meta apareció el botón «redireccionar conversación» (el Enrutamiento de
+  conversaciones); se mandó a «D'CASA Juan» y se eliminó a Callbell. Volvió todo al momento. Lección: cuando una app
+  recibe 131070, buscar primero quién es la principal en el enrutamiento, con un administrador del portafolio.
+- **Para ver si Meta llama al webhook**: Cloudflare › Workers › `dcasa-juan` › Registros, filtrar la ruta
+  `/webhooks/whatsapp-cloud` (método, hora y código; nunca copiar números ni textos). Las palomitas de un envío llegan
+  como 2–3 POST seguidos; un mensaje del cliente, como uno.
+- **Messenger/Instagram en la app de Meta** (2026-11-09): la cuenta de Facebook necesita **control total** de la página
+  (con acceso parcial sin «Mensajes» la página no aparece al conectar); en «Generar identificadores de acceso» salen
+  también otras páginas de esa cuenta (no suscribirlas); Instagram da «Invalid Scopes: instagram_manage_messages,
+  instagram_basic» hasta agregar esos permisos en «Permisos y funciones»; y el caso de uso «API de Instagram › API setup
+  with Unified login» es otra cosa (otra llave, para publicar): Juan contesta Instagram por Messenger con la llave de
+  la página.
+
+### GitHub
+
+- **Dependabot: dos PR que tocan el mismo `package-lock.json` chocan** (2026-11-06, #7 y #8 de `edge/`): se juntan a mano
+  en `package.json`, luego `npm install --package-lock-only` y `npm ci`, y se prueba. Cambiar `.github/dependabot.yml`
+  en `main` lanza Dependabot enseguida: al unir el PR #77 abrió los PR #78 a #81 (Juan y el puente).
+- **Dependabot sube `@types/node` a la mayor más nueva (26), no a la del runtime (Node 22 en CI, contenedor y despliegue)**
+  (2026-11-06, PR #79 y #81): con la 26 el typecheck falla (`URL` y `Buffer` chocan con `@cloudflare/workers-types`).
+  Se deja en la última 22.x; el PR de grupo queda abierto solo con eso hasta un `ignore` de `@types/node` (semver-major)
+  en `dependabot.yml`. Para el grupo «ia» de Juan, la prueba que avisa es `juan/test/motor/sdk-anthropic.test.ts`
+  (pasa por el proveedor real de Anthropic con un `fetch` falso; las demás usan un modelo de mentira).
+- **`up-media.yml` corre con todo push a `main` que toque `up media/**`** y puede subir a `main` un commit propio
+  («[skip up-media] [skip ci]») que reescribe `RESUMEN.md`. Un *squash* con «[skip ci]» en el título no lo dispara. Si
+  aparece ese commit, la rama se pone al día con un `merge` normal, no con `-s ours`.
+- **Un PR que trae commits ya unidos por *squash* sale «con conflictos»** aunque el contenido sea el mismo (2026-10-18,
+  PR #56 tras el #55). Si `git diff origin/main <punta probada del lote anterior>` está vacío, unir `main` en la rama
+  con `git merge -s ours origin/main`, comprobar que el árbol sigue igual al probado (`git diff --quiet HEAD <sha
+  probado>`) y desplegar con ese `app_version`. Mejor aún: reiniciar la rama a `main` después de cada despliegue.
+
+- `app_version` tiene que tener imagen en el registro: el SHA de la rama que construyó el CI, nunca el del *squash*.
+- Nunca inventar ni «completar» un SHA: copiarlo del PR o del run.
+- La cuota de artefactos se llena: «Limpiar copias temporales» y esperar 6-12 h a que GitHub recalcule.
+- «Required reviewers» no se usa (cuando se decidió, el repositorio era privado y el plan no lo daba; es público desde
+  el 2026-10-13): producción solo a mano desde `main`, con la receta de [DESPLIEGUE.md](DESPLIEGUE.md#la-receta-de-producción).
+- `rerun_failed_jobs` da 403 mientras el run sigue en curso.
+- El runner usa shellcheck 0.9 (SC2317 en funciones de `trap`).
+- El CLI `gh` existe en la máquina (2026-11-06) y sirve para leer (runs, tiempos de cada job: `gh run view <id> --json
+  jobs`). Lo que escribe en GitHub (PR, unir, lanzar flujos, comentar) va por `mcp__github__*`. Un log muy largo se
+  guarda en archivo y se busca con un script.
+- Los avisos «Node.js 20 is deprecated» y el log del PostgreSQL de servicio son ruido, no la falla.
+
+## Lo que enseñó «Rotación» (2026-11-22)
+
+- **`stock.location_inventory` no existe** como xmlid en Odoo 19: la ubicación virtual de los ajustes de inventario es por empresa y producto (`producto.property_stock_inventory`). Una
+  prueba que la pedía por xmlid daba `ValueError` y, peor, no probaba lo que decía (la mutación «un ajuste cuenta como llegada» sobrevivía porque la prueba moría antes).
+- **`_read_group` no agrupa por un campo relacionado no guardado.** `account.move.line.move_type` es `related='move_id.move_type'` **sin** `store`: no se puede en `groupby`. Se hace un
+  `_read_group` por tipo (`move_id.move_type = out_invoice` y `out_refund`) y se firman las unidades. `move_id:count_distinct` sí funciona como agregado.
+- **Un 0 dentro de `(None, False, '')` es «vacío».** `0 in (None, False, '')` es `True` (porque `0 == False`): un descuento de 0 % se trata como «sin simulación». Si se quiere distinguir, comparar
+  con `is`.
+- **`self.env._(texto)` con `%%`:** el doble porcentaje solo vale cuando se pasan argumentos; sin argumentos sale tal cual con los dos signos.
+- **Una mutación que sobrevive no siempre es una prueba mala.** La simulación de rebaja para quien no ve dinero tiene dos guardias (`_validar` y `_datos`/`_fila_para_la_pantalla`); quitar una
+  no hace caer nada porque la otra cubre. Se dejó así (defensa en profundidad) y se anotó en la bitácora. Lo que sí hay que mirar es que el `ORIGINAL` de la batería dé 0 errores: una
+  prueba que falla en el original hace parecer «atrapadas» a todas las mutaciones.
+- **Una prueba de reparto por porcentaje necesita una cola que cruce el corte.** Con ventas de fábrica de 1, 1 y 1 unidades, el corte de 80 % y el de 99 % dan lo mismo; con 1000, 300, 150 y 50
+  se distinguen (el acumulado pasa de 66 % a 86 % y a 96 %).
+- **El entorno local (`.venv`) se arma sin `psycopg2` ni `python-ldap`** (compilan y fallan por falta de cabeceras): `psycopg2-binary` y el resto de `vendor/odoo/requirements.txt`. Receta en
+  la bitácora del 2026-11-22.
+- **El inicio de sesión de `/web/login` con el sitio instalado** tiene varios `button[type=submit]` (la lupa del buscador es el primero): para las capturas se escribe la clave y se pulsa Enter.
+
+## Lo que enseñó «Movimiento» (2026-11-22)
+
+- **Antes de poner un `_name`, buscar que no exista:** `grep -rn "_name = 'el.nombre'" addons`. `dcasa.movimiento` ya es el libro de puntos de Socios (`dcasa_socios`); un `AbstractModel`
+  con el mismo nombre se mezcla con él y la base ni carga: `KeyError: 'partner_id'` en `setup_inverses` (un One2many cuyo inverso ya no existe en el modelo mezclado). El error sale lejos de
+  la causa (al cargar el módulo, no al definir el modelo). El de comparar periodos se llama `dcasa.movimiento_productos`. Para saber si el fallo es de los cambios o del entorno: `git stash -u`,
+  correr la actualización sin ellos y `git stash pop`.
+- **Una prueba que no está en `tests/__init__.py` no corre y el resultado dice «0 failed, 0 error(s) of 0 tests»**, que parece verde. Siempre mirar el «of N tests».
+- **`--test-tags=/modulo:Clase` es la clase exacta.** `TestMovimiento` no incluye `TestMovimientoEnElNavegador`: se corren las dos etiquetas.
+- **En las pruebas de navegador, el clic cambia el estado al instante pero el DOM se pinta después.** Esperar a algo que SÍ cambie con el clic (`aria-pressed`, el `href` nuevo), no a un
+  elemento que ya estaba (el aviso «sin ventas» estaba antes del clic y la prueba leyó el enlace viejo).
+- **El signo del dinero en las líneas de factura:** `balance` de una factura de cliente es negativo (crédito) y el de una nota de crédito positivo. Las ventas de un producto son
+  `-sum(balance)` sumando facturas y notas, sin firmar por tipo; las unidades (`quantity`) sí se firman por tipo (una `_read_group` por tipo, como en Rotación).
+- **El «hoy» de una prueba tiene que salir de quien la mira** (`context_today` con el usuario de tz Panamá), no del usuario del entorno: entre las 19:00 y la medianoche de Panamá la fecha
+  UTC ya es la de mañana y una venta «de hoy» cae fuera de «los últimos 30 días».
+- **Un número esperado que cae en `.5` es una trampa** (`round(17.5)` es 18 por el redondeo al par, pero `5 / (2 / 7)` puede dar `17.499999…`). Las pruebas usan casos que no caen en el medio.
+- **Los periodos de comparación hay que decirlos con fechas exactas en la pantalla** («del 23 oct al 21 nov»): «30 días» y «el mes» no dicen cuáles son los extremos, y si los dos periodos no
+  tienen el mismo largo (meses de 28 a 31 días) se avisa en vez de normalizar en silencio.
+
+
+## Lo que enseñó «Margen y rotación» y su primer CI a staging (2026-11-22, CI #386)
+
+- **Toda hoja de estilo nueva con blancos o azules a mano necesita su versión de noche.** El modo oscuro vive en `dcasa_interfaz/static/src/oscuro/*.dark.scss` y la prueba
+  `TestModoOscuroServidor.test_los_rellenos_propios_se_leen_de_noche` revisa cada regla propia (menos de 3:1 falla). Rotación y Movimiento (`dcasa_marketing`) la tumbaron en CI porque
+  traían `#fff`, `azul-800` con letra blanca y pastillas de colores claros: se agregó `oscuro/rotacion.dark.scss` (superficie con `--dc-blanco`, relleno con `--dc-relleno` y
+  `--dc-en-relleno`, estados con `--dc-bien/-falta/-mal` y sus fondos; la escalera de barras se da vuelta, de tenue a brillante). Misma especificidad que la regla de día: la hoja
+  oscura se arma después y gana por orden. Se probó que sin el archivo la prueba falla y con él pasa.
+- **Correr en local los módulos que se tocan Y los que los muestran.** Marketing y Guía pasaban, pero la pantalla vive también en el Inicio (`dcasa_interfaz`, atajo «Rotación») y en
+  el modo oscuro. Antes de lanzar un CI de ~80 minutos: `-u dcasa_interfaz,dcasa_marketing,dcasa_camila,dcasa_guia --test-tags=/dcasa_interfaz,/dcasa_marketing,/dcasa_camila,/dcasa_guia,/dcasa_base`
+  en una base que tenga todos (814 pruebas, unos 17 minutos). Esa corrida encontró otra falla que el CI no habría mostrado (el CI no trae `websocket-client`, así que salta las pruebas
+  de navegador): `test_gerencia_ve_el_panel_completo_con_los_atajos_en_su_orden` no conocía el atajo «Rotación».
+- **El registro de un job de GitHub que falla puede venir cortado** (el de #386 terminó 49 minutos antes que el job). `gh run view <run> --job <id> --log` muestra el primer
+  `FAIL:`; si hace falta el resto, correr local con el mismo comando. `scripts/test.sh` cuenta toda línea `ERROR` como falla.
+- **Un CI manual tarda entre 50 y 80 minutos solo en «Tests de Odoo»** (50, 74, 78 y 81 en los últimos cuatro): no es señal de cuelgue.
+
+## Lo que enseñó la revisión independiente de Rotación, Movimiento y Margen (2026-11-22)
+
+Un revisor sin mi contexto (con acceso de lectura y bases de prueba) encontró cuatro cosas importantes que ni mis pruebas ni mis mutaciones habían visto. Ninguna fuga de dinero.
+
+- **`strings_to_formulas=False` de xlsxwriter NO cubre las fórmulas de matriz `{=...}`** (xlsxwriter 3.1.9 revisa `{=` y `}` aparte, sin mirar la opción). Una celda cuyo texto entero es `{=1+1}` sale como `<f t="array">`. Todo Excel armado a mano debe escribir texto con `write_string` (o con `hoja_de_solo_texto`
+  de `dcasa_marketing/models/rotacion.py`, que cambia `hoja.write` de esa hoja). El nombre de prueba tiene que ser **exactamente** `{=1+1}`: con `{=1+1} algo` no es fórmula y la prueba pasa sin probar nada
+  (así falló mi primera versión; ya se comprobó que sin el arreglo las dos pruebas fallan). La misma debilidad sigue en `dcasa_interfaz/models/reponer.py` (fuera de esta entrega, anotada).
+- **Un `set(...)` dentro de la condición de una comprensión se vuelve a calcular en cada vuelta** (`[f for ... if pid in set(Plantilla.search(...).ids)]` hacía una búsqueda por producto: 2,600 productos tardaban 8 segundos).
+  Se calcula una vez antes. Una prueba de «las consultas no crecen con los productos» (`env.cr.sql_log_count` con 3 y con 28 productos) lo atrapa.
+- **Lo que la documentación promete como «no se ofrece como candidato a rebajar» tiene que cumplirse en TODAS las listas**, no solo en las de días: «Margen y rotación» dejaba productos recién llegados y con pedido abierto en «Ni se mueven ni dejan margen».
+  Ahora esos dos grupos no tienen cuadro y el ancla cuenta como «se vende bien».
+- **Cada herramienta de Brian necesita su prueba, sobre todo si promete no dar dinero a un rol.** `rotacion_de_inventario` y `comparar_movimiento` no tenían ninguna: ahora `test_brian_rotacion_movimiento.py` recorre las claves de la respuesta de Marketing y
+  busca dinero, y comprueba que los cuadros de margen y la rebaja se le nieguen.
+- **Una factura se cuenta con la misma base que la lista.** Las unidades salían de los productos activos y a la venta, pero los pedidos y la gráfica salían de todas las facturas: con un producto archivado, el resumen no cuadraba. Los tres usan ahora el mismo dominio.
+- Menores arreglados: fechas del año 0001 daban error 500 (ahora un mensaje; no antes del 2000), «año pasado» con un periodo de 366 días se cruzaba un día, y el cambio % de un producto con devoluciones de sobra llegaba a −166 % (ahora −100 %).
+- **Cuándo pedir la revisión:** en paralelo al CI largo (80 minutos), no después. Esta llegó antes de que terminara el CI y costó cancelarlo y relanzar; si hubiera llegado después, habría costado un ciclo entero más.
+
+## Lo que enseñó preparar Tommalo para producción (2026-11-24)
+
+- **Al replicar el sistema para otro negocio, revisar lo que se siembra UNA vez en la base**, no solo los archivos de
+  `data/`: los textos iniciales de garantía, cambios y términos (`dcasa_invoice/models/res_company.py:
+  TEXTOS_INICIALES`) los escribe un gancho la primera vez, y seguían siendo los de D'CASA (muebles, colchones, flete,
+  «el ITBMS se suma»). Una instalación nueva de producción los habría impreso en cada comprobante. Buscar con
+  `grep -rn "mueble\|colch\|flete" addons --include=*.py` lo que no está en las vistas.
+- **Las diferencias de negocio van como interruptor, no borrando código de la plantilla**: sin ITBMS
+  (`DCASA_COBRA_ITBMS=0`), sin tienda física (`DCASA_TIENDA_FISICA=0`), conocimiento inicial
+  (`DCASA_CONOCIMIENTO_INICIAL`). Las tres viven en **`docker/negocio.env`, dentro de la imagen**, y mandan sobre el
+  entorno → `docker/entrypoint.sh` («1b» las lee; cada interruptor corre una vez por versión con su parámetro
+  `*_version`) → una función del módulo con su prueba. Las pruebas de Odoo corren sin el archivo, así que la conducta
+  de D'CASA sigue probada; la del negocio se prueba llamando la función, y CI enciende la imagen sin variables y
+  comprueba que quedó sin ITBMS ni pago ni retiro en la tienda.
+- **Incidente 2026-11-25 (staging, 20a754a): la identidad del negocio NO puede viajar como variable del Worker.**
+  Primer despliegue con los tres interruptores: la caja siguió cobrando ITBMS (el pañal de $50 daba $53.50) y
+  ofreciendo «Pago en la tienda» y «Retiro en tienda», con CI en verde y la salud en «ok». Las variables estaban en
+  `edge/wrangler.jsonc` y en la lista del Worker (el registro de `wrangler deploy` las mostraba), pero Cloudflare
+  encendió la imagen nueva **con las variables del arranque anterior** (las de 0526e3f, cuya lista no las pasaba):
+  el arranque nunca las vio. Ya estaba escrito para `APP_VERSION` (incidente #97): lo que la imagen necesita saber
+  al arrancar va en la imagen. Cómo se encontró: comprar en staging con Playwright y leer los `data-*` de los métodos
+  de pago (`providerState: enabled`); copiar una base vieja y repetir aquí `-i/-u` + los tres `odoo shell` del arranque
+  (todo se apagaba bien) descartó el código. Arreglo: `docker/negocio.env` (la imagen manda; el Worker ya no pasa esas
+  tres) y la comprobación en CI. Lección: **verificar en staging el efecto de cada interruptor nuevo (comprar, mirar
+  el precio), no solo que CI y la salud estén en verde**.
+- **Un `create`/`write` nuevo en cualquier módulo lo vigila una prueba de OTRO módulo**: la promoción por pares
+  (`dcasa_catalogo/models/precio_par.py`) heredó `sale.order.create/write` y el ayudante corrió las pruebas de catálogo,
+  Juan, sitio, chat y Brian (todas en verde), pero no `dcasa_base:TestSuperficieRpc`, que revisa los métodos públicos
+  de TODOS los módulos instalados contra `LISTA_BLANCA` (`dcasa_base/tests/test_superficie_rpc.py`). CI la encontró
+  (1 de 7559). Al heredar un método público, anotarlo ahí con su motivo y correr
+  `TEST_TAGS=/dcasa_base:TestSuperficieRpc scripts/test.sh dcasa_base,<módulo>` antes de entregar.
+- **Un papel que no es la factura fiscal no se llama «Factura»** (Tommalo usa el Facturador Gratuito de la DGI).
+  El título sale de un solo método (`account.move._dcasa_titulo_documento`) que usan el PDF y su nombre de archivo;
+  el correo y Mi cuenta tienen sus propios textos y hay que cambiarlos aparte.
+- **La rama de un ayudante puede quedar en otro repositorio**: el agente de los pagos trabajó en una copia de
+  `D_Casa_new_word` porque la sesión empezó en `/home/user`. Se trae con `git fetch <ruta-local> <rama>` y se une; las
+  dos historias comparten el espejo `d2ba8ca`.
+
+## Lo que enseñó la ubicación exacta de la entrega (2026-11-25, `dcasa_ubicacion`)
+
+- **El `super()` de una ruta `http` de Odoo devuelve un `Response`, no el texto.** `route_wrapper` lo envuelve
+  (`Response.load`), así que heredar `shop_address_submit` y buscar en `str(respuesta)` no encuentra nada y el punto
+  del checkout no se guardaba, sin ningún error. Se lee con `respuesta.get_data(as_text=True)`. Se encontró con
+  registros temporales en el controlador (se quitaron después) y una compra en el navegador.
+- **Las rutas `/report/...` son `readonly=True`**: dibujar el PDF no puede crear registros (falla la transacción de
+  solo lectura). La ficha del motorizado se crea al confirmar la venta, al publicar el comprobante y al cambiar el
+  punto de la clienta; el reporte solo la lee (`_de_la_venta(orden, crear=False)`).
+- **`/odoo/enviar` del Worker `juan` calla al bot**: lo toma como que la vendedora se hizo cargo. Un mensaje
+  automático que manda Odoo (el «✅ ¡Listo! Recibimos su ubicación») va con `autor: "bot"`, o Juan deja de contestar
+  esa conversación.
+- **Las coordenadas nunca van al texto del chat, a la auditoría de Brian, a los registros ni al modelo de IA.** El aviso
+  al equipo lleva zona, calle, casa y precio; la ruta está en la ficha. Hay pruebas que buscan la latitud en esos
+  textos: si un cambio la cuela, fallan.
+- **Una prueba que busca un texto corto dentro de base64 al azar falla por azar** (`puente-wa/test/poda.test.ts`:
+  «pk1» apareció dentro de una clave aleatoria, CI 45639471080). Se busca con un separador que base64 no tiene
+  («pk:»): la misma comprobación, sin azar. No se salta ni se apaga la prueba.
+- **Las reglas de registro también corren en las pruebas**: una vendedora no ve la venta que creó el administrador si
+  no es suya. La prueba le pone `user_id`, no `sudo()`, para probar lo mismo que vive la vendedora.
+- **Un enlace vencido gana a «usado»**: si no, uno ya usado y vencido seguía mostrando la zona de la clienta a quien lo
+  abriera después.
+- **El CSS viejo de «Por cotizar» escondía el precio real** del envío a domicilio, y Odoo corta la pastilla del precio a
+  130 px («$ 15....» en el celular). Mirar la caja en un navegador de celular, no solo las pruebas.
+- **`dcasa_correo` aislado falla dos pruebas** («Ver en Mi cuenta») porque `dcasa_mi_cuenta` no está instalado en esa
+  corrida; en CI, con todo instalado, pasan. No es un fallo nuevo.
+
+## Lo que enseñaron las dos auditorías de la ubicación (2026-11-25)
+
+Tres auditores independientes en paralelo (seguridad y privacidad; dinero y datos; la clienta en el navegador) y luego
+dos más sobre los arreglos. Lo que conviene llevarse:
+
+- **Dos ayudantes en paralelo sobre el mismo módulo, unidos sin correr las pruebas de TODOS los módulos, rompen cosas
+  que ninguno ve**: la herencia de `_confirmar` de uno no tenía los parámetros nuevos del otro (500 en «Sí, aquí es»),
+  y un `_dcasa_nota` nuevo en `sale.order` tapó el `_dcasa_nota` del PDF de `dcasa_invoice` (las cotizaciones no se
+  imprimían). Las pruebas de cada ayudante pasaban. Después de unir: `scripts/test.sh` con **todos** los módulos
+  instalados (sin argumentos) y `TEST_TAGS` de lo tocado. Las herencias reciben `**opciones` y los métodos nuevos en
+  modelos de Odoo llevan el prefijo del módulo (`_dcasa_avisos_*`, `_dcasa_ubic_*`).
+- **`_enviar()` de `dcasa.mensaje` hace COMMIT**: dentro de una petición web o de un savepoint rompe la transacción. Lo
+  que el asistente escribe desde Odoo queda «por enviar» y se adelanta el cron (`_dcasa_escribir_como_asistente`).
+- **Leer un campo de la auditoría de Brian como el usuario que conversa falla** (el usuario técnico de Juan no puede leer
+  `brian.accion`): todo lo de la auditoría en `sudo()`.
+- **El dinero se cambia solo donde nadie pagó ni puso nada a mano**: recalcular el envío de una cotización con una
+  transferencia en curso hacía que el pago dejara de confirmar la venta. El «por cotizar» en $0 de la web sí se cambia.
+- **Una vista que hereda de otra por `button[@name=…]` se rompe si se mueve el botón**: anclar a un contenedor con
+  `name` (`div name="dcasa_ubic_botones"`).
+- **Lo que se guarda en una auditoría inmutable se queda para siempre**: coordenadas, secretos de enlaces y lo que la
+  clienta escribe de su casa van tapados (`privado=True` en `@herramienta`).
+- **Las pruebas de un auditor sirven dos veces**: el de datos dejó cada hallazgo reproducido en una prueba («pasa si el
+  fallo existe»); al revés, quedaron como pruebas del arreglo (`tests/test_auditoria_datos.py`).
+- **El límite de uso de 5 horas cortó a un auditor a la mitad**: se reanuda con SendMessage cuando se reinicia, sin
+  perder lo que llevaba.
+- **El disco de la sesión se llena con worktrees y bases de prueba** (cada base con todos los módulos ≈ 170 MB, cada
+  worktree ≈ 70 MB y hasta 800 MB con `node_modules`): a media auditoría no se pudo crear otro worktree («unable to
+  write file»). Borrar las bases de prueba propias al terminar (`dropdb`) y quitar los worktrees ya unidos; los de
+  sesiones anteriores no se borran sin preguntar.
+- **Los arreglos de una auditoría traen fallos nuevos**: la «otra casa» que arregló la primera auditoría causó tres
+  hallazgos de la segunda. Por eso van dos vueltas.
+- **Un arreglo puede contradecir una prueba vieja que nadie corrió**: la regla «escribir otra calle quita el punto»
+  (auditoría 2, datos) chocaba con `test_escribir_no_borra_el_punto_confiable` (auditoría 1), que mandaba otra calle.
+  Solo salió cuando el ayudante de la clienta corrió las pruebas con todo instalado. La prueba vieja se ajustó a lo que
+  quería decir (la misma calle), nunca se saltó.
+- **`wa.me` cambia los emojis por «�»** en WhatsApp Web, la app de la computadora y los navegadores de adentro de
+  Instagram y Messenger (en la redirección a `api.whatsapp.com`). Todo enlace de WhatsApp con mensaje se arma con
+  `dcasa_base/whatsapp.py` (`api.whatsapp.com/send?phone=…&text=…`). Los selectores que reconocen un enlace de WhatsApp
+  (la burbuja de Brian, el `Contact` del píxel de Meta) aceptan los dos.
+- **`main` de Tommalo era el espejo de D'CASA con su robot de fotos**: el dueño subió fotos a `up media/` de `main`
+  (2026-11-24) y el robot de D'CASA, que solo conoce el Excel de muebles, las mandó a `descartado/` y dejó otras sueltas
+  en la raíz. Ya estaban cargadas a mano en `addons/dcasa_catalogo/data/fotos/`; al unir `main` a la rama no se
+  trajeron. Desde que `main` tiene el código de Tommalo, el robot deja esas fotos en la bandeja («sin_pedido»).
+- **Comprar de verdad en staging encontró dos fallos que 5.142 pruebas no vieron**: staging no tiene la tabla de
+  lugares (la sube Gerencia; no está en el repositorio), así que todo punto salía «Fuera de nuestra lista», el mapa no
+  llenaba la calle y «Confirmar» se quedaba quieto con el aviso del navegador escondido tras la barra fija; y escribir
+  la calle justo antes de «Confirmar» obligaba a tocarlo dos veces. Las pruebas siempre preparan una tabla y esperan
+  entre pasos; la clienta y el robot no. Probar en staging con los datos que de verdad tiene (y sin esperar entre
+  pasos) antes de decir «sano».
+- **Primera instalación de producción sin repetir la hora de pruebas** (2026-11-26): «Desplegar» a mano desde `main`
+  con `entorno=production`, el `imagen_digest` y el `app_version` del despliegue a staging que se probó comprando
+  (salen en el log del paso «Resumen (para volver atrás)»). Tardó 8 minutos en quedar sana (base nueva).
+- **Claves pegadas en el panel del Worker con el contenedor ya encendido no llegan a Odoo** (otra vez: Google Maps en
+  staging y producción): hace falta un despliegue con imagen nueva. Si se sabe de antemano, pegarlas antes del primer
+  arranque.
+- **La primera instalación de producción no se traba con el respaldo previo**: `desplegar.yml` solo lo pide si el
+  Worker ya existe (`worker_existe`). Sin secretos en el environment `production` de GitHub, el despliegue se omite con
+  un aviso y el CI queda en verde: mirar el resumen, no solo el color.
+
+
+## Lo que enseñó medir la tabla de envíos de Tommalo (2026-11-26)
+
+- **`request_credential` no acepta encabezados propios** (`X-Goog-Api-Key` de Google): la clave va como **secreto de
+  red del entorno** que pone el dueño (host `routes.googleapis.com`, encabezado `X-Goog-Api-Key`, **«Prefijo» vacío**).
+  Con una palabra en «Prefijo» (el dueño escribió «puesta») Google contesta «API key not valid» y parece que la clave
+  está mal. Instrucciones al dueño: pasos numerados, cortos, con los nombres exactos de cada casilla.
+- **Routes API en Panamá: `tollInfo` siempre vacío.** El peaje se saca repitiendo la ruta con `avoidTolls` (en el
+  waypoint de origen de la matriz; en la raíz del cuerpo da HTTP 400) y comparando distancia y tiempo.
+- **La ruta de carro de Google entra a los corredores hasta para 2,6 km** (ramal de la Martín Sosa del Corredor Norte):
+  para un negocio que reparte en moto (sin corredores) los km son los de la ruta evitando peajes. Preguntar cómo
+  reparte el negocio antes de dar por buenos los km «de carro» de D'CASA.
+- **Los archivos de una plantilla traen datos del negocio de origen escondidos en el código**: el pin de la tienda en
+  `TIENDA` y en un enlace fijo, «Ciudad (Santa Ana)» y «Santiago» en los ejemplos del % (también en `motor/tarifa.py`),
+  «<ciudad>» como distrito por defecto, la llave del borrador del navegador y notas de ruta («más allá de Yaviza,
+  que ya pasa de 300 km»: desde el otro pin, Yaviza queda a menos). Buscar el nombre, el pin y los lugares del negocio de
+  origen en TODO el archivo, no solo en los datos.
+- **Después de un reinicio del contenedor, el `python3` del sistema no tiene las librerías de Odoo** (`No module named
+  'babel'`): las pruebas corren con `PYTHON=<scratchpad>/venv/bin/python scripts/test.sh …`. PostgreSQL también hay que
+  revisarlo (`pg_lsclusters`; `pg_ctlcluster 16 main start`).
+
+## Lo que enseñó el cambio de dominio de Tommalo (2026-11-27)
+
+- **`CANONICAL_HOST` como variable del environment `production` de GitHub, no `URL_SITIO`, el día del cambio.** Con
+  `URL_SITIO` = el dominio nuevo, el respaldo previo y la espera de salud llaman al dominio, que todavía es de la web
+  vieja (había que saltar el respaldo). Con `CANONICAL_HOST` = `tommalo.example` y `URL_SITIO` todavía en `workers.dev`,
+  el despliegue respalda y comprueba por `workers.dev` (sigue encendido) y Odoo ya arma sus direcciones con el dominio.
+  `URL_SITIO` se cambia después del despliegue.
+- **La llave del robot necesita *Zone › Workers Routes › Edit* en la zona** (Cloudflare la llama «Rutas de Workers ›
+  Editar», en «Añadir política de zona nueva»). Editar los permisos no cambia el valor de la llave: no hay que tocar
+  GitHub. `tommalo-github-deploy` no lo tenía; se vio leyendo las llaves con el agente de Chrome antes del día.
+- **La ruta `www` de la web vieja se borra ANTES de desplegar** (dos Workers no comparten un patrón). Mientras tanto
+  `www` da 522 (su CNAME proxiado apunta a la raíz, que es un dominio propio de Worker): fueron ~7 minutos.
+- **El orden que funcionó:** variable `CANONICAL_HOST` → borrar la ruta `www` → *Desplegar* (toma `tommalo.example` con
+  la anulación sin terminal de wrangler) → unir a `main` el cambio de la web vieja (`routes: []`, `workers_dev: true` y
+  su comprobación de salud por `URL_SALUD`) → vigilar que el dominio no vuelva atrás.
+- **Un 403 de `packages.microsoft.com` en `apt-get update` del runner de GitHub tumba el simulacro de restauración** (no
+  es nuestro: TRAMPAS 11 del repositorio Tommalo). «Re-run failed jobs» lo repite sin volver a correr la hora de
+  pruebas de Odoo; el despliegue a staging sigue solo.
+- **Antes de mover el dominio, revisar con el MCP del sistema de hoy** (`pagos_por_confirmar`) que no haya pagos a
+  medias: los avisos de las pasarelas llegan a `tommalo.example`.

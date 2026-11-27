@@ -1,0 +1,212 @@
+# Correo a clientes (Resend)
+
+Módulo `dcasa_correo`. Puesto al día el 2026-11-06: **encendido en producción desde el 2026-10-27**, con
+`tommalo.example` verificado en Resend y la clave como secreto en el panel de Cloudflare del Worker `dcasa` (§3 y §5).
+
+## 1. Qué hace y qué no
+
+Cuando esté encendido, a cada cliente le llega:
+
+| Correo | Cuándo | Qué lleva |
+|---|---|---|
+| **Su factura o su abono** | En cuanto alguien registra un pago de su factura (el botón «Pagar», Brian o la conciliación del banco) | El PDF nuevo, el mismo papel y el mismo nombre que «Imprimir». **Si todavía debe algo es el correo del abono**: el asunto dice «Recibimos tu abono», el correo dice el total, lo que ya pagó, **lo que le falta** y hasta cuándo tiene, y va el papel de ABONO («Abono INV_…pdf», con SALDO POR PAGAR). **Si quedó pagada es el de la factura pagada** (nunca dice «abono») y, si la compra sumó puntos, cuántos (del libro de Socios). Un botón «Ver en Mi cuenta» |
+| **El recordatorio del abono** (D3, desde el 2026-10-22) | **5 días antes** de que venza un abono (la cifra de la gerencia; `dcasa_abonos.aviso_dias`). Lo arma el cron de cada mañana. **Uno solo por abono y vencimiento**: no se repite si el cron corre otra vez, y si el cliente no tenía correo vuelve a intentarse cuando se lo escriban (si sigue dentro del plazo) | «Tu abono vence el dd/mm/aaaa · Factura INV/…»: el total, lo que ya pagó, **lo que le falta** y hasta cuándo (de `_dcasa_estado_abono`, la misma fuente del papel de ABONO). Sin PDF. El botón «Ver en Mi cuenta». Si se paga antes de armarlo, no sale |
+| **La bienvenida** | Una sola vez por persona, **solo a clientes nuevos**, cuando ya puede entrar a Mi cuenta (si su primera compra va en abono, con el pago que la termina: su código de socio llega con la factura pagada) | Corta: «¡Te damos la bienvenida, Ana!», «Gracias por tu compra. En Mi cuenta ves tus compras, tus pagos y tus puntos», una línea de cómo entra la primera vez (con PIN: celular y PIN; con cuenta de la tienda en línea: su correo; si no: «¿Primera vez? Hazte socio» con su celular, el código de socio de su factura y un PIN que elige; si su celular no sirve: que escriba por WhatsApp) y el botón «Entrar a Mi cuenta». **Sin reglas de puntos, sin abonos y sin cifras** |
+| **La factura cuando la mandas tú** | Abres la factura › «Enviar» › dejas marcada la casilla de correo | La factura con la marca D'CASA |
+| **La cotización** | Abres la venta › «Enviar», o en Conversaciones › Cotización › **«Enviar por correo»** | La cotización en PDF |
+| **El correo de prueba** | Ajustes › Correo a clientes › «Enviar correo de prueba» | Te llega a ti, para ver cómo se ve |
+
+Todos salen limpios (lo pidió la dueña el 17/10/2026) y con la marca de Tommalo (2026-11-19,
+[MARCA_TOMMALO.md](MARCA_TOMMALO.md)): la página crema y la tarjeta en la superficie, el logo arriba con la
+dirección pública del sitio, el titular en navy (Montserrat, como frase: nunca en mayúsculas), pocas líneas, **un solo
+botón en pastilla naranja con la letra navy** («Entrar a Mi cuenta» en la bienvenida, «Ver en Mi cuenta» en la factura y
+el abono, «Escríbenos por WhatsApp» en la cotización y la prueba), debajo, si el botón no es el de WhatsApp, solo el
+enlace de texto **«¿Dudas? Escríbenos por WhatsApp»** (en el naranja oscuro de letra, `#985D2F`), y un pie corto
+(nombre, dirección y WhatsApp de la empresa). Estilos en línea, sin `<style>` ni fuentes que descargar: Montserrat si el
+cliente de correo la tiene y, si no, Arial o Helvetica. El botón es texto sobre su color de fondo: se lee aunque el
+cliente no cargue las imágenes. Sin degradados ni sombras. Salen desde **D'CASA Panamá &lt;ventas@tommalo.example&gt;**; si el cliente
+contesta, la respuesta llega a **info@tommalo.example**. (En el correo, el botón principal lleva a Mi cuenta por pedido de
+la dueña; WhatsApp sigue siendo el CTA único del sitio.)
+
+**Al pie de la factura y de la bienvenida** (desde el 2026-11-06, con `dcasa_camila`): si el cliente todavía no dijo
+que sí a las novedades ni se dio de baja, va una línea de texto «¿Te avisamos de lo nuevo? **Sí, quiero**». El enlace
+va firmado y lleva a una página con la marca donde toca «Sí, quiero»; así queda su permiso para las campañas (ver
+[CAMILA.md](CAMILA.md)). Si algo falla al armar esa línea, el correo sale igual, sin ella. Las campañas salen por otra
+clave y otro servicio de Resend: nunca se comen el cupo de estos correos.
+
+Además, **el comprobante de pago de la planilla** (Nómina, desde el 2026-10-22) sale por el mismo camino y con el
+mismo interruptor: con los correos apagados, en staging o sin clave, no le llega a nadie (ver [NOMINA.md](NOMINA.md)).
+
+Lo que **no** hace:
+
+- **No manda nada mientras no lo enciendas.** Viene apagado, y sin la clave de Resend no sale ningún correo.
+- **Nunca hace fallar un pago.** El correo se prepara después; si Resend no responde, el pago queda igual y el correo se
+  reintenta solo.
+- **No manda la bienvenida a los clientes de antes.** Cuentan como nuevos los clientes que se crean desde que se instaló
+  el correo (la fecha se ve en Ajustes). Los que vinieron del sistema anterior o tienen facturas viejas cargadas, nunca;
+  tampoco una ficha nueva a la que se le fusionó la de un cliente de antes (trae sus facturas, ventas o contactos
+  viejos). Y si la misma persona tiene dos fichas (repetida o fusionada), le llega una sola.
+- **No manda los correos automáticos de Odoo** (confirmación de un pedido web, pago recibido, carrito abandonado). Están
+  bloqueados hasta que tú digas que sí.
+- **Staging nunca le escribe a un cliente**, aunque sea una copia con todo encendido. Ahí solo sale la prueba. Lo mismo
+  cualquier servidor que no diga que es producción (`DCASA_ENTORNO=produccion`, que el Worker siempre pone): una copia
+  en otra máquina no le escribe a nadie más que al equipo.
+- Ningún enlace del correo abre la factura sin permiso: el cliente entra a Mi cuenta con su celular y su PIN.
+
+## 2. La cuenta de Resend y la clave
+
+Resend es el servicio que entrega los correos. **Antes de encender, mira en Resend qué plan tienes y cuántos correos
+por día y por mes deja.** Cada pago manda uno o dos correos (la factura y, la primera vez, la
+bienvenida).
+
+1. Entra a **resend.com** y crea la cuenta con **tu** correo (el de la dueña). Ese correo importa: mientras el dominio
+   no esté verificado, Resend solo deja mandar correos de prueba a ese correo.
+2. En Resend, menú **API Keys** › **Create API Key**:
+   - Nombre: `Odoo produccion`.
+   - Permiso: el que dice **solo envío** (*Sending access*), no el de acceso completo.
+   - Copia la clave que muestra (empieza con `re_`). **Solo se ve una vez.** Guárdala en tu gestor de contraseñas.
+3. Haz otra igual con el nombre `Odoo staging` (para probar sin tocar producción).
+4. **Nunca la pegues en el chat, en Odoo ni en un correo.** Va en un solo lugar (paso 3).
+
+## 3. Dónde se pega la clave
+
+**Producción (así está desde el 2026-10-26, decisión de la dueña):** como **secreto `RESEND_API_KEY` en el panel de
+Cloudflare** del Worker `dcasa` (*Workers & Pages › `dcasa` › Settings › Variables and Secrets › Add*, tipo *Secret*). No
+está en GitHub. Los despliegues no la borran: el flujo solo sube `RESEND_API_KEY` si existe en GitHub
+(`.github/scripts/secretos_despliegue.sh`; vacía, no se sube).
+
+**Cuidado:** si un día se pone también en GitHub (*Settings › Environments › production › Environment secrets*), **esa
+manda**: cada despliegue la sube y pisa la del panel. Una sola, en un solo lugar.
+
+**Staging** no tiene clave (y aunque la tuviera, staging nunca manda correo a clientes: `politica.py`).
+
+**Para que entre**, el contenedor tiene que reiniciar o recibir un despliegue (las variables y secretos del panel llegan
+a Odoo al arrancar).
+Después, en Odoo › Ventas › Configuración › **Correo a clientes**, el «Estado» dice **«Clave cargada (…xxxx)»** con las
+cuatro últimas letras de tu clave.
+
+## 4. La prueba (antes de verificar el dominio)
+
+Mientras `tommalo.example` no esté verificado en Resend, Resend solo deja mandar desde `onboarding@resend.dev` y solo al
+correo dueño de la cuenta. Para probar:
+
+1. Revisa que tu usuario de Odoo tenga **el mismo correo de tu cuenta de Resend** (tu perfil › Mis preferencias).
+2. Odoo › Ventas › Configuración › **Correo a clientes**. En **Remitente** pon por ahora `onboarding@resend.dev` y
+   guarda.
+3. Toca **«Enviar correo de prueba»**. Te tiene que llegar «Correo de prueba de D'CASA». Ábrelo **en el celular**: tiene
+   que verse el logo, el crema y el botón naranja de WhatsApp. Si no llega, mira también en spam.
+4. Si sale un error, la pantalla lo dice con las palabras de Resend (por ejemplo, que el dominio no está verificado).
+5. **El interruptor «Enviar correos a clientes» se queda apagado.** Sin dominio, a los clientes no les llegaría.
+
+## 5. El dominio en Resend (hecho el 2026-10-26)
+
+1. En Resend › **Domains** › **Add Domain** › escribe `tommalo.example`.
+2. Resend te muestra una lista de registros DNS (para que los correos no lleguen a spam: SPF, DKIM y el de rebotes).
+   Cópialos **exactamente como los muestra Resend** en Cloudflare › tu dominio `tommalo.example` › **DNS** › **Records** ›
+   **Add record**: el tipo, el nombre, el contenido y la prioridad si la pide. En cada uno, el «Proxy status» va en
+   **DNS only** (la nube gris). Si Resend ofrece configurarlo solo con Cloudflare, usa eso: es lo mismo, sin copiar a
+   mano.
+3. Si Resend también te muestra un registro DMARC (su nombre es `_dmarc` y su contenido empieza con `v=DMARC1`), cópialo
+   igual, tal cual.
+4. En Resend toca **Verify** y espera a que el dominio diga **Verified** (puede tardar un rato).
+
+**Hecho el 2026-10-26:** `tommalo.example` está **Verified** en Resend (DKIM `resend._domainkey` y los CNAME `send` y
+`rsend`, en gris; no se agregó otro `_dmarc`: ya había uno). La clave de producción quedó como secreto
+`RESEND_API_KEY` en el panel de Cloudflare del Worker `dcasa` (no en GitHub; si un día se pone en GitHub, esa manda);
+staging no tiene clave. **Encendido el 2026-10-27** (la dueña): remitente `ventas@tommalo.example`, respuestas a
+`info@tommalo.example`, las tres casillas marcadas; el correo de prueba llegó a la bandeja principal y la respuesta
+llegó al Gmail por Email Routing.
+
+### Recibir en info@tommalo.example
+
+**Hecho el 2026-10-26:** nadie usaba el buzón de Zoho, así que se borraron sus MX y su SPF y Cloudflare Email Routing
+reenvía `info@tommalo.example` y cualquier otra dirección del dominio (catch-all) al Gmail de la empresa. Ese Gmail
+responde «como» `info@tommalo.example` (Gmail › Cuentas › Enviar como, servidor `smtp.resend.com`, puerto 465, SSL,
+usuario `resend`, una clave de Resend propia llamada «Gmail»). Para volver a Zoho: borrar los MX/SPF de Cloudflare y
+poner otra vez `mx.zoho.com` (10), `mx2.zoho.com` (20), `mx3.zoho.com` (50) y `v=spf1 include:zohomail.com ~all`.
+
+Las respuestas de los clientes van a `info@tommalo.example`. Si hoy ese correo no recibe en ningún lado, Cloudflare puede
+reenviarlo gratis a tu Gmail:
+
+1. **Antes**, revisa si `info@tommalo.example` ya recibe correo en otro lado (el sistema viejo o el hosting): encender esto
+   cambia por dónde llega el correo del dominio y aquello dejaría de recibir.
+2. Cloudflare › tu dominio › **Email** › **Email Routing** › actívalo. Cloudflare agrega solo sus registros.
+3. Crea la dirección `info` y que reenvíe a tu Gmail. Cloudflare te manda un correo para confirmar ese Gmail: ábrelo y
+   confirma.
+
+## 6. Encender
+
+En Odoo › Ventas › Configuración › **Correo a clientes**:
+
+1. **Remitente**: `ventas@tommalo.example` (no necesita buzón). **Nombre**: `D'CASA Panamá`. **Las respuestas llegan a**:
+   `info@tommalo.example`. Guarda.
+2. **«Enviar correo de prueba»** otra vez: ahora sale desde `ventas@tommalo.example`.
+3. Revisa el tope de tu plan de Resend (paso 2).
+4. Marca **«Enviar correos a clientes»** y guarda. Desde ese momento, cada pago manda su factura.
+
+Las otras tres casillas vienen marcadas: **«Mandar la factura al registrar un pago»**, **«Recordar el abono antes de que
+venza»** y **«Bienvenida a clientes nuevos»**. Desmárcalas si no quieres alguna.
+
+**Ojo, con el correo encendido también salen los correos de acceso de Odoo**: al crear un usuario que tenga correo le
+llega de verdad la invitación para elegir su clave, y «Cambiar contraseña» o «Olvidé mi contraseña» mandan su correo
+(Mi cuenta los necesita para quien entra con su correo). Hoy, sin correo, no le llega nada a nadie (docs/EQUIPO.md).
+
+Para apagarlo todo de un golpe: desmarca **«Enviar correos a clientes»**. Lo que estaba por salir ya no sale (queda
+anotado «Se apagaron los correos antes de enviarlo»). Si desmarcas solo **«Mandar la factura al registrar un pago»** o
+**«Bienvenida a clientes nuevos»**, lo de eso que estaba por salir tampoco sale; lo que alguien pide a mano («Enviar»,
+Brian) sí.
+
+## 6b. El recordatorio del abono y WhatsApp (D3)
+
+La gerencia pidió el recordatorio por correo **y, si se puede, por WhatsApp**. Lo que quedó:
+
+- **Por correo:** listo y apagado como todo lo demás (arriba). Respeta el interruptor general, la clave de Resend y
+  su propia casilla.
+- **La lista Facturación › Clientes › Abonos por vencer** (Caja, Gerencia y contabilidad): los abonos que vencen en
+  los próximos 5 días y los ya vencidos, del más urgente al menos, con lo que le falta a cada cliente, si ya salió el
+  recordatorio por correo y un botón **WhatsApp** que abre WhatsApp (en el teléfono o en WhatsApp Web) **con el mensaje
+  listo para ese cliente**: lo manda la persona, desde el teléfono de la tienda. Brian: `abonos_por_vencer`.
+- **WhatsApp automático: apagado a propósito.** WhatsApp va por la API oficial de Meta desde el 2026-11-02
+  ([JUAN_CANALES.md](JUAN_CANALES.md)), y Meta solo deja escribirle **primero** a un cliente con una **plantilla
+  aprobada** (que cobra por mensaje). Cuando haya plantillas aprobadas, el recordatorio por WhatsApp se agrega con
+  una plantilla («Hola {nombre}, tu abono de la factura {número} vence el {fecha}: te faltan {saldo}») sobre esta misma
+  lista y la misma regla de uno por vencimiento.
+
+## 7. Si algo falla
+
+- **Ventas › Configuración › Correos a clientes (enviados)** (Gerencia y administradores): cada correo, a quién, si
+  salió y, si no, por qué. Los filtros «Por enviar», «Enviados» y «No enviados» ayudan a encontrarlos.
+- **«Falta el correo de … o está mal escrito»**: corrige el correo en la ficha del cliente. Queda también una nota en la
+  factura. La bienvenida se vuelve a intentar con su siguiente pago.
+- **Resend no respondió o pidió esperar**: Odoo lo reintenta solo (a los 5, 15, 60 y 240 minutos, hasta 5 veces).
+- **No se pudo armar el PDF**: se vuelve a intentar en las siguientes vueltas (cada 10 minutos); al tercer intento queda
+  «Falló» con el motivo, y se manda a mano desde la factura con «Enviar».
+- **Resend lo rechazó** (por ejemplo, un correo que no existe): no se reintenta; corrige el correo y mándalo de nuevo
+  desde la factura con «Enviar».
+- **En staging** nunca le llega nada a un cliente: es a propósito.
+
+## 8. Para quien programa
+
+- **La clave** viene solo de la variable `RESEND_API_KEY`: secreto de GitHub › `.github/scripts/secretos_despliegue.sh`
+  › Worker (`VARIABLES_DEL_CONTENEDOR`) › contenedor › Odoo. Nunca en `ir.config_parameter`, en un campo, en un log ni en
+  una respuesta (hay pruebas que lo revisan en la base y en los logs). Sin ella, `ir.mail_server._connect__` se comporta
+  exactamente como Odoo.
+- **Transporte** (`models/resend.py`, puro): `SesionResend` hace de conexión SMTP y manda `POST
+  https://api.resend.com/emails` con `Idempotency-Key`. 429, 5xx y sin red → `DCASA_REINTENTAR:` (cron cada 15 min);
+  la política → `DCASA_NO_ENVIADO:`. Nunca lanza `SMTPServerDisconnected`.
+- **Política** (`models/politica.py`): cada `mail.mail` lleva `X-Dcasa-Clase` (factura, abono, bienvenida, cotizacion,
+  documento, acceso, prueba u odoo). El contexto `dcasa_correo_tipo` solo lo respeta si quien publica es del equipo
+  (`env.uid`, no `env.su`): `/mail/message/post` publica con `sudo()` y deja pasar el `context` del navegador. La prueba solo sale a correos del equipo; apagado o en staging no sale nada más;
+  `odoo` nunca. Lo que la política frena se marca «no enviado» (`DCASA_NO_ENVIADO:`) en `mail.mail.send` antes de
+  intentarlo: no se llama a Resend ni se llena el log de errores; el transporte vuelve a revisar lo mismo.
+- **Gancho del pago** (`models/account_move_line.py`): `_reconcile_pre_hook`/`_reconcile_post_hook`, en un savepoint,
+  solo encola en `dcasa.correo.envio` (único por `(tipo, huella)`; huella `factura:saldo en centavos`). Apagado, el
+  pago no hace nada del correo. Si el saldo vuelve a quedar igual por un pago (desconciliar y volver a conciliar) y el
+  correo de ese saldo se había omitido sin salir, vuelve a la cola; uno que ya salió, nunca. El cron
+  `ir_cron_dcasa_correo_cola` arma el PDF nuevo y publica en el chatter con `layout_correo`; la cola de Odoo lo manda.
+  Contexto `dcasa_sin_correo_auto`: no encola. Contexto `dcasa_correo_sin_token`: sin `access_token`.
+- **Parámetros**: `dcasa_correo.remitente`, `.nombre`, `.responder_a`, `.enviar_a_clientes` (apagado),
+  `.al_pagar` y `.bienvenida` (encendidos al instalar), `.bienvenida_desde` (fecha de instalación: quién es nuevo).
+- **Brian**: `enviar_factura_por_correo` y `enviar_cotizacion_por_correo` (ver docs/BRIAN.md).
+- **Por confirmar en la primera prueba real en staging**: que Resend acepte la cabecera `Idempotency-Key` y los nombres
+  de los campos del JSON, y cómo se ve el correo en Gmail en el celular.

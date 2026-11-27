@@ -1,0 +1,630 @@
+"""Las pantallas «Resumen», «Costos de IA» y «Conexiones» de Juan (docs/JUAN_ODOO.md).
+
+* **Resumen** (ventas): mensajes, clientes únicos, resueltas sin una persona, oportunidades creadas, ventas atribuidas,
+  tasa de cierre (en el periodo y comparada en todos los periodos) y tiempo de primera respuesta. Todo sale de lo que
+  Odoo ya guarda; no se inventa ninguna cifra.
+* **Costos de IA** (gerencia): gasto del mes, tope, proyección «terminarás el mes en…», por modelo y por día. Lo que
+  gastó el Worker se lee de ``GET /odoo/salud`` y ``GET /odoo/costos``. El Worker solo guarda el acumulado del mes por
+  modelo, así que el gasto POR DÍA lo arma Odoo con una foto diaria del acumulado (``dcasa.juan.costo.dia``).
+* **Conexiones** (gerencia): estado en vivo de cada canal, el QR para vincular WhatsApp (nunca se guarda ni se
+  escribe en un registro), reiniciar y desvincular el puente, y qué NOMBRES de claves faltan (jamás valores).
+
+Si el Worker no está configurado, cada pantalla lo dice con claridad («Falta conectar el bot») en vez de fallar.
+"""
+import logging
+
+import psycopg2.errors
+from markupsafe import escape
+
+from odoo import api, fields, models
+from odoo.exceptions import AccessError, UserError
+
+from . import horario as H
+from . import panel_calculos as C
+from .ajustes import CANALES
+
+_logger = logging.getLogger(__name__)
+
+GRUPO_GERENCIA = 'sales_team.group_sale_manager'
+PREFIJO_QR = 'data:image/png;base64,'
+MAX_QR = 200_000
+NOMBRES_DE_CLAVES_DEL_ENTORNO = ('JUAN_URL', 'JUAN_WORKER_TOKEN')
+
+
+def guardar_foto(cr, fecha, acumulado, uid, cuando):
+    """Deja (o sube) la foto de ``fecha`` en una sola instrucción: dentro de un mismo día el acumulado solo crece.
+
+    Si otra pestaña (o el cron) subió la misma foto mientras esta transacción hablaba con el Worker, en REPEATABLE READ
+    eso es un choque de serialización (revisión, 2026-11-12: salía «bad query» en ERROR y Odoo reintentaba la llamada
+    entera, «Pagar» incluido). La foto ya la dejó el otro y la próxima visita o el cron la vuelven a subir, así que se
+    sigue sin ella: devuelve ``False``, sin error en el registro y sin tocar el resto de la transacción."""
+    try:
+        with cr.savepoint(flush=False):
+            cr.execute("""
+                INSERT INTO dcasa_juan_costo_dia (fecha, mes, acumulado_usd, create_uid, create_date, write_uid,
+                                                  write_date)
+                     VALUES (%(f)s, %(m)s, %(a)s, %(u)s, %(t)s, %(u)s, %(t)s)
+                ON CONFLICT (fecha) DO UPDATE
+                       SET acumulado_usd = EXCLUDED.acumulado_usd, write_uid = EXCLUDED.write_uid,
+                           write_date = EXCLUDED.write_date
+                     WHERE dcasa_juan_costo_dia.acumulado_usd IS NULL
+                        OR dcasa_juan_costo_dia.acumulado_usd < EXCLUDED.acumulado_usd""",
+                       {'f': fecha, 'm': fecha.strftime('%Y-%m'), 'a': acumulado, 'u': uid, 't': cuando},
+                       log_exceptions=False)   # el choque es esperado: no es un error del sistema
+    except psycopg2.errors.SerializationFailure:
+        _logger.info('Foto del gasto de IA del %s: otra transacción la subió a la vez; se sigue sin ella.', fecha)
+        return False
+    return True
+
+
+# Lo que cobra Cloudflare (Workers AI), aparte de Meta: «Busca con una foto» lo anota como
+# ``cloudflare:lector-de-fotos`` (juan/src/odoo-panel-buscar-foto.ts); un modelo de Workers AI se llama ``@cf/…``.
+NOMBRES_DE_CLOUDFLARE = {'cloudflare:lector-de-fotos': 'Cloudflare: lector de fotos',
+                         # Las notas de voz de Brian del panel (juan/src/odoo-panel-voz.ts): Whisper de Workers AI.
+                         'cloudflare:notas-de-voz-del-panel': 'Cloudflare: notas de voz del panel'}
+
+
+def es_de_cloudflare(modelo):
+    return isinstance(modelo, str) and (modelo.startswith('cloudflare:') or modelo.startswith('@cf/'))
+
+
+def renglones_de_cloudflare(cuerpo):
+    """Los renglones aparte de Cloudflare (``cloudflare`` de ``GET /odoo/costos``, y cualquier ``@cf/…`` o
+    ``cloudflare:…`` que viniera mezclado con los modelos): nombre, gasto y cuántas lecturas, sin «respuestas»."""
+    crudos = [c for c in (cuerpo.get('cloudflare') or []) if isinstance(c, dict)]
+    crudos += [{'concepto': m.get('modelo'), 'usd': m.get('usd'), 'lecturas': m.get('turnos'),
+                'estimado': m.get('estimado')}
+               for m in (cuerpo.get('por_modelo') or []) if isinstance(m, dict) and es_de_cloudflare(m.get('modelo'))]
+    renglones = {}
+    for c in crudos:
+        concepto = str(c.get('concepto') or '')[:80]
+        if not concepto:
+            continue
+        nombre = NOMBRES_DE_CLOUDFLARE.get(concepto) or f'Cloudflare: {concepto.removeprefix("cloudflare:")}'
+        try:
+            usd, lecturas = float(c.get('usd') or 0), int(c.get('lecturas') or 0)
+        except (TypeError, ValueError):
+            continue
+        fila = renglones.setdefault(nombre, {'modelo': nombre, 'usd': 0.0, 'turnos': 0, 'estimado': False,
+                                             'aparte': True, 'lecturas': 0})
+        fila['usd'] = round(fila['usd'] + usd, 4)
+        fila['lecturas'] += lecturas
+        fila['estimado'] = fila['estimado'] or bool(c.get('estimado'))
+    return sorted(renglones.values(), key=lambda r: -r['usd'])
+
+
+class DcasaJuanCostoDia(models.Model):
+    """Una foto diaria del gasto de IA acumulado del mes (el Worker no guarda el gasto por día)."""
+    _name = 'dcasa.juan.costo.dia'
+    _description = 'Gasto de IA acumulado al final de un día'
+    _order = 'fecha desc'
+    _rec_name = 'fecha'
+
+    fecha = fields.Date('Día (hora de Panamá)', required=True, index=True)
+    mes = fields.Char('Mes', required=True, help='AAAA-MM: el Worker reinicia la cuenta cada mes.')
+    acumulado_usd = fields.Float('Acumulado del mes (USD)', digits=(12, 6))
+
+    _fecha_unica = models.Constraint('UNIQUE(fecha)', 'Ya hay una foto del gasto de ese día.')
+
+    @api.model
+    def _guardar(self, fecha, acumulado):
+        """Deja (o sube) la foto del ``fecha``: dentro de un mismo día el acumulado solo crece (``guardar_foto``)."""
+        Foto = self.sudo()
+        Foto.flush_model()
+        guardar_foto(self.env.cr, fecha, float(acumulado), self.env.uid, fields.Datetime.now())
+        Foto.invalidate_model()
+        return Foto.search([('fecha', '=', fecha)], limit=1)
+
+    @api.model
+    def _cron_foto_diaria(self):
+        """Cada noche: pide el gasto al Worker y guarda la foto de hoy (si el Worker no responde, no pasa nada)."""
+        return self.env['dcasa.juan.panel']._tomar_foto_de_costos()
+
+
+class DcasaJuanPanel(models.AbstractModel):
+    _name = 'dcasa.juan.panel'
+    _description = 'Pantallas de resumen, costos y conexiones de Juan'
+
+    # ------------------------------------------------------------------
+    # Permisos y ayudas
+    # ------------------------------------------------------------------
+
+    @api.model
+    def _exigir_gerencia(self):
+        if not self.env.su and not self.env.user.has_group(GRUPO_GERENCIA):
+            raise AccessError(self.env._('Solo Gerencia ve los costos, las conexiones y cómo le fue a cada persona.'))
+
+    @api.model
+    def _horario(self):
+        return self.env['dcasa.juan.ajustes'].obtener().horario()
+
+    @api.model
+    def _ahora_local(self):
+        return H.a_local(fields.Datetime.now(), self._horario())
+
+    @api.model
+    def _detalle_del_fallo(self, respuesta):
+        """Por qué no se pudo hablar con el Worker, dicho para una persona."""
+        if respuesta.get('estado_http') in (401, 403):
+            return ('El Worker no aceptó la clave de Odoo: JUAN_WORKER_TOKEN tiene que ser exactamente la misma '
+                    'en Odoo y en el Worker de Juan.')
+        return respuesta.get('error') or 'El Worker no respondió.'
+
+    @api.model
+    def _sin_conectar(self, extra=None):
+        return {
+            'configurado': False, 'mensaje': 'Falta conectar el bot',
+            'detalle': 'Odoo todavía no sabe dónde está el Worker de Juan ni tiene su clave. Gerencia la carga '
+                       '(variables JUAN_URL y JUAN_WORKER_TOKEN) y esta pantalla se llena sola.',
+            'faltan': [nombre for nombre, hay in (
+                ('JUAN_URL', bool(self.env['dcasa.juan.ajustes'].url_worker())),
+                ('JUAN_WORKER_TOKEN', bool(self.env['dcasa.juan.ajustes'].token_worker()))) if not hay],
+            **(extra or {}),
+        }
+
+    # ------------------------------------------------------------------
+    # Resumen
+    # ------------------------------------------------------------------
+
+    @api.model
+    def resumen(self, periodo='hoy'):
+        """Los números del periodo (``hoy``, ``7_dias``, ``30_dias``, ``90_dias`` o ``12_meses``; hora de Panamá)."""
+        self.env['dcasa.conversacion']._exigir_vendedora()
+        if periodo not in C.PERIODOS:
+            raise UserError(self.env._('Periodo desconocido: %s.', periodo))
+        horario = self._horario()
+        ahora_local = self._ahora_local()
+        inicio_local, fin_local = C.limites_del_periodo(periodo, ahora_local)
+        inicio, fin = H.a_utc(inicio_local), H.a_utc(fin_local)
+        cr = self.env.cr
+
+        cr.execute("""
+            SELECT direccion, autor, COUNT(*), COUNT(DISTINCT conversacion_id)
+              FROM dcasa_mensaje
+             WHERE tipo = 'mensaje' AND ts >= %s AND ts < %s
+          GROUP BY direccion, autor""", [inicio, fin])
+        por_autor = {(direccion, autor): n for direccion, autor, n, _c in cr.fetchall()}
+        entrantes = por_autor.get(('entrante', 'cliente'), 0)
+        del_asistente = por_autor.get(('saliente', 'bot'), 0)
+        de_vendedoras = por_autor.get(('saliente', 'vendedora'), 0)
+
+        clientes_unicos, conversaciones = self._clientes_y_conversaciones(inicio, fin)
+
+        # «Resuelta sin humano»: el cliente escribió, contestó el asistente y ninguna persona escribió ni la tomó.
+        cr.execute("""
+            SELECT COUNT(*)
+              FROM dcasa_conversacion c
+             WHERE c.estado <> 'humano'
+               AND EXISTS (SELECT 1 FROM dcasa_mensaje m WHERE m.conversacion_id = c.id AND m.tipo = 'mensaje'
+                              AND m.autor = 'cliente' AND m.ts >= %(i)s AND m.ts < %(f)s)
+               AND EXISTS (SELECT 1 FROM dcasa_mensaje m WHERE m.conversacion_id = c.id AND m.tipo = 'mensaje'
+                              AND m.autor = 'bot' AND m.ts >= %(i)s AND m.ts < %(f)s)
+               AND NOT EXISTS (SELECT 1 FROM dcasa_mensaje m WHERE m.conversacion_id = c.id AND m.tipo = 'mensaje'
+                              AND m.autor = 'vendedora' AND m.ts >= %(i)s AND m.ts < %(f)s)""",
+                   {'i': inicio, 'f': fin})
+        resueltas_sin_humano = cr.fetchone()[0]
+
+        cr.execute("""
+            SELECT COUNT(DISTINCT l.id)
+              FROM crm_lead l JOIN dcasa_conversacion c ON c.oportunidad_id = l.id
+             WHERE l.create_date >= %s AND l.create_date < %s""", [inicio, fin])
+        oportunidades = cr.fetchone()[0]
+
+        ventas = self._ventas_atribuidas(inicio_local.date(), fin_local.date())
+        return {
+            'periodo': periodo, 'periodo_nombre': C.NOMBRES_PERIODO[periodo],
+            'desde': H.a_iso(inicio), 'hasta': H.a_iso(fin),
+            'mensajes': {'total': entrantes + del_asistente + de_vendedoras, 'entrantes': entrantes,
+                         'del_asistente': del_asistente, 'de_vendedoras': de_vendedoras},
+            'clientes_unicos': clientes_unicos, 'conversaciones': conversaciones,
+            'resueltas_sin_humano': resueltas_sin_humano,
+            'oportunidades_creadas': oportunidades,
+            'ventas': ventas,
+            'tasa_de_cierre': C.tasas_de_cierre(conversaciones, ventas),
+            'primera_respuesta': self._primera_respuesta(inicio, fin),
+            'necesitan_atencion': self.env['dcasa.conversacion'].search_count(
+                [('estado', '=', 'humano'), ('ultimo_mensaje_autor', '=', 'cliente')]),
+            'sin_leer_total': len(self.env['dcasa.conversacion']._ids_con_sin_leer()),
+            'es_gerencia': self.env.user.has_group(GRUPO_GERENCIA),
+            'bot_conectado': bool(self.env['dcasa.juan.cliente'].configurado()),
+            'bot_encendido': bool(self.env['dcasa.juan.ajustes'].obtener().bot_activo_global),
+            'zona': horario.zona,
+        }
+
+    @api.model
+    def _clientes_y_conversaciones(self, inicio, fin):
+        """``(clientes únicos, conversaciones)``: las conversaciones donde el cliente escribió en el periodo (UTC)."""
+        self.env.cr.execute("""
+            SELECT COUNT(DISTINCT COALESCE(partner_id::text, 'c' || conversacion_id::text)),
+                   COUNT(DISTINCT conversacion_id)
+              FROM dcasa_mensaje
+             WHERE tipo = 'mensaje' AND autor = 'cliente' AND ts >= %s AND ts < %s""", [inicio, fin])
+        return self.env.cr.fetchone()
+
+    @api.model
+    def tasas_de_cierre(self):
+        """La tasa de cierre de todos los periodos juntos (hoy, 7, 30 y 90 días y 12 meses), para compararlos en una
+        tabla (pedido de la dueña, 2026-11-05). Lo mismo que la tarjeta «Tasa de cierre» del Resumen en cada periodo:
+        ventas atribuidas (facturas pagadas del periodo) ÷ conversaciones del periodo × 100."""
+        self.env['dcasa.conversacion']._exigir_vendedora()
+        ahora_local = self._ahora_local()
+        filas = []
+        for periodo in C.PERIODOS:
+            inicio_local, fin_local = C.limites_del_periodo(periodo, ahora_local)
+            _clientes, conversaciones = self._clientes_y_conversaciones(H.a_utc(inicio_local), H.a_utc(fin_local))
+            ventas = self._ventas_atribuidas(inicio_local.date(), fin_local.date())
+            filas.append({'periodo': periodo, 'nombre': C.NOMBRES_PERIODO[periodo],
+                          **C.tasas_de_cierre(conversaciones, ventas)})
+        return filas
+
+    @api.model
+    def por_persona(self, periodo='hoy'):
+        """Cómo le fue a cada persona del equipo en el periodo: mensajes que escribió en Odoo, conversaciones en las que
+        habló, cuánto tardó en contestar y a quién le debe respuesta un cliente ahora. Solo Gerencia.
+
+        «Cuánto tardó» = desde que el cliente quedó sin respuesta (de cualquiera) hasta el primer mensaje de esa
+        persona en esa conversación; la mediana de todas sus conversaciones. Solo cuentan los mensajes escritos en
+        Odoo (los que escribió desde su teléfono no dicen quién los escribió).
+        """
+        self._exigir_gerencia()
+        if periodo not in C.PERIODOS:
+            raise UserError(self.env._('Periodo desconocido: %s.', periodo))
+        inicio_local, fin_local = C.limites_del_periodo(periodo, self._ahora_local())
+        inicio, fin = H.a_utc(inicio_local), H.a_utc(fin_local)
+        cr = self.env.cr
+        cr.execute("""
+            SELECT usuario_id, COUNT(*), COUNT(DISTINCT conversacion_id)
+              FROM dcasa_mensaje
+             WHERE tipo = 'mensaje' AND autor = 'vendedora' AND usuario_id IS NOT NULL AND ts >= %s AND ts < %s
+          GROUP BY usuario_id""", [inicio, fin])
+        personas = {uid: {'mensajes': n, 'conversaciones': c} for uid, n, c in cr.fetchall()}
+
+        # Por cada persona y conversación: cuándo escribió por primera vez y desde cuándo esperaba el cliente (el
+        # primer mensaje suyo después del último mensaje que SALIÓ por el canal, de quien sea).
+        cr.execute("""
+            WITH primero AS (
+                SELECT conversacion_id, usuario_id, MIN(ts) AS p
+                  FROM dcasa_mensaje
+                 WHERE tipo = 'mensaje' AND autor = 'vendedora' AND usuario_id IS NOT NULL AND ts >= %s AND ts < %s
+              GROUP BY conversacion_id, usuario_id)
+            SELECT pr.usuario_id, pr.p,
+                   (SELECT MIN(c.ts) FROM dcasa_mensaje c
+                     WHERE c.conversacion_id = pr.conversacion_id AND c.tipo = 'mensaje' AND c.autor = 'cliente'
+                       AND c.ts < pr.p
+                       AND c.ts > COALESCE((SELECT MAX(o.ts) FROM dcasa_mensaje o
+                                             WHERE o.conversacion_id = pr.conversacion_id AND o.tipo = 'mensaje'
+                                               AND o.direccion = 'saliente' AND o.ts < pr.p), '1970-01-01'))
+              FROM primero pr""", [inicio, fin])
+        esperas = {}
+        for uid, p, desde in cr.fetchall():
+            if desde:
+                esperas.setdefault(uid, []).append((p - desde).total_seconds())
+
+        ahora = fields.Datetime.now()
+        debiendo = {}   # usuario → (cuántas conversaciones le esperan, desde cuándo la que más)
+        sin_dueno = [0, None]
+        for conv in self.env['dcasa.conversacion'].search([('estado', '=', 'humano'),
+                                                           ('ultimo_mensaje_autor', '=', 'cliente')]):
+            if conv.asignada_a:
+                n, desde = debiendo.get(conv.asignada_a.id, (0, None))
+                debiendo[conv.asignada_a.id] = (n + 1, min(filter(None, (desde, conv.ultimo_mensaje_cliente)),
+                                                           default=None))
+            else:
+                sin_dueno[0] += 1
+                sin_dueno[1] = min(filter(None, (sin_dueno[1], conv.ultimo_mensaje_cliente)), default=None)
+
+        def minutos(desde):
+            return int((ahora - desde).total_seconds() // 60) if desde else None
+
+        nombres = {u.id: u.name for u in self.env['res.users'].sudo().browse(set(personas) | set(debiendo))}
+        filas = []
+        for uid in set(personas) | set(debiendo):
+            mediana = C.mediana(esperas.get(uid, []))
+            esperando, desde = debiendo.get(uid, (0, None))
+            filas.append({
+                'usuario_id': uid, 'nombre': nombres.get(uid, ''),
+                'mensajes': personas.get(uid, {}).get('mensajes', 0),
+                'conversaciones': personas.get(uid, {}).get('conversaciones', 0),
+                'respuesta_seg': mediana, 'respuesta_texto': C.duracion_corta(mediana),
+                'con_respuesta': len(esperas.get(uid, [])),
+                'esperando_ahora': esperando, 'espera_mas_min': minutos(desde),
+            })
+        filas.sort(key=lambda f: (-f['mensajes'], f['nombre'].lower()))
+        return {'periodo': periodo, 'personas': filas,
+                'sin_dueno': {'conversaciones': sin_dueno[0], 'espera_mas_min': minutos(sin_dueno[1])}}
+
+    @api.model
+    def _ventas_atribuidas(self, desde, hasta):
+        """Facturas PAGADAS del periodo de clientes con quienes el asistente habló en los 30 días antes de la factura
+        (``VENTANA_DE_ATRIBUCION_DIAS``), partidas en tres (pedido de la dueña, 2026-11-03: «si esas conversaciones las
+        empezó Juan y las terminó una vendedora, ¿cómo medimos esto?»):
+
+        * **solo_juan**: en esos días contestó el asistente y ninguna persona le escribió al cliente;
+        * **juan_y_vendedora**: contestó el asistente y también una persona (la tomó y siguió);
+        * **solo_vendedora**: solo personas, sin el asistente (de referencia: no se le atribuye).
+
+        ``facturas`` y ``monto`` son las dos primeras juntas (donde participó el asistente). ``de_cotizacion_de_juan``:
+        cuántas de esas salieron de una cotización que armó él (origen «Chatbot»), la prueba más fuerte: esas cuentan
+        como del asistente aunque la conversación sea de antes de la ventana o el cliente de la factura sea otro
+        contacto (revisión adversarial, 2026-11-03). «Y una persona» no mira quién habló primero.
+
+        Es atribución por conversación, no causalidad. El monto va sin ITBMS. Quien ve solo lo suyo («Cada vendedora ve
+        solo sus documentos», ``res.users._dcasa_solo_lo_suyo``) cuenta solo sus facturas y las que no tienen vendedora,
+        como en el resto del sistema (la consulta va por SQL y no pasa por las reglas de registro). Los días son de
+        Panamá (UTC−5, sin horario de verano).
+        """
+        solo_lo_suyo = self.env.user._dcasa_solo_lo_suyo()
+        self.env.cr.execute("""
+            WITH f AS (
+                SELECT m.id, m.amount_untaxed_signed AS monto, m.commercial_partner_id AS cliente,
+                       COALESCE(m.dcasa_origen = 'chatbot', FALSE) AS de_juan,
+                       (m.invoice_date - %(ventana)s)::timestamp + interval '5 hours' AS desde,
+                       (m.invoice_date + 1)::timestamp + interval '5 hours' AS hasta
+                  FROM account_move m
+                 WHERE m.move_type = 'out_invoice' AND m.state = 'posted' AND m.payment_state IN ('paid', 'in_payment')
+                   AND m.invoice_date >= %(d)s AND m.invoice_date < %(h)s AND m.company_id = %(compania)s
+                   AND (NOT %(solo_lo_suyo)s OR m.invoice_user_id = %(uid)s OR m.invoice_user_id IS NULL)
+            ), x AS (
+                -- Una pasada por factura: los mensajes del asistente y de las personas con ese cliente (cualquier
+                -- contacto de la misma empresa) en la ventana. Juntas, no un EXISTS por factura.
+                SELECT f.monto, f.de_juan,
+                       COALESCE(BOOL_OR(b.autor = 'bot'), FALSE) OR f.de_juan AS juan,
+                       COALESCE(BOOL_OR(b.autor = 'vendedora'), FALSE) AS persona
+                  FROM f
+             LEFT JOIN res_partner p ON p.commercial_partner_id = f.cliente
+             LEFT JOIN dcasa_conversacion c ON c.partner_id = p.id
+             LEFT JOIN dcasa_mensaje b ON b.conversacion_id = c.id AND b.tipo = 'mensaje'
+                                      AND b.autor IN ('bot', 'vendedora') AND b.ts >= f.desde AND b.ts < f.hasta
+              GROUP BY f.id, f.monto, f.de_juan)
+            SELECT juan, persona, de_juan, COUNT(*), COALESCE(SUM(monto), 0)
+              FROM x WHERE juan OR persona
+          GROUP BY juan, persona, de_juan""",
+                            {'d': desde, 'h': hasta, 'compania': self.env.company.id, 'solo_lo_suyo': solo_lo_suyo,
+                             'uid': self.env.uid, 'ventana': C.VENTANA_DE_ATRIBUCION_DIAS})
+        partes = {clave: {'facturas': 0, 'monto': 0.0}
+                  for clave in ('solo_juan', 'juan_y_vendedora', 'solo_vendedora', 'de_cotizacion_de_juan')}
+        for juan, persona, de_juan, facturas, monto in self.env.cr.fetchall():
+            clave = ('juan_y_vendedora' if persona else 'solo_juan') if juan else 'solo_vendedora'
+            for destino in (clave, 'de_cotizacion_de_juan') if (juan and de_juan) else (clave,):
+                partes[destino]['facturas'] += facturas
+                partes[destino]['monto'] += float(monto)
+        for parte in partes.values():
+            parte['monto'] = round(parte['monto'], 2)
+        return {
+            'facturas': partes['solo_juan']['facturas'] + partes['juan_y_vendedora']['facturas'],
+            'monto': round(partes['solo_juan']['monto'] + partes['juan_y_vendedora']['monto'], 2),
+            'moneda': self.env.company.currency_id.symbol,
+            'ventana_dias': C.VENTANA_DE_ATRIBUCION_DIAS,
+            **partes,
+        }
+
+    @api.model
+    def _primera_respuesta(self, inicio, fin):
+        """Mediana de segundos entre el primer mensaje del cliente y la primera respuesta, de las conversaciones que
+        EMPEZARON en el periodo: la primera de cualquiera (asistente o persona) y la primera de una persona."""
+        self.env.cr.execute("""
+            WITH t AS (
+                SELECT m.conversacion_id, MIN(m.ts) AS t_cliente
+                  FROM dcasa_mensaje m JOIN dcasa_conversacion c ON c.id = m.conversacion_id
+                 WHERE c.inicio >= %s AND c.inicio < %s AND m.tipo = 'mensaje' AND m.autor = 'cliente'
+              GROUP BY m.conversacion_id)
+            SELECT t.t_cliente,
+                   MIN(r.ts) FILTER (WHERE r.autor IN ('bot', 'vendedora')),
+                   MIN(r.ts) FILTER (WHERE r.autor = 'vendedora')
+              FROM t LEFT JOIN dcasa_mensaje r
+                ON r.conversacion_id = t.conversacion_id AND r.tipo = 'mensaje' AND r.direccion = 'saliente'
+               AND r.ts >= t.t_cliente
+          GROUP BY t.conversacion_id, t.t_cliente""", [inicio, fin])
+        filas = self.env.cr.fetchall()
+        cualquiera = [(primera - t_cliente).total_seconds() for t_cliente, primera, _p in filas if primera]
+        personas = [(persona - t_cliente).total_seconds() for t_cliente, _a, persona in filas if persona]
+        mediana_total, mediana_personas = C.mediana(cualquiera), C.mediana(personas)
+        return {
+            'conversaciones': len(filas),
+            'cualquiera_seg': mediana_total, 'cualquiera_texto': C.duracion_corta(mediana_total),
+            'persona_seg': mediana_personas, 'persona_texto': C.duracion_corta(mediana_personas),
+            'con_respuesta': len(cualquiera), 'con_respuesta_persona': len(personas),
+        }
+
+    # ------------------------------------------------------------------
+    # Costos de IA
+    # ------------------------------------------------------------------
+
+    @api.model
+    def _tomar_foto_de_costos(self, informe=None):
+        """Guarda el acumulado de hoy (hora de Panamá). Devuelve el informe de salud que usó, o ``None``.
+
+        Sin foto si el Worker no pudo leer el gasto (``gasto_ia_mes_usd: null``: sin dato, no un cero) o si el
+        acumulado es de otro mes que hoy (a las 00:00 del día 1 los relojes pueden diferir unos segundos: el total del
+        mes viejo no puede quedar como foto del mes nuevo)."""
+        Cliente = self.env['dcasa.juan.cliente']
+        if informe is None:
+            respuesta = Cliente.informe_de_salud() if Cliente.configurado() else None
+            informe = respuesta['cuerpo'] if respuesta and respuesta['conectado'] and not respuesta['error'] else None
+        gasto = (informe or {}).get('gasto_ia_mes_usd')
+        hoy = self._ahora_local().date()
+        mes = (informe or {}).get('mes')
+        de_otro_mes = C.mes_valido(mes) and mes != hoy.strftime('%Y-%m')
+        if isinstance(gasto, (int, float)) and not isinstance(gasto, bool) and gasto >= 0 and not de_otro_mes:
+            self.env['dcasa.juan.costo.dia']._guardar(hoy, float(gasto))
+        return informe
+
+    @api.model
+    def costos(self):
+        """El gasto de IA del mes, el tope, la proyección y el desglose. Solo Gerencia.
+
+        ``pagos``: «Por pagar a Meta» (lo consumido desde el último pago) y el último pago (``pagos_ia.py``)."""
+        self._exigir_gerencia()
+        return self._datos_de_costos()
+
+    @api.model
+    def _datos_de_costos(self):
+        """Lo de ``costos()`` sin comprobar el grupo: lo usa la pantalla (Gerencia) y Brian (``costos_de_juan``, que
+        comprueba Gerencia o administrador antes). Las mismas cifras en los dos, sin cuentas duplicadas."""
+        Cliente = self.env['dcasa.juan.cliente']
+        if not Cliente.configurado():
+            return self._sin_conectar({'ok': False})
+        salud = Cliente.informe_de_salud()
+        if not salud['conectado'] or salud['error']:
+            return {'configurado': True, 'ok': False, 'mensaje': 'No pude hablar con el Worker',
+                    'detalle': self._detalle_del_fallo(salud)}
+        informe = salud['cuerpo']
+        ahora_local = self._ahora_local()
+        gasto = informe.get('gasto_ia_mes_usd')
+        if not isinstance(gasto, (int, float)) or isinstance(gasto, bool) or gasto < 0:
+            # El Worker contestó pero no pudo leer su contador (``null``): sin dato, no un $0 inventado.
+            return {'configurado': True, 'ok': False, 'mensaje': 'No pude leer el gasto de IA',
+                    'detalle': 'Juan (el Worker) contestó, pero no pudo leer cuánto va el mes. Inténtalo en un '
+                               'momento; si sigue así, revisa Conexiones.'}
+        gasto = float(gasto)
+        tope = float(informe.get('tope_usd') or 0)
+        self._tomar_foto_de_costos(informe)
+        detalle = Cliente.costos()
+        cuerpo = detalle['cuerpo'] if detalle['conectado'] and not detalle['error'] else {}
+        por_modelo = [{
+            'modelo': str(m.get('modelo') or '')[:80], 'usd': round(float(m.get('usd') or 0), 4),
+            'turnos': int(m.get('turnos') or 0), 'estimado': bool(m.get('estimado')),
+        } for m in (cuerpo.get('por_modelo') or []) if isinstance(m, dict) and not es_de_cloudflare(m.get('modelo'))]
+        por_modelo.sort(key=lambda m: -m['usd'])
+        # Lo que cobra Cloudflare (el lector de fotos de la tienda, Workers AI) va en su propio renglón: no es deuda con
+        # Meta ni suma «respuestas» (el Worker ya lo deja fuera del gasto del mes, del saldo y de los turnos).
+        aparte = renglones_de_cloudflare(cuerpo)
+        mes = ahora_local.strftime('%Y-%m')
+        fotos = {f.fecha: f.acumulado_usd for f in self.env['dcasa.juan.costo.dia'].sudo().search(
+            [('mes', '=', mes)])}
+        por_dia = C.unir_gasto_por_dia(C.gasto_por_dia(fotos, mes), cuerpo.get('por_dia'), mes)
+        proyeccion = C.proyeccion_del_mes(gasto, ahora_local)
+        estado = C.estado_del_tope(gasto, proyeccion, tope)
+        ia = informe.get('ia') or {}
+        extra = self._costos_extra(cuerpo)
+        return {
+            'configurado': True, 'ok': True,
+            'mes': mes, 'mes_nombre': f'{H.MESES[ahora_local.month - 1]} de {ahora_local.year}',
+            'dia_del_mes': ahora_local.day, 'dias_del_mes': C.dias_del_mes(ahora_local),
+            'gasto_usd': round(gasto, 2), 'tope_usd': round(tope, 2),
+            'porcentaje_del_tope': round(gasto / tope * 100, 1) if tope > 0 else None,
+            'proyeccion_usd': proyeccion, 'estado_del_tope': estado,
+            'tope_alcanzado': bool(informe.get('tope_alcanzado')) or estado == 'alcanzado',
+            'turnos': int(cuerpo.get('turnos') or sum(m['turnos'] for m in por_modelo)),
+            'por_modelo': por_modelo + aparte, 'por_dia': por_dia,
+            'hay_detalle_por_modelo': bool(por_modelo or aparte),
+            'cloudflare_usd': round(sum(r['usd'] for r in aparte), 4),
+            'modelos_sin_precio': [str(m)[:80] for m in (ia.get('modelos_sin_precio') or [])],
+            'ia': {'proveedor': ia.get('proveedor'), 'respaldo': ia.get('respaldo'),
+                   'modelo_rapido': ia.get('modelo_rapido'), 'modelo_inteligente': ia.get('modelo_inteligente'),
+                   'claves_faltantes': [str(c) for c in (ia.get('claves_faltantes') or [])]},
+            'avisos': [str(a)[:300] for a in (informe.get('avisos') or [])][:8],
+            # El mes del acumulado lo dice el Worker (el de Odoo solo si es un Worker viejo que no lo manda).
+            'pagos': self._saldo_ia((informe['mes'] if C.mes_valido(informe.get('mes')) else mes, gasto),
+                                    self._otros_de_meta(extra)),
+            **extra,
+        }
+
+    @api.model
+    def _costos_extra(self, cuerpo):
+        """Renglones aparte que agregan otros módulos con lo que el Worker mandó en ``/odoo/costos`` (``cuerpo``),
+        p. ej. «Brian de la tienda» (``dcasa_brian_tienda``). No cambian el gasto de Juan; a «Por pagar a Meta» solo
+        llega lo que ``_otros_de_meta`` saque de ellos (lo gastado en modelos de Meta)."""
+        return {}
+
+    # ------------------------------------------------------------------
+    # Conexiones
+    # ------------------------------------------------------------------
+
+    @api.model
+    def _diagnostico_de_odoo(self):
+        """Lo que Odoo sabe de su propia configuración (solo sí/no y direcciones públicas, nunca un valor secreto)."""
+        ajustes = self.env['dcasa.juan.ajustes']
+        base = (self.env['ir.config_parameter'].sudo().get_param('web.base.url') or '').rstrip('/')
+        return {
+            'url_del_worker': bool(ajustes.url_worker()), 'token_del_worker': bool(ajustes.token_worker()),
+            'token_de_odoo': bool(ajustes.token_odoo()),
+            'direccion_de_odoo': base,
+            'direccion_de_odoo_sirve_al_puente': C.url_descargable_por_el_puente(base),
+            'dominios_del_puente': list(C.DOMINIOS_DEL_PUENTE),
+        }
+
+    @api.model
+    def conexiones(self):
+        """El estado en vivo de cada canal y de las claves del Worker. Solo Gerencia."""
+        self._exigir_gerencia()
+        odoo = self._diagnostico_de_odoo()
+        Cliente = self.env['dcasa.juan.cliente']
+        if not Cliente.configurado():
+            return self._sin_conectar({'ok': False, 'odoo': odoo, 'canales': []})
+        salud = Cliente.informe_de_salud()
+        if not salud['conectado'] or salud['error']:
+            return {'configurado': True, 'ok': False, 'mensaje': 'No pude hablar con el Worker',
+                    'detalle': self._detalle_del_fallo(salud), 'odoo': odoo, 'canales': []}
+        informe = salud['cuerpo']
+        canales_worker = informe.get('canales') if isinstance(informe.get('canales'), dict) else {}
+        canales = []
+        for clave, nombre in CANALES:
+            datos = canales_worker.get(clave) if isinstance(canales_worker.get(clave), dict) else {}
+            canales.append({
+                'id': clave, 'nombre': nombre, 'activo': bool(datos.get('activo')),
+                'configurado': bool(datos.get('configurado')),
+                'conectado': datos.get('conectado') if isinstance(datos.get('conectado'), bool) else None,
+                'detalle': str(datos.get('detalle') or '')[:200] or None,
+                'faltan': [str(f)[:60] for f in (datos.get('faltan') or []) if isinstance(f, str)],
+            })
+        ia = informe.get('ia') if isinstance(informe.get('ia'), dict) else {}
+        return {
+            'configurado': True, 'ok': True, 'todo_bien': bool(informe.get('ok')),
+            'mensaje': str(informe.get('mensaje') or '')[:400], 'version': str(informe.get('version') or '')[:40],
+            'entorno': str(informe.get('entorno') or '')[:20],
+            'canales': canales, 'odoo': odoo,
+            'secretos_faltantes': [str(s)[:60] for s in (informe.get('secretos_faltantes') or [])],
+            'ia': {'proveedor': ia.get('proveedor'), 'respaldo': ia.get('respaldo'),
+                   'claves_faltantes': [str(c)[:60] for c in (ia.get('claves_faltantes') or [])]},
+            'problemas': [str(p)[:300] for p in (informe.get('problemas') or [])][:12],
+            'avisos': [str(a)[:300] for a in (informe.get('avisos') or [])][:8],
+        }
+
+    @api.model
+    def qr(self):
+        """El código QR para vincular WhatsApp: ``{estado, qr, edad_s, mensaje}``. NUNCA se registra ni se guarda."""
+        self._exigir_gerencia()
+        respuesta = self.env['dcasa.juan.cliente'].qr()
+        if respuesta['sin_configurar']:
+            return {'ok': False, 'estado': 'sin_conectar', 'qr': None, 'mensaje': respuesta['error']}
+        if respuesta['error'] or not respuesta['conectado']:
+            return {'ok': False, 'estado': 'sin_respuesta', 'qr': None,
+                    'mensaje': respuesta['error'] or 'El Worker no respondió.'}
+        cuerpo = respuesta['cuerpo']
+        qr = cuerpo.get('qr')
+        # Solo una imagen PNG en base64: cualquier otra cosa no se pinta.
+        if not (isinstance(qr, str) and qr.startswith(PREFIJO_QR) and len(qr) <= MAX_QR):
+            qr = None
+        edad = cuerpo.get('edad_s')
+        return {'ok': True, 'estado': str(cuerpo.get('estado') or 'desconocido')[:30], 'qr': qr,
+                'edad_s': edad if isinstance(edad, (int, float)) and not isinstance(edad, bool) else None,
+                'mensaje': str(cuerpo.get('mensaje') or '')[:300] or None}
+
+    @api.model
+    def _accion_del_puente(self, nombre, llamar, texto_aviso):
+        self._exigir_gerencia()
+        respuesta = llamar()
+        if respuesta['sin_configurar']:
+            raise UserError(self.env._('Falta conectar el bot: no hay dirección o clave del Worker de Juan.'))
+        if respuesta['error'] or not respuesta['conectado'] or respuesta['cuerpo'].get('ok') is False:
+            raise UserError(self.env._('No se pudo %(accion)s: %(error)s', accion=nombre, error=(
+                respuesta['error'] or str(respuesta['cuerpo'].get('error') or 'el puente no respondió'))[:300]))
+        # Queda en el historial de los ajustes quién lo hizo y cuándo.
+        self.env['dcasa.juan.ajustes'].obtener().sudo().message_post(
+            body=escape(texto_aviso % self.env.user.name), subtype_xmlid='mail.mt_note')
+        return {'ok': True, 'mensaje': str(respuesta['cuerpo'].get('mensaje') or '')[:300] or None}
+
+    @api.model
+    def reiniciar_puente(self):
+        """Reinicia el puente de WhatsApp (la sesión se conserva: no pide QR)."""
+        return self._accion_del_puente(
+            self.env._('reiniciar el puente'), self.env['dcasa.juan.cliente'].reiniciar_puente,
+            self.env._('%s reinició el puente de WhatsApp.'))
+
+    @api.model
+    def desvincular_puente(self):
+        """Desvincula el número de WhatsApp: para volver a conectar hay que escanear un QR nuevo."""
+        return self._accion_del_puente(
+            self.env._('desvincular el número'), self.env['dcasa.juan.cliente'].desvincular_puente,
+            self.env._('%s desvinculó el número de WhatsApp.'))

@@ -1,0 +1,510 @@
+import { Container, getContainer, type StopParams } from "@cloudflare/containers";
+import { WorkerEntrypoint } from "cloudflare:workers";
+
+import {
+  avisarTelegram,
+  canalTelegram,
+  colaDeSalida,
+  debeAvisar,
+  debeRearrancar,
+  handleRequest,
+  mensajeDeArranqueFallido,
+  mensajeDeParada,
+  politicaDeSueno,
+  runScheduled,
+  secretosFaltantes,
+  servirConArranque,
+  tareaDelCron,
+  variablesDelContenedor,
+  type ResultadoRespaldo,
+  type SaludContenedor,
+} from "./handler";
+import { atenderJuan } from "./juan";
+import { depsPuerta, estadoPuerta } from "./puerta";
+import { type AlmacenTienda, tiendaActiva } from "./tienda/paginas";
+
+export interface Env {
+  ODOO: DurableObjectNamespace<OdooContainer>;
+  // Variables (wrangler.jsonc > vars; distintas en env.staging)
+  CANONICAL_HOST?: string;
+  APP_VERSION?: string;
+  /** "produccion" o "staging": el contenedor lo usa para no mezclar respaldos. */
+  DCASA_ENTORNO?: string;
+  /** Unidades de prueba por producto sin existencias: "10" en staging, "0" en producción. */
+  DCASA_STOCK_PRUEBA?: string;
+  /** Black Weekend: "1" visible sin mirar fechas (staging), "0" solo dentro de la ventana. */
+  DCASA_BLACK_WEEKEND?: string;
+  /** Ventana de Black Weekend (AAAA-MM-DD, hora de Panamá, inclusive). */
+  DCASA_BLACK_WEEKEND_INICIO?: string;
+  DCASA_BLACK_WEEKEND_FIN?: string;
+  /** Bucket de R2 de los respaldos (uno por entorno). */
+  R2_BUCKET?: string;
+  /** Vacío/"nunca" = 24/7; una duración ("1h") = duerme sin visitas (ver politicaDeSueno). */
+  ODOO_DORMIR_TRAS?: string;
+  /** Dónde guarda Odoo los adjuntos nuevos: "r2" (por defecto, prefijo adjuntos/ de R2_BUCKET) o "db". */
+  DCASA_ADJUNTOS?: string;
+  // Secretos (wrangler secret put …; ver edge/CONTRATO_CONTENEDOR.md)
+  /** Clave del usuario `admin` de Odoo (se fija al crear la base; ver docs/DESPLIEGUE.md). */
+  ADMIN_PASSWORD?: string;
+  /**
+   * Contraseña maestra de Odoo (`admin_passwd`), distinta de la de `admin`. Opcional:
+   * si falta, el contenedor genera una aleatoria en cada arranque y no la muestra.
+   */
+  ODOO_MASTER_PASSWORD?: string;
+  /** Pimienta del PIN de los socios. Se genera una vez y NUNCA se cambia (ver docs/DESPLIEGUE.md). */
+  DCASA_PIN_PEPPER?: string;
+  /** `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` (endpoint S3 de R2). */
+  R2_ENDPOINT?: string;
+  /** Token de API de R2 (S3) con lectura y escritura SOLO sobre R2_BUCKET. */
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  /** Clave de cifrado del repositorio de pgBackRest. Perderla = perder los respaldos. */
+  PGBACKREST_CIPHER_PASS?: string;
+  /** Opcional: habilita `POST /__edge/respaldo` (≥ 32 caracteres). */
+  RESPALDO_TOKEN?: string;
+  // Brian, el asistente (opcionales; ver docs/BRIAN.md y docs/DESPLIEGUE.md).
+  BRIAN_PROVEEDOR?: string;
+  BRIAN_MODELO?: string;
+  BRIAN_BASE_URL?: string;
+  BRIAN_HERRAMIENTAS_MAX?: string;
+  /** Anthropic: «effort» (low…max; vacío = el del modelo) y caché de prompts ("0" la apaga). */
+  BRIAN_ESFUERZO?: string;
+  BRIAN_CACHE?: string;
+  /** Secreto: clave del proveedor de IA. */
+  BRIAN_API_KEY?: string;
+  /** Secreto: token del bot de Telegram (@BotFather). */
+  TELEGRAM_BOT_TOKEN?: string;
+  /** Secreto: ruta y encabezado del webhook de Telegram. */
+  BRIAN_TELEGRAM_SECRETO?: string;
+  /** Secreto opcional: clave de Resend (correo a clientes, addons/dcasa_correo). Sin ella no sale ningún correo. */
+  RESEND_API_KEY?: string;
+  /** Secreto opcional: clave de campañas de Resend (Full access; addons/dcasa_camila). Sin ella no salen campañas. */
+  RESEND_CAMPANAS_API_KEY?: string;
+  /** Secreto opcional: token de la Conversions API de Meta (addons/dcasa_meta_eventos). Sin él no sale nada a Meta. */
+  META_CAPI_TOKEN?: string;
+  // Tilopay, la pasarela de pago (addons/dcasa_pago_tilopay, docs/TILOPAY.md). Opcionales: se pegan en el panel de Cloudflare de
+  // cada Worker (producción con la cuenta real; staging con la cuenta de pruebas), nunca en el repositorio ni en GitHub. Sin
+  // las tres claves Tilopay no aparece en la tienda y nada más cambia; Odoo arranca igual.
+  /** Secreto: la «Llave API» del panel de Tilopay (Integración con plataformas). */
+  TILOPAY_API_KEY?: string;
+  /** Secreto: el «Usuario API» del panel de Tilopay. */
+  TILOPAY_API_USER?: string;
+  /** Secreto: la «Contraseña API» del panel de Tilopay. */
+  TILOPAY_API_PASSWORD?: string;
+  /** Variable (no secreta): «prueba» (por defecto) o «produccion». Tiene que coincidir con el «Modo Prueba» del panel de Tilopay. */
+  TILOPAY_ENTORNO?: string;
+  // Yappy directo, el Botón de Pago de Yappy Comercial (addons/dcasa_pago_yappy, docs/YAPPY.md). Opcionales: se pegan en el
+  // panel de Cloudflare de cada Worker, nunca en el repositorio ni en GitHub. Sin el id y la clave Yappy directo no aparece
+  // en la tienda y nada más cambia; Odoo arranca igual.
+  /** Secreto: el «ID del comercio» (Merchant ID) del Botón de Pago creado en Yappy Comercial. */
+  YAPPY_ID_COMERCIO?: string;
+  /** Secreto: la «Clave secreta» del botón (Yappy la muestra una sola vez). Firma los avisos de pago. */
+  YAPPY_CLAVE_SECRETA?: string;
+  /** Variable (no secreta): el dominio que se registró en el botón, letra por letra (ej. «tommalo.example»). */
+  YAPPY_DOMINIO?: string;
+  /** Opcionales: Google Maps para la ubicación de entrega (addons/dcasa_ubicacion, docs/UBICACION.md). */
+  GOOGLE_MAPS_CLAVE_NAVEGADOR?: string;
+  GOOGLE_MAPS_CLAVE_SERVIDOR?: string;
+  /** Variable (no secreta): «prueba» (por defecto) o «produccion». Decide a qué servidor de Yappy se le habla. */
+  YAPPY_ENTORNO?: string;
+  /**
+   * Variable (no secreta, opcional): dirección pública (`https://anfitrion`, sin ruta) a la que Yappy avisa de cada pago.
+   * Manda sobre `web.base.url` al armar la `ipnUrl`. Existe para staging, cuyo dominio propio aún no apunta al Worker
+   * (`routes: []`): ahí va la dirección `workers.dev` del Worker de staging. En producción Odoo la ignora.
+   */
+  YAPPY_URL_BASE?: string;
+  /** Ids de los chats de Telegram a los que Brian atiende (coma); sin ella atiende a cualquier chat vinculado. */
+  BRIAN_TELEGRAM_CHATS?: string;
+  // Juan, el asistente de clientes (addons/dcasa_conversaciones, docs/JUAN_ODOO.md). Opcionales: se cargan en
+  // el panel de Cloudflare, nunca en el repositorio ni en GitHub. Sin ellos Odoo arranca normal y /dcasa/juan/** da 503.
+  /** Secreto (≥ 32): el Worker `juan` lo presenta a Odoo en `Authorization: Bearer`. */
+  JUAN_ODOO_TOKEN?: string;
+  /** Secreto (≥ 32): Odoo lo presenta al Worker `juan`. */
+  JUAN_WORKER_TOKEN?: string;
+  /** Variable (no secreta): URL base del Worker `juan`, p. ej. https://juan.….workers.dev */
+  JUAN_URL?: string;
+  // Caché de páginas (HTML de Odoo para anónimos; addons/dcasa_tienda_borde, edge/src/tienda/)
+  /** Páginas guardadas (Workers KV). Sin binding: la caché de páginas no existe. */
+  TIENDA?: KVNamespace;
+  /** "on" sirve las páginas públicas a anónimos desde TIENDA; "off" todo a Odoo. */
+  TIENDA_ESTATICA?: string;
+  /** Secreto compartido con Odoo (≥ 32): certifica las páginas anónimas y protege el aviso. */
+  TIENDA_FEED_TOKEN?: string;
+  /** Opcional: URL a la que Odoo avisa (por defecto https://CANONICAL_HOST/__edge/tienda/regenerar). */
+  TIENDA_AVISO_URL?: string;
+  // Seguridad de acceso (addons/dcasa_seguridad, docs/SEGURIDAD_ACCESO.md)
+  /** "1" = el alcance enrola la app de códigos al entrar; "0" (por defecto) = opcional. */
+  DCASA_2FA_OBLIGATORIO?: string;
+  /** "admins" (por defecto) o "internos". */
+  DCASA_2FA_ALCANCE?: string;
+  /** Cierre de sesión (horas) y bloqueo por inactividad (minutos) de los administradores. */
+  DCASA_SESION_ADMIN_HORAS?: string;
+  DCASA_INACTIVIDAD_ADMIN_MIN?: string;
+  /** "0" apaga el aviso por Telegram de inicios de sesión de administrador. */
+  DCASA_AVISO_LOGIN_TELEGRAM?: string;
+  // Alertas de operación (docs/OPERACION.md «Alertas por Telegram»)
+  /**
+   * Solo del Worker: chat_id de Telegram (el de la dueña, el que Brian muestra al vincularla) al que
+   * el Worker avisa con el bot de Brian (TELEGRAM_BOT_TOKEN) cuando el contenedor se cae o no arranca.
+   * Vacío: el evento queda solo en los logs del Worker.
+   */
+  DCASA_ALERTA_TELEGRAM_CHAT?: string;
+  /** "0" apaga el aviso por Telegram de disco/memoria/base que manda Odoo (cron horario de dcasa_base). */
+  DCASA_ALERTA_TELEGRAM?: string;
+  /** Umbrales del cron horario; vacíos: 80 %, 90 %, 0.7 GB y 24 h (valores del módulo). */
+  DCASA_ALERTA_DISCO_PCT?: string;
+  DCASA_ALERTA_MEMORIA_PCT?: string;
+  DCASA_ALERTA_BASE_GB?: string;
+  DCASA_ALERTA_SILENCIO_H?: string;
+  /** Nivel de log de Odoo; vacío: "warn" en producción, "info" en staging. */
+  ODOO_LOG_LEVEL?: string;
+  ODOO_LOG_HANDLER?: string;
+  /** robots.txt para IA: "abierta", "equilibrada" (por defecto) o "cerrada". */
+  DCASA_ROBOTS_IA?: string;
+  /** Cloudflare Turnstile: clave pública (variable) y secreto (wrangler secret). "off" en DCASA_TURNSTILE lo apaga. */
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET?: string;
+  DCASA_TURNSTILE?: string;
+  /** Rescate: login que perdió el teléfono; se le quita el 2FA una vez por versión. Quitar después. */
+  DCASA_2FA_RESCATE?: string;
+  // La puerta del equipo (edge/src/puerta.ts, docs/SEGURIDAD_ACCESO.md §8). Apagada mientras falte alguna de las cuatro primeras.
+  /** Secreto: la dirección de la entrada, p. ej. «/entrada-k7q2m9x4» (solo la conoce el equipo; es la que se protege en Access). */
+  DCASA_PUERTA_RUTA?: string;
+  /** Secreto (≥ 32): firma la cookie de la puerta y la cabecera hacia Odoo; Odoo (contenedor) tiene el mismo. */
+  DCASA_PUERTA_SECRETO?: string;
+  /** `https://<equipo>.cloudflareaccess.com` (el nombre del equipo de Zero Trust). */
+  DCASA_ACCESS_EQUIPO?: string;
+  /** El «AUD tag» de la aplicación de Access que protege la entrada. */
+  DCASA_ACCESS_AUD?: string;
+  /** Horas que dura la puerta abierta (1 a 24; por defecto 12). */
+  DCASA_PUERTA_HORAS?: string;
+  /** «0» (apagada), «avisar» (Odoo anota a quien entra sin puerta) o «1» (el personal solo entra por la puerta). Solo del Worker. */
+  DCASA_PUERTA_OBLIGATORIA?: string;
+  /** «1»: Odoo exige que el correo de Access sea el del usuario de Odoo. Solo del Worker (viaja firmado en cada petición). */
+  DCASA_PUERTA_EXIGIR_CORREO?: string;
+  /** Rate Limiting de Workers (wrangler.jsonc → ratelimits, hoy comentado). Sin ellos: contador en memoria. */
+  LIMITE_ACCESO?: RateLimit;
+  LIMITE_FORMULARIOS?: RateLimit;
+  LIMITE_CARRITO?: RateLimit;
+  LIMITE_FOTO?: RateLimit;
+  LIMITE_PDF?: RateLimit;
+}
+
+/**
+ * Una sola instancia de Odoo + PostgreSQL (singleton): toda la tienda usa el mismo
+ * Durable Object y por tanto el mismo contenedor. `max_instances: 1` en wrangler.jsonc
+ * impide que Cloudflare encienda un segundo contenedor (dos PostgreSQL escribiendo al
+ * mismo repositorio de R2 serían dos contabilidades distintas).
+ */
+const INSTANCE = "odoo-main";
+
+/** Puerto de Odoo. El contrato con la imagen: no escucha hasta que la base está lista. */
+const PUERTO = 8069;
+/** Tope para que Odoo abra el puerto: restauración (~10 s medido) + `-u` (~25 s) y, solo en el primer arranque, la instalación completa (263 s medido). */
+const TOPE_ARRANQUE_MS = 420_000;
+/** Si un arranque falla, no se reintenta antes de esto (evita restaurar desde R2 en bucle). */
+const PAUSA_TRAS_FALLO_MS = 30_000;
+/** Tiempo máximo de `/dcasa/salud`. */
+const TIMEOUT_SALUD_MS = 5_000;
+/**
+ * Respaldo diario: el script de la imagen, con tope de 14 min (el evento del cron
+ * tiene 15 min de CPU/espera; `timeout` mata también a sus hijos).
+ */
+const COMANDO_RESPALDO = ["timeout", "--kill-after=30", "840", "/usr/local/bin/dcasa-respaldo"];
+
+export class OdooContainer extends Container<Env> {
+  defaultPort = PUERTO;
+  enableInternet = true; // R2, correo saliente, pasarelas de pago, WhatsApp, IA de Brian.
+  // waitForPort hace fetch a `http://<pingEndpoint>`: cualquier respuesta HTTP = puerto listo.
+  pingEndpoint = "localhost/web/health";
+
+  private readonly siempreEncendido: boolean;
+  private arranque?: Promise<void>;
+  private ultimoFalloArranque = 0;
+  private respaldoEnCurso = false;
+
+  constructor(ctx: ConstructorParameters<typeof Container<Env>>[0], env: Env) {
+    const politica = politicaDeSueno(env.ODOO_DORMIR_TRAS);
+    // sleepAfter va por opciones: un inicializador de campo lo pisaría después.
+    super(ctx, env, { sleepAfter: politica.sleepAfter });
+    this.siempreEncendido = politica.siempreEncendido;
+    this.envVars = variablesDelContenedor(env);
+  }
+
+  /** Visitas: si Odoo no está listo, arranca y responde 503 amable mientras restaura. */
+  override async fetch(request: Request): Promise<Response> {
+    return servirConArranque(request, {
+      listo: () => this.estaListo(),
+      arrancar: () => this.iniciarArranque(),
+      reenviar: (upstream) => this.containerFetch(upstream),
+      faltantes: () => secretosFaltantes(this.env),
+    });
+  }
+
+  private async estaListo(): Promise<boolean> {
+    if (!this.ctx.container?.running) return false;
+    return (await this.getState()).status === "healthy";
+  }
+
+  /** Un solo arranque a la vez; las peticiones que llegan mientras tanto lo comparten. */
+  private iniciarArranque(): Promise<void> {
+    if (this.arranque) return this.arranque;
+    if (Date.now() - this.ultimoFalloArranque < PAUSA_TRAS_FALLO_MS) {
+      return Promise.reject(new Error("arranque en pausa tras un fallo reciente"));
+    }
+    console.log(JSON.stringify({ evento: "arranque_iniciado" }));
+    const inicio = Date.now();
+    this.arranque = this.startAndWaitForPorts({
+      ports: PUERTO,
+      cancellationOptions: { portReadyTimeoutMS: TOPE_ARRANQUE_MS, instanceGetTimeoutMS: 30_000 },
+    })
+      .then(() => console.log(JSON.stringify({ evento: "arranque_listo", duracionMs: Date.now() - inicio })))
+      .catch(async (error: unknown) => {
+        this.ultimoFalloArranque = Date.now();
+        console.error(JSON.stringify({ evento: "arranque_fallido", duracionMs: Date.now() - inicio, error: String(error) }));
+        await this.alertar(mensajeDeArranqueFallido(this.env.DCASA_ENTORNO, Date.now() - inicio, String(error)));
+        throw error;
+      })
+      .finally(() => {
+        this.arranque = undefined;
+      });
+    return this.arranque;
+  }
+
+  /** 24/7: el temporizador de inactividad se revisa, pero nunca apaga el contenedor. */
+  override async onActivityExpired(): Promise<void> {
+    if (this.siempreEncendido) return;
+    console.log(JSON.stringify({ evento: "contenedor_inactivo", accion: "apagar" }));
+    await this.stop(); // SIGTERM: la imagen archiva el WAL antes de salir.
+  }
+
+  override async onStop(params: StopParams): Promise<void> {
+    // reason "runtime_signal" = lo paró Cloudflare (rollout, reinicio de host, sueño);
+    // "exit" = el proceso terminó solo (fallo de restauración, OOM, error de Odoo).
+    const ahora = Date.now();
+    const ultimo = await this.ctx.storage.get<number>("ultimoRearranque");
+    const rearrancar = debeRearrancar(this.siempreEncendido, ahora, ultimo);
+    const registro = { evento: "contenedor_detenido", exitCode: params.exitCode, motivo: params.reason, rearrancar };
+    if (params.exitCode === 0) console.log(JSON.stringify(registro));
+    else console.error(JSON.stringify(registro));
+    if (rearrancar) {
+      await this.ctx.storage.put("ultimoRearranque", ahora);
+      await this.schedule(30, "rearrancar");
+    }
+    // Caída (código ≠ 0): aviso por Telegram desde aquí, porque Odoo ya no está para avisar.
+    const aviso = mensajeDeParada({ exitCode: params.exitCode, reason: params.reason }, this.env.DCASA_ENTORNO, rearrancar);
+    if (aviso) await this.alertar(aviso);
+  }
+
+  /**
+   * Aviso por Telegram con el bot de Brian al chat DCASA_ALERTA_TELEGRAM_CHAT; sin canal, solo
+   * queda el evento en los logs. Como mucho uno cada PAUSA_ALERTA_MS (un bucle de caídas no
+   * inunda el chat). Nunca lanza: un aviso que falla no debe frenar el rearranque.
+   */
+  private async alertar(texto: string): Promise<void> {
+    const canal = canalTelegram(this.env);
+    if (!canal) {
+      console.log(JSON.stringify({ evento: "alerta_sin_canal", detalle: "falta TELEGRAM_BOT_TOKEN o DCASA_ALERTA_TELEGRAM_CHAT" }));
+      return;
+    }
+    try {
+      const ahora = Date.now();
+      const ultima = await this.ctx.storage.get<number>("ultimaAlerta");
+      if (!debeAvisar(ahora, ultima)) return;
+      await this.ctx.storage.put("ultimaAlerta", ahora);
+      const enviada = await avisarTelegram(canal, texto);
+      console.log(JSON.stringify({ evento: "alerta_telegram", enviada }));
+    } catch (error) {
+      console.error(JSON.stringify({ evento: "alerta_telegram_fallida", error: String(error).slice(0, 200) }));
+    }
+  }
+
+  override onError(error: unknown): unknown {
+    console.error(JSON.stringify({ evento: "contenedor_error", error: String(error) }));
+    throw error;
+  }
+
+  /** Callback de `schedule()` tras una parada en 24/7. */
+  async rearrancar(): Promise<void> {
+    if ((await this.estaListo()) || secretosFaltantes(this.env).length) return;
+    await this.iniciarArranque().catch(() => undefined); // ya quedó registrado
+  }
+
+  /**
+   * Para la caché de páginas: ¿Odoo responde ya? Solo mira el estado del contenedor (ni lo despierta
+   * ni le habla por HTTP): se consulta en el camino de una visita.
+   */
+  async listo(): Promise<boolean> {
+    return this.estaListo();
+  }
+
+  /** Para `/__edge/health`: estado real sin encender nada. */
+  async salud(): Promise<SaludContenedor> {
+    const faltan = secretosFaltantes(this.env);
+    const estado = await this.getState();
+    const contenedor = this.ctx.container?.running ? estado.status : "stopped";
+    if (contenedor !== "healthy") return { contenedor, faltan };
+    try {
+      const respuesta = await this.containerFetch(
+        new Request("http://localhost/dcasa/salud", { signal: AbortSignal.timeout(TIMEOUT_SALUD_MS) }),
+      );
+      const cuerpo = (await respuesta.text()).slice(0, 500);
+      return { contenedor, faltan, odoo: { status: respuesta.status, cuerpo } };
+    } catch (error) {
+      return { contenedor, faltan, odoo: { error: String(error) } };
+    }
+  }
+
+  /**
+   * Respaldo lógico diario dentro del contenedor (contrato en edge/CONTRATO_CONTENEDOR.md).
+   * No enciende el contenedor: si está apagado no hay nada nuevo que respaldar (todo
+   * lo confirmado ya está en el WAL archivado en R2).
+   */
+  async respaldar(origen: "cron" | "manual"): Promise<ResultadoRespaldo> {
+    if (this.respaldoEnCurso) return { estado: "en_curso" };
+    if (!(await this.estaListo())) return { estado: "omitido", motivo: "Odoo no está encendido" };
+    this.respaldoEnCurso = true;
+    const inicio = Date.now();
+    try {
+      this.renewActivityTimeout();
+      const proceso = await this.ctx.container!.exec(COMANDO_RESPALDO, {
+        env: { ...this.envVars, DCASA_RESPALDO_ORIGEN: origen },
+        stdout: "pipe",
+        stderr: "combined",
+      });
+      const salida = await proceso.output();
+      const resultado: ResultadoRespaldo = {
+        estado: salida.exitCode === 0 ? "ok" : "fallo",
+        codigo: salida.exitCode,
+        duracionMs: Date.now() - inicio,
+        salida: colaDeSalida(new TextDecoder().decode(salida.stdout)),
+      };
+      return resultado;
+    } catch (error) {
+      return { estado: "fallo", duracionMs: Date.now() - inicio, motivo: String(error) };
+    } finally {
+      this.respaldoEnCurso = false;
+    }
+  }
+}
+
+function odoo(env: Env) {
+  return getContainer(env.ODOO, INSTANCE);
+}
+
+/**
+ * Segundos que KV guarda la lectura en el centro de datos (mínimo de KV: 30). Una invalidación
+ * se ve en todo el mundo en ≤ ~1-2 min (propagación de KV + esta caché); en el mismo centro de
+ * datos que la escribe, al instante.
+ */
+const TTL_KV_LECTURA = 30;
+
+function almacenKv(kv: KVNamespace): AlmacenTienda {
+  const opciones = (meta?: Record<string, string>, ttlSegundos?: number): KVNamespacePutOptions => ({
+    ...(meta ? { metadata: meta } : {}),
+    ...(ttlSegundos ? { expirationTtl: ttlSegundos } : {}),
+  });
+  return {
+    async leer(clave) {
+      const { value, metadata } = await kv.getWithMetadata<Record<string, string>>(clave, {
+        type: "text",
+        cacheTtl: TTL_KV_LECTURA,
+      });
+      return value === null ? null : { texto: value, meta: metadata };
+    },
+    escribir: (clave, texto, meta, ttlSegundos) => kv.put(clave, texto, opciones(meta, ttlSegundos)),
+    async leerBinario(clave) {
+      const { value, metadata } = await kv.getWithMetadata<Record<string, string>>(clave, {
+        type: "arrayBuffer",
+        cacheTtl: TTL_KV_LECTURA,
+      });
+      return value === null ? null : { bytes: value, meta: metadata };
+    },
+    escribirBinario: (clave, bytes, meta, ttlSegundos) => kv.put(clave, bytes, opciones(meta, ttlSegundos)),
+    async meta(clave) {
+      // Solo interesa si existe y de cuándo es: el valor se descarta sin leerlo.
+      const { value, metadata } = await kv.getWithMetadata<Record<string, string>>(clave, {
+        type: "stream",
+        cacheTtl: TTL_KV_LECTURA,
+      });
+      if (value === null) return null;
+      await value.cancel();
+      return metadata ?? {};
+    },
+  };
+}
+
+function registrarRespaldo(resultado: ResultadoRespaldo, origen: string): ResultadoRespaldo {
+  const linea = JSON.stringify({ evento: "respaldo", origen, ...resultado });
+  if (resultado.estado === "ok") console.log(linea);
+  else console.error(linea);
+  return resultado;
+}
+
+/**
+ * Punto de entrada para el service binding del Worker `juan` (el asistente de clientes).
+ *
+ * El Worker `juan` declara en su wrangler: `{ "binding": "DCASA", "service": "dcasa", "entrypoint": "JuanEntrada" }`
+ * (en staging, `"service": "tommalo-staging"`) y llama `env.DCASA.fetch(new Request("https://dcasa/dcasa/juan/v1/mensaje", …))`.
+ * Solo reenvía `/dcasa/juan/**` al contenedor de Odoo (src/juan.ts); desde internet esas rutas dan 404 (routing.ts).
+ */
+export class JuanEntrada extends WorkerEntrypoint<Env> {
+  override async fetch(request: Request): Promise<Response> {
+    return atenderJuan(request, {
+      forward: (upstream) => odoo(this.env).fetch(upstream),
+      canonicalHost: this.env.CANONICAL_HOST,
+    });
+  }
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return handleRequest(request, {
+      forward: (upstream) => odoo(env).fetch(upstream),
+      cache: caches.default,
+      waitUntil: (promise) => ctx.waitUntil(promise),
+      canonicalHost: env.CANONICAL_HOST,
+      salud: () => odoo(env).salud(),
+      respaldo: {
+        token: env.RESPALDO_TOKEN,
+        respaldar: async () => registrarRespaldo(await odoo(env).respaldar("manual"), "manual"),
+      },
+      tienda: {
+        activa: tiendaActiva(env.TIENDA_ESTATICA),
+        almacen: env.TIENDA ? almacenKv(env.TIENDA) : undefined,
+        token: env.TIENDA_FEED_TOKEN,
+      },
+      // Si el Durable Object no responde, tampoco respondería Odoo: se trata como «no listo».
+      odooListo: () => odoo(env).listo().catch(() => false),
+      entorno: env.DCASA_ENTORNO,
+      puerta: depsPuerta(env),
+      puertaEstado: estadoPuerta(env),
+      limitadores: { acceso: env.LIMITE_ACCESO, formulario: env.LIMITE_FORMULARIOS, carrito: env.LIMITE_CARRITO, foto: env.LIMITE_FOTO, pdf: env.LIMITE_PDF },
+    });
+  },
+
+  /**
+   * Crons (wrangler.jsonc, ver CRON_HORARIO y CRON_RESPALDO en src/handler.ts):
+   * - horario: si Odoo está apagado lo despierta (solo en 24/7; staging sigue dormido);
+   *   si está encendido no hace nada;
+   * - diario de madrugada (Panamá): respaldo lógico dentro del contenedor.
+   */
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const container = odoo(env);
+    if (tareaDelCron(controller.cron) === "respaldo") {
+      ctx.waitUntil(container.respaldar("cron").then((resultado) => registrarRespaldo(resultado, "cron")));
+      return;
+    }
+    ctx.waitUntil(
+      runScheduled({
+        status: async () => (await container.getState()).status,
+        wake: () => container.fetch(new Request("http://odoo/web/health")),
+        // Staging (ODOO_DORMIR_TRAS con duración) no se despierta por el cron: duerme.
+        siempreEncendido: politicaDeSueno(env.ODOO_DORMIR_TRAS).siempreEncendido,
+      })
+        // Las páginas guardadas no necesitan cron: Odoo avisa cada cambio (y reintenta cada
+        // 15 min si el aviso no llegó) y ninguna se sirve sin refrescar más de FRESCA_MS.
+        .then((resultado) => console.log(`cron: Odoo ${resultado}`)),
+    );
+  },
+} satisfies ExportedHandler<Env>;

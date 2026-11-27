@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="website.default_website" model="website">
+            <!-- Marca provisional de Tommalo. PENDIENTE: logo, WhatsApp de ventas y redes.
+                 WhatsApp vacío: los botones usan el teléfono de la empresa o /contactus. Redes vacías: no salen.
+                 El logo y el ícono son el marcador provisional (una «T» en un círculo gris), no un logo de Tommalo. -->
+            <field name="name">Tommalo</field>
+            <field name="dcasa_whatsapp_number" eval="False"/>
+            <field name="logo" type="base64" file="dcasa_base/static/img/logo.png"/>
+            <field name="favicon" type="base64" file="website_dcasa/static/src/img/favicon.png"/>
+            <field name="social_instagram" eval="False"/>
+            <field name="social_tiktok" eval="False"/>
+            <field name="social_facebook" eval="False"/>
+            <!-- Tienda: 4 columnas, foto sobre fondo neutro, botón de compra siempre visible
+                 (en el celular no hay «hover»: el botón oculto no se ve nunca). -->
+            <field name="shop_ppr" type="int">4</field>
+            <field name="shop_ppg" type="int">24</field>
+            <!-- Los pedidos de la web entran SIN vendedora (decisión de la dueña, 2026-10-17; models/pedido_web.py):
+                 el «Vendedor» del sitio queda vacío. Si un administrador lo pone, los pedidos web van a esa persona. -->
+            <field name="salesperson_id" eval="False"/>
+            <field name="shop_opt_products_design_classes">o_wsale_products_opt_layout_catalog o_wsale_products_opt_design_thumbs o_wsale_products_opt_name_color_regular o_wsale_products_opt_rounded_2 o_wsale_products_opt_img_secondary_show o_wsale_products_opt_img_hover_zoom_in_light o_wsale_products_opt_has_cta o_wsale_products_opt_actions_inline o_wsale_products_opt_actions_subtle o_wsale_products_opt_cc1</field>
+        </record>
+
+        <!-- Cabecera limpia: el WhatsApp ya está en la barra de anuncios y en el botón flotante,
+             así el menú por espacios cabe entero. Se puede reactivar desde el editor. -->
+        <record id="website.header_text_element" model="ir.ui.view">
+            <field name="active" eval="False"/>
+        </record>
+
+        <!-- Cabecera siempre visible (efecto «fijo»): la píldora de vidrio acompaña el scroll. -->
+        <record id="website.header_visibility_standard" model="ir.ui.view">
+            <field name="active" eval="False"/>
+        </record>
+        <record id="website.header_visibility_fixed" model="ir.ui.view">
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- El SEO de la portada (título y descripción) lo pone data/seo_data.xml en todas las
+             copias de la portada y en todos los idiomas: ver Website._dcasa_seo_portada. -->
+    </data>
+
+    <!-- Se reafirman en cada despliegue (noupdate=0), aunque alguien las cambie en el backend:
+         la ficha nunca debe mostrar promesas que la tienda no hizo, y el menú de tres opciones
+         nunca debe esconderse en el «+». -->
+    <data noupdate="0">
+        <!-- Menú centrado y de tres opciones: el auto-ocultado de Odoo las mandaría al «+»
+             al compactarse la cabecera. -->
+        <record id="website.no_autohide_menu" model="ir.ui.view">
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- La ficha de producto de Odoo trae «Garantía de devolución de 30 días / Envío: 2-3 días»:
+             son promesas que la tienda no ha hecho (regla: no inventar). Se apaga. -->
+        <record id="website_sale.product_terms_and_conditions" model="ir.ui.view">
+            <field name="active" eval="False"/>
+        </record>
+
+        <!-- La foto de la ficha se ve en grande al tocarla («Zoom al hacer clic» de Odoo; lote 1 de la web,
+             2026-11-13). El botón de la lupa sobre la foto y los gestos con el dedo dependen de esta opción. -->
+        <record id="website_sale.product_picture_magnify_click" model="ir.ui.view">
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>

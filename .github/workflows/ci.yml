@@ -1,0 +1,599 @@
+name: CI/CD
+
+# Cada push y PR corre: lint, tests de Odoo, tests del borde (Worker), la imagen Docker
+# (se construye UNA vez y se prueba) y el simulacro de restauración de la base desde S3.
+# Solo si TODO pasa:
+#   - push a main            → SOLO pruebas: un merge NUNCA despliega a producción.
+#   - Run workflow (a mano)  → despliega a staging (`desplegar_en = staging`, cualquier rama) o a
+#                              producción (`desplegar_en = produccion`, solo desde `main`). El clic de quien
+#                              lo lanza es la aprobación: GitHub no ofrece «Required reviewers» en
+#                              repositorios privados de los planes Free, Pro ni Team.
+# Se despliega la MISMA imagen que se probó (I-08): viaja como artefacto de esta ejecución
+# y el job de despliegue comprueba su ID antes de subirla al registro de Cloudflare.
+# Detalle: docs/DESPLIEGUE.md. Operación diaria: docs/OPERACION.md.
+#
+# Las acciones van fijadas por SHA (comentario con la versión); Dependabot las actualiza.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      desplegar_en:
+        description: "Después de los tests, ¿desplegar? («produccion»: solo desde la rama main; «solo-juan-staging»: solo el bot Juan, sin repetir las pruebas de Odoo)"
+        type: choice
+        options: [staging, produccion, solo-juan-staging, ninguno]
+        default: staging
+
+# Un PR nuevo cancela la ejecución anterior del mismo PR. Nunca se cancela un push a main
+# ni una ejecución manual: podrían estar a mitad de un despliegue.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (Python, XML, shell y workflows)
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_dispatch' || inputs.desplegar_en != 'solo-juan-staging'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      # ruff fijo: una versión nueva puede traer reglas nuevas y tumbar el lint sin que cambie el código.
+      - run: pip install ruff==0.16.9 actionlint-py==1.7.12.25 openpyxl Pillow
+      - run: ruff check addons scripts --output-format=github
+      - name: Tests del procesador de «up media» (sin Odoo)
+        run: python -m unittest discover -s scripts/tests -v
+      - name: Las versiones estables tienen datos válidos (botón «Volver a una versión estable»)
+        run: python .github/scripts/probar_versiones_estables.py
+      - name: XML bien formado
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          from xml.etree import ElementTree
+          bad = []
+          for path in pathlib.Path("addons").rglob("*.xml"):
+              try:
+                  ElementTree.parse(path)
+              except ElementTree.ParseError as exc:
+                  bad.append(f"{path}: {exc}")
+          print("\n".join(bad) or "OK")
+          sys.exit(1 if bad else 0)
+          PY
+      - name: Shellcheck (arranque, scripts y scripts de CI)
+        run: shellcheck docker/*.sh scripts/*.sh .github/scripts/*.sh
+      - name: La imagen no reabre /dev/stderr ni /dev/stdout por ruta
+        # En Cloudflare Containers stderr/stdout son sockets: abrirlos por ruta da ENXIO
+        # (así no arrancó PostgreSQL en el primer despliegue a staging). Se hereda el descriptor.
+        run: |
+          if grep -nE '/dev/std(err|out)|/proc/self/fd/[12]' docker/*.sh scripts/respaldo.sh docker/Dockerfile; then
+            echo "::error::Usa >&2 / >&1 (heredar el descriptor) en lugar de abrir /dev/stderr o /dev/stdout por ruta."
+            exit 1
+          fi
+      - name: actionlint (workflows, con shellcheck de los run:)
+        run: actionlint -color
+
+  odoo-tests:
+    name: Tests de Odoo
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_dispatch' || inputs.desplegar_en != 'solo-juan-staging'
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: odoo
+          POSTGRES_PASSWORD: odoo
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: vendor/odoo/requirements.txt
+      - name: Dependencias del sistema
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libldap2-dev libsasl2-dev libpq-dev postgresql-client
+      - name: Dependencias de Odoo
+        run: pip install -r vendor/odoo/requirements.txt -r docker/requirements-dcasa.txt
+      # Como en producción, dcasa_sesiones se carga como módulo de todo el servidor
+      # (equivale a --load=base,web,dcasa_sesiones): sesiones HTTP en la base desde la
+      # primera petición. scripts/test.sh no recibe --load; Odoo lee la opción del archivo
+      # de configuración que indica ODOO_RC (los argumentos de test.sh mandan sobre él).
+      - name: Instalar módulos y correr tests
+        run: |
+          printf '[options]\nserver_wide_modules = base,web,dcasa_sesiones\n' > "$ODOO_RC"
+          scripts/test.sh
+        env:
+          DB_HOST: localhost
+          PYTHON: python
+          ODOO_RC: ${{ runner.temp }}/odoo-ci.conf
+      - if: failure()
+        # Solo diagnóstico: si GitHub no tiene espacio para guardarlo, no debe tapar el resultado de las pruebas.
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: odoo-test-log
+          path: .test.log
+          retention-days: 7
+
+  edge:
+    name: Tests del borde (Cloudflare Worker)
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_dispatch' || inputs.desplegar_en != 'solo-juan-staging'
+    defaults:
+      run:
+        working-directory: edge
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: edge/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: La configuración se puede desplegar con la imagen ya construida (dry-run)
+        working-directory: .
+        run: .github/scripts/probar_config_despliegue.sh
+      - name: La limpieza de copias temporales solo borra lo que debe
+        working-directory: .
+        run: .github/scripts/probar_limpieza_artefactos.sh
+      - name: El despliegue no da por sano otra versión ni una base sin actualizar (#97)
+        working-directory: .
+        run: .github/scripts/probar_esperar_salud.sh
+
+  juan:
+    name: Tests del motor del bot (Worker juan)
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_dispatch' || inputs.desplegar_en != 'solo-juan-staging'
+    defaults:
+      run:
+        working-directory: juan
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: juan/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  integracion-juan:
+    name: Integración Odoo y Worker juan (reales, juntos)
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_dispatch' || inputs.desplegar_en != 'solo-juan-staging'
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: odoo
+          POSTGRES_PASSWORD: odoo
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: vendor/odoo/requirements.txt
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: juan/package-lock.json
+      - name: Dependencias del sistema
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libldap2-dev libsasl2-dev libpq-dev postgresql-client
+      - name: Dependencias de Odoo
+        run: pip install -r vendor/odoo/requirements.txt -r docker/requirements-dcasa.txt
+      - name: Dependencias del Worker juan
+        run: npm ci
+        working-directory: juan
+      - name: Odoo real y Worker real, hablándose por HTTP
+        run: scripts/integracion_juan.sh
+        env:
+          DB_HOST: localhost
+          PYTHON: python
+
+  puente-wa:
+    name: Tests del puente QR de WhatsApp (Juan)
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_dispatch' || inputs.desplegar_en != 'solo-juan-staging'
+    defaults:
+      run:
+        working-directory: puente-wa
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: puente-wa/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  docker:
+    name: Imagen Docker (se construye una vez y se prueba)
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_dispatch' || inputs.desplegar_en != 'solo-juan-staging'
+    outputs:
+      imagen_id: ${{ steps.imagen.outputs.id }}
+    env:
+      # ¿Esta ejecución termina en un despliegue? Entonces la imagen probada se guarda como
+      # artefacto para que el despliegue suba EXACTAMENTE esta (I-08).
+      SE_DESPLIEGA: ${{ github.event_name == 'workflow_dispatch' && (inputs.desplegar_en == 'staging' || (inputs.desplegar_en == 'produccion' && github.ref == 'refs/heads/main')) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          submodules: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - name: Fecha del commit (orden de las imágenes)
+        id: commit
+        run: echo "fecha=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+      - name: Construir imagen
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          tags: dcasa-odoo:ci
+          load: true
+          # La imagen guarda su commit (/opt/dcasa/COMMIT): /dcasa/salud lo informa y el despliegue lo exige. Y su
+          # fecha (/opt/dcasa/ORDEN): una imagen más vieja que la base no la «actualiza hacia atrás».
+          build-args: |
+            DCASA_COMMIT=${{ github.sha }}
+            DCASA_COMMIT_FECHA=${{ steps.commit.outputs.fecha }}
+          cache-from: type=gha,scope=imagen
+          cache-to: type=gha,mode=max,scope=imagen
+      - name: ID de la imagen probada
+        id: imagen
+        run: |
+          id="$(docker image inspect dcasa-odoo:ci --format '{{.Id}}')"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "Imagen probada: $id"
+
+      # La imagen trae PostgreSQL + pgBackRest (Fase 1). En CI, R2 se reemplaza por un S3
+      # local (moto + stunnel, TLS autofirmado).
+      # Variables según edge/CONTRATO_CONTENEDOR.md §3. VERIFICAR AL INTEGRAR (f1-imagen): que la
+      # imagen acepte un R2_ENDPOINT con puerto y que pgBackRest lea del entorno
+      # PGBACKREST_REPO1_STORAGE_VERIFY_TLS=n (certificado autofirmado del S3 local).
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: S3 local en lugar de R2
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends stunnel4
+          pip install "moto[server]>=5,<6" boto3
+          .github/scripts/s3_local.sh "$RUNNER_TEMP/s3" 9100 dcasa-ci
+      - name: Arrancar la imagen con su base interna vacía
+        run: |
+          docker run -d --name odoo --network host \
+            -e ADMIN_PASSWORD=ci-admin -e ODOO_MASTER_PASSWORD=ci-maestra-distinta \
+            -e APP_VERSION=${{ github.sha }} -e DCASA_PIN_PEPPER=ci \
+            -e R2_ENDPOINT=https://127.0.0.1:9100 -e R2_BUCKET=dcasa-ci \
+            -e R2_ACCESS_KEY_ID=ci -e R2_SECRET_ACCESS_KEY=ci \
+            -e PGBACKREST_CIPHER_PASS=ci-cifrado-de-prueba-no-real \
+            -e PGBACKREST_REPO1_STORAGE_VERIFY_TLS=n \
+            -e RESPALDO_TOKEN=ci-token-de-respaldo -e CANONICAL_HOST=localhost \
+            dcasa-odoo:ci
+          for _ in $(seq 1 120); do
+            if curl -fsS http://localhost:8069/web/health >/dev/null 2>&1; then echo "Odoo arriba"; break; fi
+            sleep 5
+          done
+          curl -fsS http://localhost:8069/web/health
+      - name: El sitio responde como Tommalo y sin nada de otros negocios
+        # La portada dice «Tommalo» y no queda nada de las tiendas de origen: ni su nombre, ni su dominio, ni su WhatsApp.
+        run: |
+          portada="$(curl -fsS http://localhost:8069/)"
+          grep -q "Tommalo" <<<"$portada"
+          if grep -qiE "D'CASA|D&#39;CASA|dcasapty|Baby ?Caleb|babycaleb|6026|6757" <<<"$portada"; then
+            echo "::error::La portada todavía dice algo de otro negocio:"
+            grep -oiE ".{0,60}(D'CASA|D&#39;CASA|dcasapty|Baby ?Caleb|babycaleb|6026|6757).{0,60}" <<<"$portada" | head -5
+            exit 1
+          fi
+          curl -fsS -o /dev/null http://localhost:8069/shop
+          curl -fsS -o /dev/null http://localhost:8069/socios
+      - name: La identidad del negocio viene en la imagen, sin variables del entorno (docker/negocio.env)
+        # Staging, 2026-11-25: Cloudflare encendió la imagen nueva con las variables del arranque anterior, sin estas
+        # tres, y el negocio quedó con valores que no eran los suyos. Esta imagen arranca SIN ellas en el entorno
+        # (docker run de arriba): igual tiene que quedar como dice docker/negocio.env (Tommalo: con ITBMS, sin tienda
+        # física y sin conocimiento inicial; PENDIENTE de confirmar con el cliente).
+        run: |
+          psql_odoo() { docker exec odoo psql -h /var/lib/odoo/pg/run -U dcasa -d dcasa -tAqc "$1"; }
+          docker logs odoo 2>&1 | grep -F "▶ Negocio (docker/negocio.env): ITBMS=1, tienda física=0, conocimiento=ninguno"
+          psql_odoo "SELECT value FROM ir_config_parameter WHERE key = 'website_dcasa.sin_tienda_fisica'" | grep -qx 1 \
+            || { echo "::error::website_dcasa.sin_tienda_fisica no quedó en 1"; docker logs odoo 2>&1 | grep -E "▶|⚠|✖" | tail -40; exit 1; }
+          sin_itbms="$(psql_odoo "SELECT value FROM ir_config_parameter WHERE key = 'dcasa_base.sin_itbms'")"
+          [[ -z "$sin_itbms" || "$sin_itbms" == 0 ]] || { echo "::error::dcasa_base.sin_itbms quedó en $sin_itbms (Tommalo cobra ITBMS)"; exit 1; }
+          pago_tienda="$(psql_odoo "SELECT p.state FROM payment_provider p JOIN ir_model_data d ON d.res_id = p.id
+            AND d.model = 'payment.provider' AND d.module = 'delivery' AND d.name = 'payment_provider_cod'")"
+          [[ "$pago_tienda" == disabled ]] || { echo "::error::«Pago en la tienda» quedó «$pago_tienda»"; exit 1; }
+          retiro="$(psql_odoo "SELECT count(*) FROM delivery_carrier WHERE active AND name::text ILIKE '%Retiro en tienda%'")"
+          [[ "$retiro" == 0 ]] || { echo "::error::«Retiro en tienda» sigue activo"; exit 1; }
+          echo "Con ITBMS, sin pago ni retiro en la tienda, aunque el entorno no trajo las variables."
+      - name: Nunca queda admin/admin (S-04)
+        run: |
+          entrar() {
+            curl -fsS -H 'Content-Type: application/json' http://localhost:8069/web/session/authenticate \
+              -d "{\"jsonrpc\":\"2.0\",\"params\":{\"db\":\"dcasa\",\"login\":\"admin\",\"password\":\"$1\"}}"
+          }
+          if entrar admin | grep -q '"uid"'; then echo "::error::admin/admin entra"; exit 1; fi
+          entrar ci-admin | grep -q '"uid": 2'
+      - name: El WAL llega al almacenamiento de respaldos
+        run: |
+          # archive_timeout = 60 s: en ≤ 3 min tiene que haber objetos subidos al bucket.
+          for _ in $(seq 1 36); do
+            # Solo el repositorio de pgBackRest: los adjuntos (adjuntos/) también suben al bucket.
+            if grep -qE '"PUT /dcasa-ci/pgbackrest/' "$RUNNER_TEMP/s3/moto.log"; then
+              echo "pgBackRest sube al bucket: $(grep -cE '"PUT /dcasa-ci/pgbackrest/' "$RUNNER_TEMP/s3/moto.log") PUT."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::En 3 minutos no llegó nada al bucket de respaldos (¿archivado de WAL roto?)."
+          tail -50 "$RUNNER_TEMP/s3/moto.log" || true
+          exit 1
+      - name: Los adjuntos van a R2 (prefijo adjuntos/) y se leen de vuelta
+        run: |
+          jar="$RUNNER_TEMP/cookies"
+          curl -fsS -c "$jar" -H 'Content-Type: application/json' http://localhost:8069/web/session/authenticate \
+            -d '{"jsonrpc":"2.0","params":{"db":"dcasa","login":"admin","password":"ci-admin"}}' >/dev/null
+          texto="adjunto de prueba $GITHUB_SHA"
+          cuerpo="$(TEXTO="$texto" python3 -c 'import base64, json, os
+          datos = base64.b64encode(os.environ["TEXTO"].encode()).decode()
+          print(json.dumps({"jsonrpc": "2.0", "params": {"model": "ir.attachment", "method": "create",
+                            "args": [{"name": "ci-r2.txt", "datas": datos}], "kwargs": {}}}))')"
+          id="$(curl -fsS -b "$jar" -H 'Content-Type: application/json' http://localhost:8069/web/dataset/call_kw \
+            -d "$cuerpo" | python3 -c 'import json, sys; print(json.load(sys.stdin)["result"])')"
+          curl -fsS -b "$jar" "http://localhost:8069/web/content/$id" | grep -qF "$texto"
+          if ! grep -qE '"PUT /dcasa-ci/adjuntos/' "$RUNNER_TEMP/s3/moto.log"; then
+            echo "::error::El adjunto no llegó a R2 (adjuntos/): ¿ir_attachment.location quedó en db?"
+            docker logs odoo 2>&1 | grep -iE 'adjunto|r2' | tail -20 || true
+            exit 1
+          fi
+          echo "Adjunto $id en R2: $(grep -cE '"PUT /dcasa-ci/adjuntos/' "$RUNNER_TEMP/s3/moto.log") PUT en adjuntos/."
+      - name: La factura en PDF sale con el diseño de la marca (estilos y fuentes cargados)
+        # web.base.url apunta a https://localhost (inalcanzable aquí, como Cloudflare desde el
+        # contenedor): si wkhtmltopdf pidiera los estilos ahí, el PDF saldría como texto suelto.
+        run: |
+          jar="$RUNNER_TEMP/cookies-pdf"
+          curl -fsS -c "$jar" -H 'Content-Type: application/json' http://localhost:8069/web/session/authenticate \
+            -d '{"jsonrpc":"2.0","params":{"db":"dcasa","login":"admin","password":"ci-admin"}}' >/dev/null
+          rpc() {
+            curl -fsS -b "$jar" -H 'Content-Type: application/json' http://localhost:8069/web/dataset/call_kw \
+              -d "{\"jsonrpc\":\"2.0\",\"params\":{\"model\":\"$1\",\"method\":\"create\",\"args\":[$2],\"kwargs\":{}}}" \
+              | python3 -c 'import json, sys; print(json.load(sys.stdin)["result"])'
+          }
+          cliente="$(rpc res.partner '{"name":"Cliente PDF CI"}')"
+          producto="$(rpc product.product '{"name":"Producto PDF CI","list_price":99}')"
+          orden="$(rpc sale.order "{\"partner_id\":$cliente,\"order_line\":[[0,0,{\"product_id\":$producto,\"product_uom_qty\":1}]]}")"
+          curl -fsS -b "$jar" -o "$RUNNER_TEMP/cotizacion.pdf" "http://localhost:8069/report/pdf/sale.report_saleorder/$orden"
+          head -c 4 "$RUNNER_TEMP/cotizacion.pdf" | grep -q '%PDF'
+          # La letra de la marca Tommalo (docs/MARCA_TOMMALO.md): los TTF de Montserrat de dcasa_base, incrustados.
+          if ! grep -aq 'Montserrat' "$RUNNER_TEMP/cotizacion.pdf"; then
+            echo "::error::La cotización salió sin estilos: wkhtmltopdf no cargó el CSS (¿pide los estilos a la URL pública?)."
+            exit 1
+          fi
+          echo "PDF con fuentes de marca ($(wc -c < "$RUNNER_TEMP/cotizacion.pdf") bytes)."
+      - name: La base queda al día con el código de la imagen, pase lo que pase (#97)
+        # Incidente del 2026-10-16: producción corrió código nuevo sobre la base sin actualizar porque el
+        # arranque solo miraba APP_VERSION, y el despliegue dijo «sano». Aquí se reproducen los casos con la
+        # imagen real: la huella de otro código, una columna que falta con los marcadores «al día», una imagen
+        # más vieja que la base (no se baja) y APP_VERSION atrasada en un contenedor nuevo (restaura del S3 local).
+        env:
+          ESPERADO: ${{ github.sha }}
+        run: |
+          salud() { curl -fsS http://localhost:8069/dcasa/salud; }
+          comprobar() { # base_al_dia esperado (true|false) y humo esperado (ok|fallo)
+            salud | ESPERA_AL_DIA="$1" ESPERA_HUMO="$2" python3 -c 'import json, os, sys
+          d = json.load(sys.stdin)
+          assert d.get("version") == os.environ["ESPERADO"][:12], f"version: {d}"
+          assert d.get("base_al_dia") is (os.environ["ESPERA_AL_DIA"] == "true"), f"base_al_dia: {d}"
+          assert d.get("humo") == os.environ["ESPERA_HUMO"], f"humo: {d}"
+          print("salud:", d)'
+          }
+          psql_odoo() { docker exec odoo psql -h /var/lib/odoo/pg/run -U dcasa -d dcasa -tAqc "$1"; }
+          esperar() {
+            for _ in $(seq 1 120); do
+              if curl -fsS http://localhost:8069/web/health >/dev/null 2>&1; then return 0; fi
+              sleep 5
+            done
+            echo "::error::Odoo no volvió a arrancar."; docker logs --since "$inicio" odoo 2>&1 | tail -80; exit 1
+          }
+          reiniciar() { inicio="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; docker restart -t 120 odoo; esperar; }
+          en_el_log() { # texto, mensaje si no está
+            if ! docker logs --since "$inicio" odoo 2>&1 | grep -qF "$1"; then
+              echo "::error::$2"; docker logs --since "$inicio" odoo 2>&1 | tail -80; exit 1
+            fi
+          }
+
+          echo "== 0) Recién instalada: versión de la imagen, base al día y prueba de humo en orden"
+          comprobar true ok
+
+          echo "== 1) La base «actualizada con otro código» y la misma versión: se actualiza"
+          psql_odoo "UPDATE ir_config_parameter SET value = 'codigo-anterior' WHERE key = 'dcasa.codigo_desplegado'"
+          comprobar false ok
+          reiniciar
+          en_el_log '✔ Base actualizada' 'La imagen no actualizó la base con el código cambiado (misma APP_VERSION).'
+          comprobar true ok
+
+          echo "== 2) Lo de producción: falta una columna y los marcadores dicen «al día»"
+          psql_odoo "ALTER TABLE sale_order DROP COLUMN dcasa_utilidad"
+          reiniciar
+          en_el_log 'Faltan columnas en la base' 'La prueba de humo no vio la columna que falta.'
+          en_el_log '✔ Humo' 'Tras actualizar, la prueba de humo no quedó en orden.'
+          psql_odoo "SELECT count(*) FROM information_schema.columns WHERE table_name = 'sale_order' AND column_name = 'dcasa_utilidad'" | grep -qx 1
+          comprobar true ok
+
+          echo "== 3) Una imagen más vieja que la que actualizó la base no la baja"
+          psql_odoo "UPDATE ir_config_parameter SET value = '9999999999' WHERE key = 'dcasa.codigo_orden'"
+          psql_odoo "UPDATE ir_config_parameter SET value = 'codigo-de-una-imagen-nueva' WHERE key = 'dcasa.codigo_desplegado'"
+          # Tampoco toca los módulos: con su lista vieja de sobrantes desinstalaría lo que la nueva instaló.
+          psql_odoo "UPDATE ir_config_parameter SET value = 'otra-version' WHERE key = 'dcasa.sobrantes_version'"
+          reiniciar
+          en_el_log 'NO la actualizo hacia atrás' 'Una imagen más vieja que la base la actualizó hacia atrás.'
+          if docker logs --since "$inicio" odoo 2>&1 | grep -qF '✔ Base actualizada'; then
+            echo "::error::Una imagen más vieja que la base la actualizó hacia atrás."; exit 1
+          fi
+          if docker logs --since "$inicio" odoo 2>&1 | grep -qF 'Revisando módulos sobrantes'; then
+            echo "::error::Una imagen más vieja que la base revisó (y pudo desinstalar) módulos."; exit 1
+          fi
+          comprobar false ok
+          psql_odoo "UPDATE ir_config_parameter SET value = '1' WHERE key = 'dcasa.codigo_orden'"
+          reiniciar
+          en_el_log '✔ Base actualizada' 'Con el orden en regla, la imagen no actualizó la base.'
+          comprobar true ok
+
+          echo "== 4) APP_VERSION atrasada en un contenedor nuevo: manda el commit de la imagen (restaura del S3 local)"
+          docker stop -t 120 odoo >/dev/null
+          docker rm odoo >/dev/null
+          inicio="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # Mismos datos que «Arrancar la imagen con su base interna vacía», con otra APP_VERSION.
+          docker run -d --name odoo --network host \
+            -e ADMIN_PASSWORD=ci-admin -e ODOO_MASTER_PASSWORD=ci-maestra-distinta \
+            -e APP_VERSION=0000000000000000000000000000000000000000 -e DCASA_PIN_PEPPER=ci \
+            -e R2_ENDPOINT=https://127.0.0.1:9100 -e R2_BUCKET=dcasa-ci \
+            -e R2_ACCESS_KEY_ID=ci -e R2_SECRET_ACCESS_KEY=ci \
+            -e PGBACKREST_CIPHER_PASS=ci-cifrado-de-prueba-no-real \
+            -e PGBACKREST_REPO1_STORAGE_VERIFY_TLS=n \
+            -e RESPALDO_TOKEN=ci-token-de-respaldo -e CANONICAL_HOST=localhost \
+            dcasa-odoo:ci >/dev/null
+          esperar
+          en_el_log 'no es el commit de esta imagen' 'La imagen no avisó que APP_VERSION venía atrasada.'
+          comprobar true ok
+      - if: always()
+        run: docker logs odoo 2>&1 | tail -200
+
+      - name: Guardar la imagen probada para el despliegue
+        if: env.SE_DESPLIEGA == 'true'
+        run: |
+          docker rm -f odoo >/dev/null 2>&1 || true
+          docker save dcasa-odoo:ci | zstd -T0 -3 -q -o "$RUNNER_TEMP/imagen.tar.zst"
+          ls -lh "$RUNNER_TEMP/imagen.tar.zst"
+      - if: env.SE_DESPLIEGA == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: imagen-odoo-${{ github.sha }}
+          path: ${{ runner.temp }}/imagen.tar.zst
+          compression-level: 0
+          # Solo hace de transporte hasta el despliegue de esta misma ejecución (~420 MB cada una): con 1 día basta y
+          # no llena el espacio de GitHub. Para liberarlo antes: «Limpiar copias temporales» (docs/OPERACION.md).
+          retention-days: 1
+          if-no-files-found: error
+
+  simulacro-restauracion:
+    name: Simulacro de restauración (RPO ≤ 90 s, sin corrupción)
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'workflow_dispatch' || inputs.desplegar_en != 'solo-juan-staging'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts
+            docker
+            .github
+      - name: PostgreSQL 16, pgBackRest y stunnel
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-16 postgresql-client-16 pgbackrest stunnel4
+          # El clúster que instala apt no se usa: el simulacro levanta los suyos.
+          sudo systemctl stop postgresql || true
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: S3 local (moto)
+        run: pip install "moto[server]>=5,<6" boto3
+      # Contrato con f1-imagen (VERIFICAR AL INTEGRAR): sale ≠ 0 si el RPO medido pasa de
+      # SIMULACRO_RPO_MAX_S o si hay filas corruptas/diferentes tras restaurar; deja sus
+      # registros en SIMULACRO_DIR.
+      - name: Simulacro (matar PostgreSQL, borrar el disco, restaurar desde S3 y comparar)
+        run: scripts/simulacro_restauracion.sh
+        env:
+          SIMULACRO_RPO_MAX_S: "90"
+          SIMULACRO_DIR: ${{ runner.temp }}/simulacro
+      - if: always()
+        # Solo diagnóstico: si GitHub no tiene espacio para guardarlo, no debe poner el simulacro en rojo.
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: simulacro-restauracion
+          path: ${{ runner.temp }}/simulacro
+          if-no-files-found: ignore
+          retention-days: 7
+
+  produccion-solo-desde-main:
+    name: Producción solo se despliega desde main
+    if: github.event_name == 'workflow_dispatch' && inputs.desplegar_en == 'produccion' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo "::error::A producción solo se despliega desde la rama main (esta ejecución es de ${GITHUB_REF_NAME}). Vuelve a lanzar con la rama main."
+          exit 1
+
+  desplegar-staging:
+    name: Desplegar a staging
+    needs: [lint, odoo-tests, edge, juan, integracion-juan, puente-wa, docker, simulacro-restauracion]
+    if: github.event_name == 'workflow_dispatch' && inputs.desplegar_en == 'staging'
+    uses: ./.github/workflows/desplegar.yml
+    with:
+      entorno: staging
+      artefacto: imagen-odoo-${{ github.sha }}
+      imagen_id: ${{ needs.docker.outputs.imagen_id }}
+      app_version: ${{ github.sha }}
+      respaldo_previo: true
+    secrets: inherit
+
+  desplegar-juan-staging:
+    name: Desplegar Juan (bot) a staging
+    # Después de `dcasa`: el binding de Juan apunta a su entrada `JuanEntrada`, que tiene que existir ya.
+    needs: [desplegar-staging, juan, integracion-juan]
+    if: github.event_name == 'workflow_dispatch' && inputs.desplegar_en == 'staging'
+    uses: ./.github/workflows/desplegar-juan.yml
+    with:
+      entorno: staging
+      dry_run: false
+    secrets: inherit
+
+  desplegar-juan-solo:
+    name: Desplegar solo Juan (bot) a staging
+    # Sin repetir Odoo: el flujo de Juan trae sus propias pruebas. Requiere que tommalo-staging ya tenga el módulo y JuanEntrada.
+    if: github.event_name == 'workflow_dispatch' && inputs.desplegar_en == 'solo-juan-staging'
+    uses: ./.github/workflows/desplegar-juan.yml
+    with:
+      entorno: staging
+      dry_run: false
+    secrets: inherit
+
+  desplegar-produccion:
+    name: Desplegar a producción
+    needs: [lint, odoo-tests, edge, juan, integracion-juan, puente-wa, docker, simulacro-restauracion]
+    # Nunca con un push: solo a mano y solo desde main (un merge no despliega).
+    if: github.event_name == 'workflow_dispatch' && inputs.desplegar_en == 'produccion' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/desplegar.yml
+    with:
+      entorno: production
+      artefacto: imagen-odoo-${{ github.sha }}
+      imagen_id: ${{ needs.docker.outputs.imagen_id }}
+      app_version: ${{ github.sha }}
+      respaldo_previo: true
+    secrets: inherit

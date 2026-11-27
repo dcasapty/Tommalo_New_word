@@ -1,0 +1,1258 @@
+// «Inicio» con el sistema de diseño (tokens.scss), la marca de Tommalo: tarjetas en superficie sobre el crema,
+// letra navy y el naranja de relleno (con letra navy encima).
+//
+// Varias clases de aquí las comparten otras pantallas (Estadísticas, Por día, Movimientos, Valor del inventario).
+// Lo que es SOLO del Inicio (los tamaños de los accesos en el celular, los contadores, las barras de proporción, el
+// movimiento) vive en tablero.scss, colgado de `.o_dcasa_tablero`.
+
+// «Enterprise» → «En desarrollo»
+.o_dcasa_en_desarrollo {
+    background: var(--dc-azul-50);
+    color: var(--dc-azul-700);
+    border: 1px solid var(--dc-azul-100);
+    font-weight: 600;
+}
+
+.o_dcasa_inicio {
+    height: 100%;
+    background: var(--dc-niebla);
+    color: var(--dc-tinta);
+    font-variant-numeric: tabular-nums;
+
+    h2 {
+        font-size: .95rem;
+        font-weight: 600;
+        letter-spacing: -.005em;
+        color: var(--dc-tinta);
+        margin: 0 0 1rem;
+    }
+}
+
+// Odoo pone a todo `.o_action` en columna con `overflow: hidden` y sin barra (webclient_layout.scss), y esa regla pesa
+// más que `.o_dcasa_inicio`: en el computador el Inicio quedaba cortado abajo.
+.o_web_client > .o_action_manager > .o_dcasa_inicio.o_action {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    &::-webkit-scrollbar { display: block; width: 8px; }
+    &::-webkit-scrollbar-thumb { background: var(--dc-linea); border-radius: 4px; }
+    > * { flex-shrink: 0; }
+}
+
+// --- Saludo --------------------------------------------------------------------------
+.o_dcasa_inicio_hero {
+    background: var(--dc-blanco);
+    border-bottom: 1px solid var(--dc-linea);
+    padding: 28px clamp(1rem, 3vw, 40px) 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+
+    h1 {
+        font-size: clamp(1.6rem, 2.6vw, 2.1rem);
+        font-weight: 700;
+        letter-spacing: -.02em;
+        line-height: 1.15;
+        margin: 4px 0 4px;
+        color: var(--dc-tinta);
+    }
+    p {
+        margin: 0;
+        color: var(--dc-tinta-3);
+    }
+}
+
+.o_dcasa_inicio_fecha {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--dc-azul-600);
+
+    // Un punto amarillo: el acento de la marca, mínimo.
+    &::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--dc-naranja);
+        box-shadow: 0 0 0 3px var(--dc-azul-50);
+    }
+    &::first-letter { text-transform: uppercase; }
+}
+
+.o_dcasa_inicio_accesos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    .btn {
+        min-height: 40px;
+        padding: 0 14px;
+        display: inline-flex;
+        align-items: center;
+        font-weight: 500;
+    }
+}
+
+// En el celular (2026-11-11): los botones del saludo van enteros, dos por fila y de 44 px de alto. Antes iban en una
+// tira que se deslizaba de lado y «Nueva cotización» quedaba cortada en el borde. «Ver la tienda», que es solo un ícono,
+// va al final de su fila. Cada botón mide lo mismo que su vecino salvo que su texto pida más: nunca se corta.
+// Odoo, en las pantallas táctiles, les pone a todos los `.btn` su relleno y su letra con una regla de tres clases
+// (.o_web_client.o_touch_device .btn): por eso esta lleva la raíz delante.
+@media (max-width: 575.98px) {
+    .o_dcasa_inicio_accesos { width: 100%; }
+
+    .o_web_client .o_dcasa_inicio .o_dcasa_inicio_accesos .btn {
+        flex: 1 1 34%;              // tres ya no caben en una fila: quedan de a dos
+        min-width: min-content;
+        min-height: 44px;
+        padding: 0 4px;
+        justify-content: center;
+        font-size: .8125rem;
+        letter-spacing: -.01em;     // Montserrat es más ancha que la letra de antes: así siguen de a dos por fila a 360 px
+        white-space: nowrap;
+
+        .fa.me-2 { margin-right: 4px !important; }
+        // El que queda solo en la última fila (p. ej. «Nuevo cliente» de la vendedora) mide media fila, no entera.
+        &:last-child:nth-child(odd):not(.o_dcasa_ver_tienda) { flex: 0 0 calc(50% - 4px); }
+        &.o_dcasa_ver_tienda { flex: 0 0 44px; min-width: 44px; padding: 0; }
+    }
+}
+
+.o_dcasa_inicio_cuerpo {
+    padding: 24px clamp(1rem, 3vw, 40px) 40px;
+    max-width: 1440px;
+}
+
+// --- Accesos directos ----------------------------------------------------------------
+.o_dcasa_atajos {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+
+    @media (max-width: 575.98px) {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+    }
+}
+
+.o_dcasa_atajo {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-align: left;
+    background: var(--dc-blanco);
+    border: 1px solid var(--dc-linea);
+    border-radius: var(--dc-r-md);
+    padding: 16px 18px;
+    min-height: 72px;
+    color: var(--dc-tinta);
+    box-shadow: var(--dc-sombra-1);
+    transition: border-color var(--dc-transicion), box-shadow var(--dc-transicion), transform var(--dc-transicion);
+
+    // Como los atajos del panel de Tommalo: tarjeta en superficie, el ícono en un cuadro naranja con letra navy.
+    &:hover { border-color: var(--dc-naranja-filo); box-shadow: var(--dc-sombra-2); transform: translateY(-1px); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+}
+
+.o_dcasa_atajo_icono {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    display: grid;
+    place-items: center;
+    background: var(--dc-naranja);
+    color: var(--dc-en-naranja);
+    font-size: 1.1rem;
+}
+
+.o_dcasa_atajo_texto {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+
+    strong {
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: -.01em;
+    }
+
+    span {
+        font-size: .8rem;
+        color: var(--dc-tinta-3);
+    }
+}
+
+// Cuántas conversaciones esperan lectura: una pastilla naranja con el número en navy.
+.o_dcasa_atajo_cuenta {
+    margin-left: auto;
+    flex: 0 0 auto;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    background: var(--dc-naranja);
+    color: var(--dc-en-naranja);
+    font-weight: 700;
+    font-size: .85rem;
+}
+
+// --- Cifras del día -----------------------------------------------------------------
+.o_dcasa_cifras {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+
+    @media (max-width: 575.98px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+}
+
+.o_dcasa_cifra {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    text-align: left;
+    background: var(--dc-blanco);
+    border: 1px solid var(--dc-linea);
+    border-radius: var(--dc-r-md);
+    padding: 16px;
+    color: var(--dc-tinta);
+    box-shadow: var(--dc-sombra-1);
+    transition: border-color var(--dc-transicion), box-shadow var(--dc-transicion), transform var(--dc-transicion);
+
+    &:hover { border-color: var(--dc-azul-200); box-shadow: var(--dc-sombra-2); transform: translateY(-1px); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+}
+
+.o_dcasa_cifra_icono {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    margin-bottom: 6px;
+    background: var(--dc-azul-50);
+    color: var(--dc-azul-600);
+    font-size: .9rem;
+}
+
+// Variantes del azul según la cifra (misma familia, distinto peso).
+.o_dcasa_cifra_ventas_hoy .o_dcasa_cifra_icono { background: var(--dc-naranja); color: var(--dc-en-naranja); }
+.o_dcasa_cifra_cobrado_hoy .o_dcasa_cifra_icono { background: var(--dc-azul-100); color: var(--dc-azul-800); }
+.o_dcasa_cifra_por_cobrar .o_dcasa_cifra_icono { background: var(--dc-perla); color: var(--dc-tinta-2); }
+.o_dcasa_cifra_entregas .o_dcasa_cifra_icono { background: var(--dc-azul-50); color: var(--dc-azul-500); }
+.o_dcasa_cifra_socios .o_dcasa_cifra_icono { background: var(--dc-salvia); color: var(--dc-en-salvia); }
+
+.o_dcasa_cifra_titulo {
+    font-size: .8rem;
+    font-weight: 500;
+    color: var(--dc-tinta-3);
+}
+
+.o_dcasa_cifra_valor {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.15;
+    color: var(--dc-tinta);
+}
+
+.o_dcasa_cifra_detalle {
+    font-size: .78rem;
+    color: var(--dc-tinta-3);
+}
+
+// --- Paneles ----------------------------------------------------------------------------
+.o_dcasa_inicio_fila {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+
+    @media (max-width: 1199.98px) { grid-template-columns: 1fr 1fr; .o_dcasa_semana { grid-column: 1 / -1; } }
+    @media (max-width: 767.98px) { grid-template-columns: 1fr; }
+}
+
+.o_dcasa_panel {
+    background: var(--dc-blanco);
+    border: 1px solid var(--dc-linea);
+    border-radius: var(--dc-r-md);
+    padding: 18px 20px;
+    box-shadow: var(--dc-sombra-1);
+}
+
+.o_dcasa_vacio {
+    color: var(--dc-tinta-3);
+    margin: 0;
+    font-size: .9rem;
+}
+
+// Ventas de la semana (una serie: sin leyenda; etiqueta solo en «hoy»; valor al pasar)
+.o_dcasa_grafico {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+    height: 180px;
+    align-items: end;
+    border-bottom: 1px solid var(--dc-linea);
+    padding-bottom: 0;
+    position: relative;
+}
+
+.o_dcasa_grafico_barra {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+    outline: none;
+
+    &:hover .o_dcasa_grafico_monto,
+    &:focus-visible .o_dcasa_grafico_monto { opacity: 1; }
+    &:focus-visible .o_dcasa_grafico_relleno { box-shadow: var(--dc-foco); }
+}
+
+.o_dcasa_grafico_relleno {
+    width: 100%;
+    max-width: 28px;
+    border-radius: 4px 4px 0 0;
+    background: var(--dc-salvia);
+    transition: background var(--dc-transicion);
+}
+
+// Los días en salvia; hoy, en el naranja de la marca (como las barras del panel de Tommalo).
+.o_dcasa_grafico_barra:hover .o_dcasa_grafico_relleno { background: var(--dc-salvia-filo); }
+.o_dcasa_grafico_hoy .o_dcasa_grafico_relleno,
+.o_dcasa_grafico_hoy:hover .o_dcasa_grafico_relleno { background: var(--dc-naranja); }
+
+.o_dcasa_grafico_monto {
+    position: absolute;
+    bottom: calc(var(--alto, 0%) + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--dc-tinta-2);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity var(--dc-transicion);
+}
+.o_dcasa_grafico_hoy .o_dcasa_grafico_monto { opacity: 1; color: var(--dc-tinta); }
+
+.o_dcasa_grafico_dias {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+    margin-top: 8px;
+
+    span {
+        text-align: center;
+        font-size: .72rem;
+        font-weight: 500;
+        color: var(--dc-tinta-3);
+        &::first-letter { text-transform: uppercase; }
+    }
+    .o_hoy { color: var(--dc-naranja-fuerte); font-weight: 700; }
+}
+
+// Caja de hoy
+.o_dcasa_caja li {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--dc-perla);
+    &:last-child { border-bottom: 0; }
+    span { color: var(--dc-tinta-2); }
+    strong { color: var(--dc-tinta); }
+}
+
+// Lo más vendido
+.o_dcasa_top li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 6px;
+    margin: 0 -6px;
+    border-radius: var(--dc-r-sm);
+    cursor: pointer;
+    transition: background var(--dc-transicion);
+
+    &:hover { background: var(--dc-niebla); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+
+    img {
+        width: 40px;
+        height: 40px;
+        object-fit: cover;
+        border-radius: 8px;
+        background: var(--dc-niebla);
+        border: 1px solid var(--dc-perla);
+    }
+}
+
+.o_dcasa_top_nombre {
+    flex: 1;
+    font-size: .86rem;
+    line-height: 1.3;
+    color: var(--dc-tinta);
+}
+
+.o_dcasa_top_cantidad {
+    font-size: .8rem;
+    font-weight: 700;
+    color: var(--dc-tinta);
+    background: var(--dc-salvia-claro);
+    border-radius: 999px;
+    padding: 2px 8px;
+}
+
+// --- Apps --------------------------------------------------------------------------------
+.o_dcasa_apps_grilla {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+    gap: 12px;
+}
+
+.o_dcasa_app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 8px 14px;
+    background: var(--dc-blanco);
+    border: 1px solid var(--dc-linea);
+    border-radius: var(--dc-r-md);
+    color: var(--dc-tinta);
+    box-shadow: var(--dc-sombra-1);
+    transition: border-color var(--dc-transicion), box-shadow var(--dc-transicion), transform var(--dc-transicion);
+
+    &:hover { border-color: var(--dc-azul-200); box-shadow: var(--dc-sombra-2); transform: translateY(-1px); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+
+    img, .o_dcasa_app_letra {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+    }
+}
+
+.o_dcasa_app_letra {
+    display: grid;
+    place-items: center;
+    background: var(--dc-naranja);
+    color: var(--dc-en-naranja);
+    font-weight: 700;
+    font-size: 1.2rem;
+}
+
+.o_dcasa_app_nombre {
+    font-size: .82rem;
+    font-weight: 500;
+    text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .o_dcasa_cifra, .o_dcasa_atajo, .o_dcasa_app, .o_dcasa_grafico_barra * { transition: none; &:hover { transform: none; } }
+}
+
+// --- Inicio de Gerencia: ventas por periodo, listas lado a lado y avisos (2026-10-16) -----------------------------
+// Sistema plano: bordes finos, sin sombras. El amarillo no se usa aquí (el fondo es blanco).
+
+.o_dcasa_sin_itbms {
+    font-weight: 500;
+    font-size: .72rem;
+    color: var(--dc-tinta-3);
+    margin-left: 6px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.o_dcasa_atencion {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.o_dcasa_aviso {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 14px;
+    background: var(--dc-blanco);
+    color: var(--dc-azul-800);
+    border: 1px solid var(--dc-azul-200);
+    border-radius: var(--dc-r-md);
+    font-size: .88rem;
+    font-weight: 500;
+    text-align: left;
+
+    .fa { color: var(--dc-azul-600); }
+    &:hover { background: var(--dc-azul-50); border-color: var(--dc-azul-300); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+}
+
+.o_dcasa_ventas {
+    background: var(--dc-blanco);
+    border: 1px solid var(--dc-linea);
+    border-radius: var(--dc-r-lg);
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    min-width: 0;
+
+    @media (max-width: 575.98px) { padding: 16px 14px; }
+}
+
+.o_dcasa_ventas_cabeza {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+
+    h2 { margin: 0; }
+}
+
+.o_dcasa_periodos {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    background: var(--dc-niebla);
+    border-radius: var(--dc-r-md);
+    padding: 4px;
+}
+
+.o_dcasa_periodo {
+    min-height: 34px;
+    padding: 0 14px;
+    border: 0;      // son <button> sin la clase .btn: sin esto salían con el marco gris del navegador (2026-11-11)
+    border-radius: var(--dc-r-sm);
+    background: transparent;
+    color: var(--dc-tinta-2);
+    font-size: .85rem;
+    font-weight: 500;
+
+    &:hover { color: var(--dc-azul-700); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+    &.o_activo { background: var(--dc-naranja); color: var(--dc-en-naranja); }
+}
+
+.o_dcasa_rango {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+    margin-bottom: 12px;
+
+    label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: .85rem;
+        color: var(--dc-tinta-2);
+        margin: 0;
+    }
+    .form-control { width: auto; min-height: 38px; }
+    .o_dcasa_error { color: #b3261e; font-size: .85rem; }
+}
+
+.o_dcasa_ventas_cuerpo {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    transition: opacity var(--dc-transicion);
+
+    &.o_cargando { opacity: .5; }
+}
+
+.o_dcasa_ventas_columna {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.o_dcasa_ventas_etiqueta {
+    font-size: .78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--dc-tinta-3);
+}
+
+.o_dcasa_ventas_valor {
+    align-self: flex-start;
+    background: none;
+    border: 0;
+    padding: 0;
+    text-align: left;
+    font-size: clamp(1.7rem, 3vw, 2.3rem);
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+    color: var(--dc-azul-700);
+
+    &:hover { text-decoration: underline; }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); border-radius: 4px; }
+}
+
+.o_dcasa_ganancia_valor { color: var(--dc-azul-900); }
+
+.o_dcasa_ventas_nota {
+    font-size: .85rem;
+    color: var(--dc-tinta-2);
+}
+
+.o_dcasa_ventas_aviso {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: .82rem;
+    color: var(--dc-azul-800);
+    background: var(--dc-azul-50);
+    border-radius: var(--dc-r-sm);
+    padding: 6px 10px;
+}
+
+// «N de M salieron de un pedido de una vendedora» (solo en «Facturado»): una línea corta debajo del número.
+.o_dcasa_de_pedido {
+    font-size: .82rem;
+    color: var(--dc-azul-800);
+}
+
+// Ticket promedio (K1, 2026-10-18): una línea corta debajo del número de Ventas.
+.o_dcasa_ticket {
+    font-size: .85rem;
+    color: var(--dc-tinta-2);
+    strong { color: var(--dc-azul-800); font-weight: 600; }
+}
+
+// Unidades vendidas por tipo (K1): una fila por tipo con el número a la derecha y «Total» en azul. Sin sombras.
+.o_dcasa_tipo {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--dc-perla);
+    font-size: .88rem;
+}
+.o_dcasa_tipo_nombre { min-width: 0; overflow-wrap: anywhere; color: var(--dc-tinta-2); }
+.o_dcasa_tipo_unidades { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--dc-tinta); }
+.o_dcasa_tipo_total {
+    border-bottom: 0;
+    .o_dcasa_tipo_nombre, .o_dcasa_tipo_unidades { font-weight: 700; color: var(--dc-azul-800); }
+}
+
+// El ícono ⓘ junto a un título (2026-10-17): el texto largo se abre al tocarlo, también con el teclado (es un botón:
+// Enter o Espacio lo abren, Escape lo cierra) y en el celular. Azul de la marca sobre blanco, sin sombras.
+.o_dcasa_con_ayuda {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.o_dcasa_ayuda_boton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin: -6px 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--dc-azul-600);
+    font-size: 1.05rem;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: 0;
+
+    &:hover { background: var(--dc-azul-50); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+    &[aria-expanded="true"] { background: var(--dc-azul-100); color: var(--dc-azul-800); }
+}
+
+.o_dcasa_ayuda_texto {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--dc-azul-200);
+    border-radius: var(--dc-r-sm);
+    background: var(--dc-azul-50);
+    color: var(--dc-azul-900);
+    font-size: .85rem;
+    line-height: 1.45;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+
+    p { margin: 0 0 6px; }
+    p:last-child { margin-bottom: 0; }
+    strong { color: var(--dc-azul-900); font-weight: 600; }
+    &:focus { outline: none; }
+    .btn-link { font-size: .85rem; font-weight: 600; color: var(--dc-azul-700); }
+}
+
+.o_dcasa_ganancia .o_dcasa_ayuda_texto { margin: 2px 0 0; }
+
+.o_dcasa_semana, .o_dcasa_top {
+    transition: opacity var(--dc-transicion);
+
+    &.o_cargando { opacity: .5; }
+}
+
+.o_dcasa_desglose {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    font-size: .85rem;
+    color: var(--dc-tinta-3);
+
+    strong { color: var(--dc-tinta); font-weight: 600; }
+}
+
+// «Facturado» · «Con abonos» · «Completadas» (decisión del jefe, 2026-10-17): tres píldoras; la activa en azul con
+// texto blanco y las otras con borde. Debajo, una sola línea corta que dice qué se cuenta. En el celular, las tres en
+// una fila del mismo ancho.
+.o_dcasa_base_ventas {
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--dc-linea);
+}
+
+.o_dcasa_base_fila {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.o_dcasa_interruptor {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.o_dcasa_interruptor_opcion {
+    min-height: 38px;
+    padding: 0 18px;
+    border-radius: 999px;
+    border: 1px solid var(--dc-azul-600);
+    background: var(--dc-blanco);
+    color: var(--dc-azul-700);
+    font-size: .9rem;
+    font-weight: 600;
+
+    &:hover { background: var(--dc-azul-50); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+    &.o_activo { background: var(--dc-naranja); color: var(--dc-en-naranja); }
+}
+
+.o_dcasa_vendedora {
+    margin: 0;
+    min-width: 0;
+
+    .form-select {
+        min-height: 38px;
+        width: auto;
+        max-width: 100%;
+        border-color: var(--dc-linea-fuerte);
+        border-radius: var(--dc-r-sm);
+        color: var(--dc-tinta);
+        font-size: .9rem;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .o_dcasa_interruptor {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        width: 100%;
+        gap: 4px;
+    }
+    .o_dcasa_interruptor_opcion {
+        padding: 0 6px;
+        font-size: .82rem;
+        white-space: nowrap;
+    }
+    .o_dcasa_vendedora { width: 100%; .form-select { width: 100%; } }
+}
+
+.o_dcasa_base_detalle {
+    margin: 8px 0 0;
+    font-size: .85rem;
+    line-height: 1.4;
+    color: var(--dc-tinta-2);
+}
+
+.o_dcasa_desglose .o_dcasa_falta strong { color: var(--dc-azul-800); }
+
+// Comparar (pedido del jefe, 2026-10-17): una fila de botones y, al tocar uno, una tabla solo de números. Azul si sube,
+// rojo si baja; sin sombras ni degradados; el amarillo no aparece (nunca sobre blanco).
+.o_dcasa_comparar {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--dc-linea);
+    min-width: 0;
+}
+
+.o_dcasa_comparar_cabeza {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    h3 {
+        margin: 0;
+        font-size: .95rem;
+        font-weight: 600;
+        color: var(--dc-tinta);
+    }
+    .btn { min-height: 34px; font-size: .85rem; }
+}
+
+.o_dcasa_chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0 12px;
+}
+
+.o_dcasa_chip {
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid var(--dc-linea-fuerte);
+    background: var(--dc-blanco);
+    color: var(--dc-azul-800);
+    font-size: .85rem;
+    font-weight: 600;
+    white-space: nowrap;
+
+    &:hover { border-color: var(--dc-azul-300); background: var(--dc-azul-50); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+    &.o_activo { background: var(--dc-naranja); border-color: var(--dc-naranja); color: var(--dc-en-naranja); }
+}
+
+.o_dcasa_comparar_mes {
+    display: block;
+    margin: 0 0 12px;
+
+    .form-select { width: auto; max-width: 100%; min-height: 38px; font-size: .9rem; }
+}
+
+.o_dcasa_comparar_rango {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin-bottom: 12px;
+
+    .form-control { width: auto; min-height: 38px; min-width: 0; }
+    .o_dcasa_cmp_b_propuesto { font-size: .85rem; color: var(--dc-tinta-2); white-space: nowrap; }
+    .o_dcasa_libre {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        font-size: .9rem;
+
+        // El interruptor de Odoo sale verde: aquí va en el azul de la marca.
+        .form-check-input:checked { background-color: var(--dc-azul-600); border-color: var(--dc-azul-600); }
+        .form-check-input:focus { box-shadow: var(--dc-foco); border-color: var(--dc-azul-300); }
+    }
+    .btn { min-height: 38px; }
+}
+
+.o_dcasa_comparar_lado {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+
+    legend {
+        float: none;
+        width: auto;
+        margin: 0 2px 0 0;
+        padding: 0;
+        font-size: .85rem;
+        font-weight: 700;
+        color: var(--dc-azul-700);
+    }
+}
+
+.o_dcasa_comparar_error { margin: 0 0 10px; color: #b3261e; font-size: .85rem; }
+
+.o_dcasa_comparar_cuerpo {
+    max-width: 860px;
+    transition: opacity var(--dc-transicion);
+    &.o_cargando { opacity: .5; }
+}
+
+// «Llevas 58 % de septiembre»: el único texto del bloque, en grande.
+.o_dcasa_llevas {
+    margin: 2px 0 10px;
+    font-size: clamp(1.4rem, 2.4vw, 1.9rem);
+    font-weight: 800;
+    letter-spacing: -.02em;
+    line-height: 1.15;
+    color: var(--dc-azul-700);
+}
+
+.o_dcasa_comparar_hora {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 6px;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--dc-tinta-3);
+}
+
+.o_dcasa_comparar_tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+
+    th, td {
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--dc-linea);
+        text-align: right;
+        white-space: nowrap;
+    }
+    thead th {
+        font-size: .78rem;
+        font-weight: 700;
+        color: var(--dc-tinta-3);
+        border-bottom-color: var(--dc-linea-fuerte);
+    }
+    tbody th {
+        text-align: left;
+        font-weight: 600;
+        color: var(--dc-tinta);
+        white-space: normal;
+
+        small { margin-left: 6px; font-size: .72rem; font-weight: 400; color: var(--dc-tinta-3); }
+    }
+    td { font-size: .95rem; color: var(--dc-tinta); }
+    .o_dcasa_cmp_cambio { font-weight: 700; }
+
+    // En el celular, cada cifra en su renglón y debajo las tres columnas: nada se sale por el costado.
+    @media (max-width: 575.98px) {
+        display: block;
+
+        thead, tbody { display: block; }
+        tr {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            column-gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--dc-linea);
+        }
+        thead tr { border-bottom-color: var(--dc-linea-fuerte); }
+        th, td { padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; }
+        thead th:first-child { display: none; }
+        tbody th { grid-column: 1 / -1; margin-bottom: 2px; }
+        td { font-size: .9rem; }
+    }
+}
+
+.o_dcasa_comparar_tabla .o_bien, .o_dcasa_pv_cambio.o_bien { color: var(--dc-azul-600); }
+.o_dcasa_comparar_tabla .o_mal, .o_dcasa_pv_cambio.o_mal { color: #b3261e; }
+.o_dcasa_comparar_tabla .o_igual, .o_dcasa_pv_cambio.o_igual { color: var(--dc-tinta-2); }
+
+// Por vendedora: una fila por persona (de mayor a menor en A); al tocarla, el selector queda en ella.
+.o_dcasa_por_vendedora {
+    margin-top: 16px;
+    border-top: 1px solid var(--dc-linea-fuerte);
+}
+
+.o_dcasa_pv_cabeza, .o_dcasa_pv_fila {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)) minmax(0, .8fr);
+    gap: 8px;
+    align-items: center;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.o_dcasa_pv_cabeza {
+    padding: 8px 10px;
+    font-size: .78rem;
+    font-weight: 700;
+    color: var(--dc-tinta-3);
+}
+
+.o_dcasa_pv_fila {
+    width: 100%;
+    padding: 9px 10px;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--dc-linea);
+    color: var(--dc-tinta);
+    font-size: .92rem;
+
+    &:hover { background: var(--dc-azul-50); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+}
+
+.o_dcasa_pv_nombre {
+    text-align: left;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.o_dcasa_pv_cambio { font-weight: 700; }
+
+@media (max-width: 575.98px) {
+    .o_dcasa_pv_cabeza, .o_dcasa_pv_fila { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 2px; }
+    .o_dcasa_pv_cabeza > span:first-child { display: none; }
+    .o_dcasa_pv_nombre { grid-column: 1 / -1; }
+    .o_dcasa_comparar_lado .form-control { flex: 1 1 0; }
+    .o_dcasa_comparar_lado { flex: 1 1 100%; }
+}
+
+// Tres paneles (cotizaciones de la tienda, del chatbot y la web, y entregas): tres columnas en pantalla ancha, dos en
+// una mediana (las entregas bajan) y una en el celular. Se adapta a cuántos paneles haya.
+.o_dcasa_listas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+
+    @media (min-width: 1200px) { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
+    @media (max-width: 991.98px) { grid-template-columns: minmax(0, 1fr); }
+}
+
+// Tu meta del mes (bono por meta de ventas): barra azul sobre azul claro; nada de amarillo sobre blanco.
+.o_dcasa_meta {
+    background: var(--dc-blanco);
+    border: 1px solid var(--dc-azul-200);
+    border-radius: var(--dc-r-md);
+    padding: 18px 20px;
+    margin-bottom: 16px;
+}
+
+.o_dcasa_meta_cabeza {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 16px;
+    margin-bottom: 12px;
+
+    h2 {
+        margin: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        &::first-letter { text-transform: uppercase; }
+        .fa { color: var(--dc-azul-600); }
+    }
+}
+
+// El porcentaje de la meta, a la izquierda de la barra. Azul sobre blanco (el amarillo nunca toca el blanco).
+.o_dcasa_meta_progreso {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+
+    .o_dcasa_meta_barra { flex: 1; min-width: 0; }
+}
+
+.o_dcasa_meta_porcentaje {
+    display: flex;
+    flex-direction: column;
+    min-width: 84px;
+    line-height: 1;
+
+    strong {
+        font-size: 2rem;
+        font-weight: 800;
+        letter-spacing: -.02em;
+        font-variant-numeric: tabular-nums;
+        color: var(--dc-azul-700);
+    }
+
+    span { margin-top: 3px; font-size: .75rem; color: var(--dc-tinta-3); }
+}
+
+.o_dcasa_meta_barra {
+    height: 12px;
+    border-radius: 6px;
+    background: var(--dc-azul-100);
+    overflow: hidden;
+
+    span { display: block; height: 100%; background: var(--dc-naranja); border-radius: 6px; }
+}
+
+// Palabras de ánimo según lo que lleva y el botón «Ver mis ventas» (pedido de la dueña, 2026-10-16): azul sobre
+// blanco, sin gritos; el botón, azul como los del encabezado.
+.o_dcasa_meta_pie {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    margin-top: 12px;
+}
+
+.o_dcasa_meta_animo {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--dc-azul-700);
+}
+
+
+// Cotizaciones abiertas y entregas pendientes: lo que más se usa, con acento (pedido de la dueña, 2026-10-16).
+// Cabecera en banda salvia de borde a borde, con el título navy y el número en una pastilla naranja; la lista, en la
+// superficie.
+.o_dcasa_lista {
+    padding: 0;
+    overflow: hidden;
+    border-color: var(--dc-azul-200);
+
+    > ul { padding: 4px 14px 6px; }
+    > .o_dcasa_vacio { padding: 16px 20px; }
+    > .o_dcasa_lista_pie { padding: 0 20px 14px; }
+}
+
+.o_dcasa_lista_cabeza {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    background: var(--dc-salvia);
+    padding: 12px 14px 12px 20px;
+}
+
+.o_dcasa_inicio .o_dcasa_lista_cabeza h2 {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--dc-en-salvia);
+    font-size: 1.05rem;
+    font-weight: 700;
+
+    .fa { color: var(--dc-en-salvia); }
+}
+
+.o_dcasa_lista_cuenta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: 0;
+    padding: 4px 6px;
+    border-radius: var(--dc-r-sm);
+    font-size: .85rem;
+    font-weight: 500;
+    color: var(--dc-tinta);
+
+    &:hover { background: rgba(38, 38, 38, .08); color: var(--dc-tinta); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+}
+
+.o_dcasa_lista_numero {
+    min-width: 30px;
+    height: 30px;
+    padding: 0 9px;
+    border-radius: 15px;
+    display: inline-grid;
+    place-items: center;
+    background: var(--dc-naranja);
+    color: var(--dc-en-naranja);
+    font-weight: 800;
+    font-size: .95rem;
+}
+
+.o_dcasa_lista li + li { border-top: 1px solid var(--dc-perla); }
+
+.o_dcasa_lista_fila {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 6px;
+    background: none;
+    border: 0;
+    border-radius: var(--dc-r-sm);
+    text-align: left;
+
+    &:hover { background: var(--dc-azul-50); }
+    &:focus-visible { outline: none; box-shadow: var(--dc-foco); }
+}
+
+.o_dcasa_lista_texto,
+.o_dcasa_lista_dato {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+
+    strong { font-weight: 600; color: var(--dc-tinta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    small { color: var(--dc-tinta-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+.o_dcasa_lista_dato { align-items: flex-end; flex: none; }
+
+// De dónde salió una cotización: «Chatbot» si la armó Juan (plano, azul sobre azul claro: la marca sin amarillo).
+.o_dcasa_origen {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: .7rem;
+    font-weight: 700;
+    line-height: 1.5;
+    vertical-align: baseline;
+    &.o_dcasa_origen_chatbot { background: var(--dc-azul-50); color: var(--dc-azul-700, #1F1F1F); }
+    &.o_dcasa_origen_web { background: var(--dc-niebla); color: var(--dc-azul-900); }
+}
+
+.o_dcasa_lista_pie {
+    margin: 8px 0 0;
+    font-size: .82rem;
+    color: var(--dc-tinta-3);
+}
+
+.o_dcasa_vacio { color: var(--dc-tinta-3); margin: 0; }
+
+.o_dcasa_caja_total {
+    margin: 0 0 8px;
+    color: var(--dc-tinta-2);
+    font-size: .88rem;
+
+    strong { color: var(--dc-tinta); }
+}
+
+.o_dcasa_ver_tienda { min-width: 40px; justify-content: center; }
+
+// Caja (rol Tommalo, 2026-10-17): su «Caja de hoy» va sola, debajo de las cifras del día.
+.o_dcasa_caja_rol {
+    margin-bottom: 1rem;
+}

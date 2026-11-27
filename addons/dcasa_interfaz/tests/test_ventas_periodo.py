@@ -1,0 +1,295 @@
+"""Ventas del Inicio por periodo (Hoy · semana · mes · rango), ITBMS claro, ganancia y las listas de Gerencia.
+
+Gerencia cuenta las facturas («Facturado» por defecto: todas las publicadas, por su fecha, igual que Contabilidad;
+2026-10-17): la venta de estas pruebas se paga completa el mismo día de su factura, así cuenta igual en las tres
+posiciones. Las comparaciones viven en el bloque «Comparar» (``test_comparar.py``) y lo de las facturas en
+``test_facturado.py``."""
+from datetime import date, timedelta
+
+from odoo import Command, fields
+from odoo.exceptions import UserError
+from odoo.tests import tagged
+
+from .test_inicio_por_rol import VentasCommon
+
+
+@tagged('post_install', '-at_install')
+class TestVentasPorPeriodo(VentasCommon):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.itbms = cls.env['account.tax'].create({
+            'name': 'ITBMS periodo 7%', 'amount': 7.0, 'amount_type': 'percent', 'type_tax_use': 'sale',
+            'company_id': cls.env.company.id})
+        cls.lampara = cls.env['product.product'].create({
+            'name': 'Lámpara periodo', 'list_price': 200.0, 'standard_price': 120.0,
+            'taxes_id': [Command.set(cls.itbms.ids)]})
+        cls.sin_costo = cls.env['product.product'].create({
+            'name': 'Silla periodo sin costo', 'list_price': 50.0, 'standard_price': 0.0,
+            'taxes_id': [Command.set(cls.itbms.ids)]})
+        cls.tablero = cls.env['dcasa.tablero']
+        cls.banco = cls.env['account.journal'].create({'name': 'Banco periodo', 'type': 'bank', 'code': 'BPER'})
+
+    def _pagar(self, factura, fecha=None, monto=None):
+        valores = {'payment_date': fecha or factura.invoice_date, 'journal_id': self.banco.id}
+        if monto is not None:
+            valores['amount'] = monto
+        self.env['account.payment.register'].with_context(
+            active_model='account.move', active_ids=factura.ids).create(valores)._create_payments()
+
+    def _venta(self, dias_atras=0, producto=None, vendedor=None):
+        """Una venta facturada y pagada completa el mismo día: cuenta igual en «Completadas» y en «Con abonos»."""
+        orden = self.pedido(vendedor=vendedor, producto=producto or self.lampara)
+        factura = self.facturar(orden, fecha=self.hoy - timedelta(days=dias_atras))
+        self._pagar(factura)
+        return orden
+
+    def _ventas(self, usuario, periodo='hoy', desde=None, hasta=None):
+        return self.tablero.with_user(usuario).ventas_del_periodo(periodo, desde, hasta)
+
+    # --- Los periodos -------------------------------------------------------------------------
+
+    def test_los_rangos_de_cada_periodo(self):
+        rango = self.tablero._rango_del_periodo
+        miercoles = date(2026, 10, 14)
+        self.assertEqual(miercoles.weekday(), 2)
+        hoy = rango('hoy', hoy=miercoles)
+        self.assertEqual((hoy['desde'], hoy['hasta']), (miercoles, miercoles))
+        semana = rango('semana', hoy=miercoles)
+        self.assertEqual((semana['desde'], semana['hasta']), (date(2026, 10, 12), miercoles))
+        mes = rango('mes', hoy=miercoles)
+        self.assertEqual((mes['desde'], mes['hasta']), (date(2026, 10, 1), miercoles))
+        libre = rango('rango', '2026-10-01', '2026-10-10', hoy=miercoles)
+        self.assertEqual((libre['desde'], libre['hasta']), (date(2026, 10, 1), date(2026, 10, 10)))
+        # Un rango que pasa de hoy se corta en hoy.
+        self.assertEqual(rango('rango', '2026-10-10', '2026-10-20', hoy=miercoles)['hasta'], miercoles)
+
+    def test_la_tarjeta_ya_no_trae_frases_de_comparacion(self):
+        """Las frases «▲ 12 % contra el 17 de septiembre» se reemplazaron por el bloque «Comparar» (2026-10-17)."""
+        datos = self._ventas(self.gerencia, 'hoy')
+        for fuera in ('comparaciones', 'anterior', 'variacion_pct'):
+            self.assertNotIn(fuera, datos)
+        for fuera in ('_comparaciones_del_periodo', '_frase_del_mes_pasado'):
+            self.assertFalse(hasattr(self.tablero, fuera), fuera)
+
+    def test_un_rango_invalido_se_rechaza_con_un_mensaje_claro(self):
+        for desde, hasta in (('2026-10-10', '2026-10-01'), (None, None), ('2024-01-01', '2026-10-01'),
+                             ('no es fecha', '2026-10-01'), ('2030-01-01', '2030-02-01')):
+            with self.subTest(desde=desde, hasta=hasta), self.assertRaises(UserError):
+                self._ventas(self.gerencia, 'rango', desde, hasta)
+        with self.assertRaises(UserError):
+            self._ventas(self.gerencia, 'siempre')
+
+    def test_hoy_semana_y_mes_suman_las_ventas_de_su_dia(self):
+        base = self._ventas(self.gerencia, 'hoy')['actual']['sin_itbms']
+        hoy = self._venta(0)
+        self._venta(1)
+        lunes_pasado = self.hoy - timedelta(days=self.hoy.weekday() + 7)
+        pasada = self.pedido()
+        self.facturar(pasada, fecha=lunes_pasado)
+        datos = self._ventas(self.gerencia, 'hoy')
+        self.assertAlmostEqual(datos['actual']['sin_itbms'] - base, hoy.amount_untaxed, places=2)
+        semana = self._ventas(self.gerencia, 'semana')
+        facturas_de_la_semana = self.env['account.move'].search(semana['accion']['domain'])
+        self.assertFalse(pasada.invoice_ids & facturas_de_la_semana,
+                         'la venta de la semana pasada no entra en «esta semana»')
+        self.assertIn(hoy.invoice_ids, facturas_de_la_semana)
+        mes = self._ventas(self.gerencia, 'mes')
+        self.assertIn(hoy.invoice_ids, self.env['account.move'].search(mes['accion']['domain']))
+
+    # --- ITBMS claro --------------------------------------------------------------------------
+
+    def test_cada_cifra_trae_sin_itbms_itbms_y_total_que_cuadran(self):
+        antes = self._ventas(self.gerencia, 'hoy')['actual']
+        orden = self._venta(0)
+        actual = self._ventas(self.gerencia, 'hoy')['actual']
+        self.assertAlmostEqual(actual['sin_itbms'] - antes['sin_itbms'], 200.0, places=2)
+        self.assertAlmostEqual(actual['itbms'] - antes['itbms'], 14.0, places=2)
+        self.assertAlmostEqual(actual['total'] - antes['total'], 214.0, places=2)
+        self.assertAlmostEqual(orden.amount_untaxed + orden.amount_tax, orden.amount_total, places=2)
+
+    # --- Ganancia (solo Gerencia) ------------------------------------------------------------
+
+    def test_la_ganancia_es_venta_sin_itbms_menos_costo(self):
+        antes = self._ventas(self.gerencia, 'hoy')['actual']['ganancia']
+        self._venta(0)
+        ganancia = self._ventas(self.gerencia, 'hoy')['actual']['ganancia']
+        self.assertAlmostEqual(ganancia['valor'] - antes['valor'], 80.0, places=2, msg='200 − 120, sin ITBMS')
+        self.assertEqual(ganancia['ventas_con_costo'] - antes['ventas_con_costo'], 1)
+
+    def test_una_venta_con_mercancia_sin_costo_no_cuenta_y_se_avisa(self):
+        antes = self._ventas(self.gerencia, 'hoy')['actual']['ganancia']
+        self._venta(0, producto=self.sin_costo)
+        ganancia = self._ventas(self.gerencia, 'hoy')['actual']['ganancia']
+        self.assertEqual(ganancia['ventas_sin_costo'] - antes['ventas_sin_costo'], 1)
+        self.assertAlmostEqual(ganancia['valor'], antes['valor'], places=2)
+
+    def test_la_vendedora_no_ve_ganancia_ni_ventas_ajenas(self):
+        mia, ajena = self._venta(0, vendedor=self.vendedora), self._venta(0, vendedor=self.otra)
+        datos = self._ventas(self.vendedora, 'hoy')
+        self.assertIsNone(datos['actual']['ganancia'], 'los costos son de Gerencia')
+        lista = self.env['sale.order'].search(datos['accion']['domain'])
+        self.assertIn(mia, lista)
+        self.assertNotIn(ajena, lista)
+        self.assertFalse(self.tablero.with_user(self.vendedora).obtener_datos()['ve_utilidad'])
+
+    def test_contabilidad_ve_las_ventas_pero_no_la_ganancia(self):
+        contador = self.env['res.users'].with_context(no_reset_password=True).create({
+            'name': 'Contador utilidad', 'login': 'contador_utilidad', 'tz': 'America/Panama',
+            'group_ids': [Command.set([self.env.ref('base.group_user').id,
+                                       self.env.ref('account.group_account_user').id,
+                                       self.env.ref('sales_team.group_sale_salesman').id])]})
+        self._venta(0)
+        datos = self._ventas(contador, 'hoy')
+        self.assertIsNone(datos['actual']['ganancia'])
+        self.assertFalse(self.tablero.with_user(contador).obtener_datos()['ve_utilidad'])
+
+    def test_dice_en_que_se_aparta_de_contabilidad_y_que_facturas_lo_explican(self):
+        """Capturas de la dueña (2026-10-16): el Inicio y Contabilidad no decían lo mismo para los mismos días; la
+        diferencia era una factura sin pedido. Desde 2026-10-17 el Inicio cuenta las facturas: en «Facturado» es lo
+        mismo que Contabilidad (no hay nota). En «Con abonos» y «Completadas» el ⓘ dice la diferencia exacta, con su
+        signo, y abre las facturas que la explican: la sin pedido y sin pago (Contabilidad la suma) y, en
+        «Completadas», la del abono de ayer que se terminó de pagar hoy (el Inicio la cuenta hoy; Contabilidad,
+        ayer)."""
+        # El ITBMS de prueba necesita su cuenta: sin ella, Odoo deja el impuesto en la cuenta de ingresos y las ventas
+        # contables lo incluirían (en producción el ITBMS va a su cuenta por pagar).
+        cuenta_itbms = self.env['account.account'].create({
+            'name': 'ITBMS por pagar prueba', 'code': '9T0101', 'account_type': 'liability_current'})
+        for linea in self.itbms.invoice_repartition_line_ids | self.itbms.refund_repartition_line_ids:
+            if linea.repartition_type == 'tax':
+                linea.account_id = cuenta_itbms
+        Tablero = self.tablero.with_user(self.gerencia)
+
+        def cuadre(base):
+            return Tablero.ventas_del_periodo('hoy', base=base)['cuadre'] or {}
+
+        base = {clave: cuadre(clave).get('diferencia', 0.0) for clave in ('con_abonos', 'completadas')}
+        self.assertIsNone(Tablero.ventas_del_periodo('hoy')['cuadre'], '«Facturado» es lo que dice Contabilidad')
+        vendido = self._venta(0)                      # pedido y factura del mismo día, pagada: cuadra en las tres
+        suelta = self.env['account.move'].create({
+            'move_type': 'out_invoice', 'partner_id': self.cliente.id, 'invoice_date': self.hoy,
+            'invoice_line_ids': [Command.create({'product_id': self.lampara.id, 'quantity': 1, 'price_unit': 100.0,
+                                                 'tax_ids': [Command.set(self.itbms.ids)]})]})
+        suelta.action_post()                          # sin pedido y sin pago
+        apartado = self.pedido(producto=self.lampara, cantidad=2)    # 2 × 200 sin ITBMS
+        abono = apartado._create_invoices()
+        abono.invoice_line_ids.quantity = 1
+        abono.invoice_date = self.hoy - timedelta(days=1)
+        abono.action_post()
+        self._pagar(abono, self.hoy - timedelta(days=1), monto=10.0)
+        self._pagar(abono, self.hoy)                  # se terminó de pagar hoy: «completada» hoy, facturada ayer
+        saldo = self.facturar(apartado)
+        self._pagar(saldo, self.hoy)
+        facturado = Tablero.ventas_del_periodo('hoy')
+        self.assertIsNone(facturado['cuadre'], 'con facturas sin pedido y de otros días, sigue siendo lo mismo')
+        completadas = cuadre('completadas')
+        self.assertAlmostEqual(completadas['diferencia'] - base['completadas'], 100.0 - 200.0, places=2,
+                               msg='+100 de la factura sin pago, −200 del abono facturado ayer y completado hoy')
+        lista = self.env['account.move'].search(completadas['accion']['domain'])
+        self.assertIn(suelta, lista)
+        self.assertIn(abono, lista)
+        for ya_cuadra in (saldo, vendido.invoice_ids):
+            self.assertNotIn(ya_cuadra, lista, ya_cuadra.name)
+        self.assertEqual(completadas['cuantas'], len(lista))
+        self.assertEqual(completadas['accion']['vista_lista'], self.env.ref('account.view_out_invoice_tree').id)
+        con_abonos = cuadre('con_abonos')
+        self.assertAlmostEqual(con_abonos['diferencia'] - base['con_abonos'], 100.0, places=2,
+                               msg='en «Con abonos» solo falta la factura sin ningún abono')
+        self.assertIn(suelta, self.env['account.move'].search(con_abonos['accion']['domain']))
+        # La resta es exacta: lo del Inicio más la diferencia es lo que Contabilidad llama ventas.
+        reportes = self.env.get('dcasa.reporte.contable')
+        if reportes is not None:
+            contables = reportes.estado_resultados(str(self.hoy), str(self.hoy))['secciones'][0]['total']
+            self.assertAlmostEqual(facturado['actual']['sin_itbms'], contables, places=2)
+            for clave in ('con_abonos', 'completadas'):
+                tarjeta = Tablero.ventas_del_periodo('hoy', base=clave)
+                self.assertAlmostEqual(tarjeta['cuadre']['contables'], contables, places=2)
+                self.assertAlmostEqual(tarjeta['actual']['sin_itbms'] + tarjeta['cuadre']['diferencia'], contables,
+                                       places=2)
+        # La vendedora no ve la contabilidad ni esta línea.
+        self.assertIsNone(self._ventas(self.vendedora)['cuadre'])
+
+    # --- Las listas de cotizaciones y entregas, y los avisos -----------------------------------
+
+    def test_cotizaciones_abiertas_y_entregas_pendientes_van_en_listas(self):
+        cotizacion = self.pedido(confirmar=False, producto=self.lampara)
+        despachar = self.pedido(producto=self.lampara)       # confirmada: su entrega queda pendiente
+        datos = self.tablero.with_user(self.gerencia).obtener_datos()
+        self.assertIn(cotizacion.name, [f['nombre'] for f in datos['cotizaciones']['filas']])
+        self.assertGreaterEqual(datos['cotizaciones']['cantidad'], 1)
+        self.assertAlmostEqual(
+            datos['cotizaciones']['total'] - datos['cotizaciones']['sin_itbms'],
+            sum(self.env['sale.order'].search(datos['cotizaciones']['accion']['domain']).mapped('amount_tax')),
+            places=2)
+        self.assertLessEqual(len(datos['cotizaciones']['filas']), 5)
+        self.assertLessEqual(len(datos['entregas']['filas']), 5)
+        if not despachar.picking_ids:
+            return
+        entrega = despachar.picking_ids[0]
+        entrega.scheduled_date = fields.Datetime.now() - timedelta(days=3650)     # la más antigua: va entre las cinco
+        Picking = self.env['stock.picking']
+        if 'dcasa.bodega' in self.env:
+            # Con Bodega instalado (dcasa_barras), el panel cuenta lo mismo que Bodega (2026-11-11): un pedido sin pago
+            # ni abono no sale arriba; queda en el renglón «N más esperan pago o abono» hasta que se cobra.
+            datos = self.tablero.with_user(self.gerencia).obtener_datos()
+            self.assertNotIn(entrega.name, [f['nombre'] for f in datos['entregas']['filas']])
+            self.assertNotIn(entrega, Picking.search(datos['entregas']['accion']['domain']))
+            self.assertIn(entrega, Picking.search(datos['entregas']['esperan']['accion']['domain']))
+            self._pagar(self.facturar(despachar))
+        datos = self.tablero.with_user(self.gerencia).obtener_datos()
+        self.assertIn(entrega.name, [f['nombre'] for f in datos['entregas']['filas']])
+        self.assertIn(entrega, Picking.search(datos['entregas']['accion']['domain']))
+
+    def test_las_cotizaciones_de_la_tienda_y_las_de_la_web_van_en_paneles_aparte(self):
+        """Pedido de la dueña (2026-11-03): «para no revolver todas las cotizaciones en un solo panel». Un carrito vacío
+        o de un visitante sin identificar no es una cotización."""
+        sitio = self.env['website'].search([], limit=1) or self.env['website'].create({'name': 'D\'CASA prueba'})
+        tienda = self.pedido(confirmar=False, producto=self.lampara)
+        Order = self.env['sale.order'].sudo()
+        web = Order.create({'partner_id': self.cliente.id, 'website_id': sitio.id,
+                            'order_line': [Command.create({'product_id': self.lampara.id, 'product_uom_qty': 1})]})
+        vacio = Order.create({'partner_id': self.cliente.id, 'website_id': sitio.id})
+        publico = Order.create({'partner_id': sitio.user_id.partner_id.id, 'website_id': sitio.id,
+                                'order_line': [Command.create({'product_id': self.lampara.id, 'product_uom_qty': 1})]})
+        datos = self.tablero.with_user(self.gerencia).obtener_datos()
+        de_tienda = self.env['sale.order'].search(datos['cotizaciones']['accion']['domain'])
+        en_linea = self.env['sale.order'].search(datos['cotizaciones_en_linea']['accion']['domain'])
+        self.assertIn(tienda, de_tienda)
+        self.assertNotIn(web, de_tienda)
+        self.assertIn(web, en_linea)
+        self.assertNotIn(tienda, en_linea)
+        self.assertFalse((vacio | publico) & (de_tienda | en_linea), 'Ni el carrito vacío ni el del visitante')
+        self.assertEqual(datos['cotizaciones_en_linea']['accion']['name'], 'Cotizaciones del chatbot y la web')
+        self.assertEqual(datos['cotizaciones']['accion']['name'], 'Cotizaciones abiertas en tienda')
+        fila = next((f for f in datos['cotizaciones_en_linea']['filas'] if f['id'] == web.id), None)
+        if fila:   # con muchas cotizaciones viejas en la base puede no estar entre las 5 primeras
+            self.assertEqual(fila['origen'], 'Web')
+        self.assertTrue(all(not f['origen'] for f in datos['cotizaciones']['filas']), 'Las de la tienda sin etiqueta')
+        self.assertIsNone(self.tablero.with_user(self.vendedora).obtener_datos().get('cotizaciones_en_linea'),
+                          'La vendedora ve «Mis cotizaciones», no los paneles de la tienda')
+
+    def test_la_lista_pone_primero_la_cotizacion_mas_antigua(self):
+        vieja = self.pedido(confirmar=False, producto=self.lampara)
+        vieja.date_order = vieja.date_order - timedelta(days=9)
+        nueva = self.pedido(confirmar=False, producto=self.lampara)
+        filas = self.tablero.with_user(self.gerencia).obtener_datos()['cotizaciones']['filas']
+        nombres = [f['nombre'] for f in filas]
+        self.assertLess(nombres.index(vieja.name), nombres.index(nueva.name) if nueva.name in nombres else 99)
+        self.assertEqual(next(f for f in filas if f['nombre'] == vieja.name)['dias'], 9)
+
+    def test_avisos_de_stock_bajo_y_de_productos_sin_costo(self):
+        self.env['ir.config_parameter'].sudo().set_param('dcasa.stock_bajo_umbral', '5')
+        escaso = self.env['product.product'].create({
+            'name': 'Mesa por agotarse', 'is_storable': True, 'list_price': 90.0, 'standard_price': 40.0})
+        almacen = self.env['stock.warehouse'].search([('company_id', '=', self.env.company.id)], limit=1)
+        self.env['stock.quant']._update_available_quantity(escaso, almacen.lot_stock_id, 3.0)
+        sin_costo = self.env['product.product'].create({
+            'name': 'Banco sin costo cargado', 'is_storable': True, 'list_price': 70.0, 'standard_price': 0.0})
+        avisos = {a['clave']: a for a in self.tablero.with_user(self.gerencia).obtener_datos()['atencion']}
+        self.assertIn('stock_bajo', avisos)
+        self.assertIn(escaso, self.env['product.product'].search(avisos['stock_bajo']['accion']['domain']))
+        self.assertIn('productos_sin_costo', avisos)
+        self.assertIn(sin_costo, self.env['product.product'].search(avisos['productos_sin_costo']['accion']['domain']))
+        # la vendedora no tiene panel completo: ni avisos ni costos
+        self.assertFalse(self.tablero.with_user(self.vendedora).obtener_datos()['atencion'])

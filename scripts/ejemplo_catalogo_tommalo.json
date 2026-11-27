@@ -1,0 +1,23 @@
+{
+  "fuente": "EJEMPLO inventado para probar la carga (no es el catálogo de Tommalo): productos, precios y existencias de prueba",
+  "atributos": {"Presentación": ["Chica", "Grande"]},
+  "productos": [
+    {"clave": "ejemplo-crema", "nombre": "Crema de ejemplo (de prueba)", "categoria": "belleza", "orden": 1,
+     "descripcion": "Producto de EJEMPLO para probar el catálogo. No existe.", "atributo": "Presentación",
+     "variantes": [
+       {"valor": "Chica", "codigo": "EJ-CREMA-CH", "precio": 10.0, "existencias": 5, "texto": "Frasco de prueba, 50 ml"},
+       {"valor": "Grande", "codigo": "EJ-CREMA-GR", "precio": 18.0, "existencias": 3, "texto": "Frasco de prueba, 120 ml"}
+     ]},
+    {"clave": "ejemplo-serum", "nombre": "Sérum de ejemplo (de prueba)", "categoria": "belleza", "orden": 2,
+     "descripcion": null, "variantes": [{"codigo": "EJ-SERUM", "precio": 25.0, "existencias": 4, "texto": "Frasco de prueba"}]},
+    {"clave": "ejemplo-lampara", "nombre": "Lámpara de ejemplo (de prueba)", "categoria": "hogar", "orden": 3,
+     "descripcion": "Producto de EJEMPLO para probar el catálogo. No existe.",
+     "variantes": [{"codigo": "EJ-LAMPARA", "precio": 30.0, "existencias": 2, "texto": "Lámpara de prueba"}]},
+    {"clave": "ejemplo-organizador", "nombre": "Organizador de ejemplo (de prueba)", "categoria": "hogar", "orden": 4,
+     "descripcion": null, "variantes": [{"codigo": "EJ-ORGANIZADOR", "precio": 12.5, "existencias": 0, "texto": "Caja de prueba"}]},
+    {"clave": "ejemplo-vitaminas", "nombre": "Vitaminas de ejemplo (de prueba)", "categoria": "salud", "orden": 5,
+     "descripcion": null, "variantes": [{"codigo": "EJ-VITAMINAS", "precio": 15.0, "existencias": 6, "texto": "Frasco de prueba, 60 unidades"}]},
+    {"clave": "ejemplo-varios", "nombre": "Artículo variado de ejemplo (de prueba)", "categoria": "otro", "orden": 6,
+     "descripcion": null, "variantes": [{"codigo": "EJ-VARIOS", "precio": 8.0, "existencias": 1, "texto": "Artículo de prueba"}]}
+  ]
+}

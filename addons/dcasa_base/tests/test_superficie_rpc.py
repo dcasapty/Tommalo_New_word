@@ -1,0 +1,1553 @@
+"""Superficie RPC de los módulos de D'CASA (anti-regresión de la Fase 0 de seguridad).
+
+Odoo expone por ``/web/dataset/call_kw`` y ``/json/2`` TODO método público de un modelo:
+sin ``_`` delante y sin ``@api.private`` (``odoo.service.model.get_public_method``). El ACL
+NO se comprueba al despachar el método; solo frena las operaciones ORM sin ``sudo()``. Un
+método público que escribe con ``sudo()`` sin comprobar grupo es, por tanto, una puerta
+abierta para cualquier usuario autenticado (incluido un portal creado en /web/signup).
+
+Este test recorre todos los modelos instalados, toma los métodos que DEFINEN los módulos de
+``addons/`` (``dcasa_*`` y ``website_dcasa``, también los añadidos a modelos de Odoo) y falla
+si alguno es invocable por RPC y no está en ``LISTA_BLANCA`` con su motivo. Si añades un
+método público: hazlo privado (``_nombre`` o ``@api.private``) o, si de verdad lo llama la
+interfaz, compruébale el grupo en el servidor ANTES de cualquier ``sudo()`` y anótalo aquí.
+"""
+import inspect
+
+from lxml import etree
+
+from odoo.exceptions import AccessError
+from odoo.service.model import get_public_method
+from odoo.tests import TransactionCase, tagged
+
+PREFIJOS = ('odoo.addons.dcasa_', 'odoo.addons.website_dcasa.')
+
+SIN_SUDO = 'Corre como el usuario, sin sudo: lo frenan el ACL y las reglas de registro.'
+ACCION_VENTANA = 'Solo devuelve una acción de ventana; no lee ni escribe datos.'
+ASISTENTE = ('Botón de un asistente (TransientModel): leer sus campos exige el ACL del CSV, '
+             'que lo limita al grupo correspondiente.')
+OVERRIDE = 'Sobrescribe un método público estándar de Odoo; la superficie no cambia.'
+CONTADOR = 'API de la pantalla de conciliación: exige account.group_account_user en el servidor.'
+VENTAS_BOTON = ('Botón: exige sales_team.group_sale_salesman en el servidor (_exigir_vendedora) y el ACL '
+                'antes de escribir.')
+PANEL_GERENCIA = ('API de la pantalla de Juan solo para Gerencia: exige sales_team.group_sale_manager en el servidor '
+                  '(_exigir_gerencia) ANTES de hablar con el Worker; nunca devuelve claves ni imprime el QR en logs.')
+PANEL_VENTAS = ('API de la pantalla de conversaciones: exige sales_team.group_sale_salesman en el servidor '
+                '(_exigir_vendedora) ANTES de leer o escribir con sudo; valida cada argumento.')
+
+SOFIA = ('API de la pantalla de Sofía: exige sales_team.group_sale_salesman en el servidor (_exigir_vendedora); la '
+         'propuesta se lee como el usuario (regla de registro: la vendedora solo las suyas, repartir solo Gerencia) y '
+         'se bloquea antes de resolverla; valida cada argumento.')
+
+COSTO_CERRADO = (OVERRIDE + ' Costo cerrado (models/costos_cerrados.py): solo NIEGA o quita los campos de costo, '
+                            'precio del proveedor y margen a quien no es Gerencia, contabilidad, compras o inventario; '
+                            'sin sudo().')
+
+NOMINA_BOTON = ('Botón de nómina: check_access("write") (grupo «Administra la nómina») ANTES de cualquier sudo(); el '
+                'sudo solo cambia el estado, que nunca se escribe por RPC (write lo exige).')
+NOMINA_BLOQUEO = ('Bloquea: lo validado o ya usado por una planilla no se cambia (solo con sudo desde sus botones); '
+                  'sin sudo, con el ACL del grupo «Administra la nómina».')
+NOMINA_REEMBOLSO = ('Botón del reembolso: el colaborador solo el suyo; aprobar y rechazar exigen el grupo '
+                    '«Administra la nómina» en el servidor; el estado solo cambia con sudo, ya comprobado.')
+
+FOTOS_EDITAR = ('Fotos del producto: exige poder editar ESE producto (has_access("write")) o el rol Marketing con '
+                'lectura del producto (AccessError si no) ANTES del sudo con que se escriben sus fotos (product.image '
+                'de ese producto; la clave se busca solo entre las suyas); valida cada foto (formato, peso, '
+                'megapíxeles) y cada argumento.')
+CAMILA = ('API de la pantalla Camila (Marketing): exige el rol Marketing, Gerencia o administrador en el servidor '
+          '(dcasa.camila._exigir) ANTES de leer o escribir con sudo; la campaña se bloquea (FOR UPDATE NOWAIT) antes '
+          'de cambiarla y se valida cada argumento.')
+ENVIOS_LECTURA = ('Lectura de la calculadora de envíos: exige poder leer dcasa.envio.lugar (check_access, todo usuario '
+                  'interno; un portal no) ANTES de leer; lee los lugares por SQL y la tarifa con sudo, igual para '
+                  'cualquiera del equipo; valida y recorta cada argumento (texto, tipo, distrito, límite, km); no '
+                  'escribe.')
+ENVIOS_TARIFA = ('Tarifa de envíos: exige Gerencia o administrador en el servidor (además del ACL) para cambiar la '
+                 'fórmula, los cargos o la aprobación; quién y cuándo aprobó lo pone siempre el servidor (lo que '
+                 'llegue en los valores se ignora) y un cambio de precios la devuelve a revisión; sin sudo().')
+ENVIOS_CARGO = ('Cargos aparte de la tarifa de envíos: exige Gerencia o administrador en el servidor (además del ACL) '
+                'y devuelve la tarifa a revisión si cambia un precio; sin sudo().')
+MARKETING_LECTURA = ('Lectura de Marketing: exige Gerencia (ventas administrador), administrador o el rol Marketing '
+                     'ANTES de leer (_exigir, AccessError); facturas, entregas y adjuntos los suma con sudo ya '
+                     'comprobado el grupo; valida periodo, categoría y filtro; no escribe.')
+
+COMISION_WEB_BOTON = ('Botón de la liquidación de la comisión web: exige el grupo «Administra la nómina» en el '
+                      'servidor (_exigir_nomina) ANTES de cualquier sudo(); aprobar rechaza al usuario del sistema y a '
+                      'quien cobra en esa liquidación; el estado solo cambia con la llave interna ``_escribir``, ya '
+                      'comprobado el permiso.')
+COMISION_WEB_BLOQUEO = ('Solo BLOQUEA: lo guardado en la comisión web (versiones de reglas, libro, renglones) no se '
+                        'edita ni se borra, con ningún usuario ni con sudo(); nunca escribe.')
+COMISION_WEB_ACCION = ('Solo devuelve una acción de ventana con lo que rige hoy ya escrito; no lee ni escribe datos '
+                       'delicados: abrirla sin el permiso del modelo no muestra nada (ACL de «Administra la nómina»).')
+
+# (módulo, modelo, método): motivo por el que puede llamarse por RPC.
+LISTA_BLANCA = {
+    # --- dcasa_base -------------------------------------------------------------------------
+    ('dcasa_base', 'sale.order.line', 'create'):
+        OVERRIDE + ' Agrega el tope de descuento de la vendedora; sin sudo().',
+    ('dcasa_base', 'sale.order.line', 'write'):
+        OVERRIDE + ' Agrega el tope de descuento de la vendedora; sin sudo().',
+    ('dcasa_base', 'sale.order.line', 'unlink'):
+        OVERRIDE + ' Vuelve a medir el tope de descuento del pedido entero al quitar una línea; sin sudo().',
+    ('dcasa_base', 'stock.quant', 'create'):
+        OVERRIDE + ' Solo Gerencia crea o edita un conteo de existencias (ajuste a mano); sin sudo().',
+    ('dcasa_base', 'stock.quant', 'write'):
+        OVERRIDE + ' Solo Gerencia crea o edita un conteo de existencias (ajuste a mano); sin sudo().',
+    ('dcasa_base', 'product.template', 'write'):
+        OVERRIDE + ' Agrega que el precio y el costo solo los cambia Gerencia; sin sudo().',
+    ('dcasa_base', 'product.product', 'write'):
+        OVERRIDE + ' Agrega que el precio y el costo solo los cambia Gerencia; sin sudo().',
+    ('dcasa_base', 'res.config.settings', 'get_values'):
+        OVERRIDE + ' Solo agrega si «Cada vendedora ve solo sus documentos» está encendido; res.config.settings es '
+                   'solo de administradores.',
+    ('dcasa_base', 'res.config.settings', 'set_values'):
+        OVERRIDE + ' Mueve el interruptor con res.users._dcasa_poner_restriccion, que exige Gerencia o administrador '
+                   'antes del sudo; res.config.settings es solo de administradores.',
+    ('dcasa_base', 'dcasa.permisos.vendedoras', 'action_guardar'):
+        ASISTENTE + ' Además, res.users._dcasa_poner_restriccion exige Gerencia o administrador en el servidor antes '
+                    'del sudo.',
+    ('dcasa_base', 'sale.order', 'create'):
+        OVERRIDE + ' Fija como dueña (vendedora) a quien crea si solo ve lo suyo; y NIEGA, después de crear, que el '
+                   'pedido traiga cobros (transaction_ids, también por default_ del contexto) si quien lo crea no '
+                   'cobra (RV8 R8-1, RV8b R9-1); sin sudo().',
+    ('dcasa_base', 'account.move', 'create'):
+        OVERRIDE + ' Fija como dueña (vendedora) de la factura de cliente a quien la crea si solo ve lo suyo; '
+                   'una nota de crédito de cliente exige Gerencia (models/cobros.py, A7); y quien no cobra no hace '
+                   'una factura de cliente suelta (cotiza); y NIEGA, después de crear, que el documento traiga cobros '
+                   '(transaction_ids) si quien lo crea no cobra (RV8b R9-2); sin sudo() para escribir.',
+    # Reglas contables de la gerencia (2026-10-17, models/cobros.py): solo AGREGAN una comprobación de grupo antes de
+    # llamar a Odoo; ninguna usa sudo() para escribir (solo para leer el tipo y dar el mensaje claro).
+    ('dcasa_base', 'account.move', 'write'):
+        OVERRIDE + ' Pasar una factura de cliente publicada a borrador o anulada exige Gerencia (A6); NIEGA ligar '
+                   'cobros (transaction_ids) a quien no cobra (RV8 R8-1) y cambiar el tipo de un documento de cliente '
+                   'a quien no es Caja o Gerencia (una nota de crédito, solo Gerencia; RV8b R9-2); sin sudo().',
+    ('dcasa_base', 'account.move', 'get_view'):
+        OVERRIDE + ' Solo quita «Nuevo» de las vistas de facturas de cliente a quien no cobra (la Vendedora); no lee '
+                   'ni escribe datos, sin sudo().',
+    ('dcasa_base', 'account.move', 'button_draft'):
+        OVERRIDE + ' Exige Gerencia para una factura de cliente publicada (A6); sin sudo().',
+    ('dcasa_base', 'account.move', 'button_cancel'):
+        OVERRIDE + ' Exige Gerencia para una factura de cliente publicada (A6); sin sudo().',
+    ('dcasa_base', 'account.move', 'action_reverse'):
+        OVERRIDE + ' La nota de crédito de un cliente exige Gerencia (A7); sin sudo().',
+    ('dcasa_base', 'account.move', 'js_assign_outstanding_line'):
+        OVERRIDE + ' Aplicar un cobro a la factura de un cliente exige Caja, Gerencia o contabilidad (A5); sin sudo().',
+    ('dcasa_base', 'account.move', 'js_remove_outstanding_partial'):
+        OVERRIDE + ' Quitar un cobro de la factura de un cliente exige Caja, Gerencia o contabilidad (A5); sin sudo().',
+    ('dcasa_base', 'account.move.line', 'create'):
+        OVERRIDE + ' Solo niega escribir el enlace con un pedido (sale_line_ids) fuera de los caminos de ventas '
+                   '(models/enlace_factura.py); sin sudo().',
+    ('dcasa_base', 'account.move.line', 'write'):
+        OVERRIDE + ' Solo niega escribir el enlace con un pedido (sale_line_ids) fuera de los caminos de ventas '
+                   '(models/enlace_factura.py); sin sudo().',
+    ('dcasa_base', 'account.move.line', 'default_get'):
+        OVERRIDE + ' Solo QUITA del resultado el enlace con un pedido (sale_line_ids): un ``default_*`` del contexto '
+                   'llega por RPC y no puede fabricarlo (models/enlace_factura.py); sin sudo().',
+    ('dcasa_base', 'sale.order.line', 'default_get'):
+        OVERRIDE + ' Solo QUITA del resultado el enlace con una factura (invoice_lines): un ``default_*`` del contexto '
+                   'llega por RPC y no puede fabricarlo (models/enlace_factura.py); sin sudo().',
+    ('dcasa_base', 'account.move.reversal', 'reverse_moves'):
+        OVERRIDE + ' Solo pone la llave interna con que la nota de crédito copia el enlace con el pedido '
+                   '(models/enlace_factura.py); el asistente exige su ACL como siempre; sin sudo().',
+    ('dcasa_base', 'account.move.line', 'action_register_payment'):
+        OVERRIDE + ' El botón «Pagar» de un cliente exige Caja, Gerencia o contabilidad (A5); solo devuelve la acción.',
+    ('dcasa_base', 'account.move.line', 'reconcile'):
+        OVERRIDE + ' Cruzar lo que debe un cliente exige Caja, Gerencia o contabilidad (A5); sin sudo().',
+    ('dcasa_base', 'account.partial.reconcile', 'create'):
+        OVERRIDE + ' Una conciliación con lo que debe un cliente exige Caja, Gerencia o contabilidad (A5); sin sudo().',
+    ('dcasa_base', 'account.partial.reconcile', 'unlink'):
+        OVERRIDE + ' Deshacer una conciliación de un cliente exige Caja, Gerencia o contabilidad (A5); sin sudo().',
+    ('dcasa_base', 'payment.transaction', 'write'):
+        OVERRIDE + ' Solo NIEGA (AccessError) cualquier escritura a quien no es Caja, Gerencia, contabilidad o '
+                   'administrador (A5, RV7 R7-1, RV8 R8-2); lo del sistema (sudo) pasa; no escribe nada propio.',
+    ('dcasa_base', 'payment.transaction', 'action_refund'):
+        OVERRIDE + ' Solo NIEGA (AccessError) devolver un cobro a quien no es Caja, Gerencia, contabilidad o '
+                   'administrador (RV8b R9-3: el core la corre con sudo tras mirar solo el ACL); no escribe nada '
+                   'propio.',
+    ('dcasa_base', 'payment.transaction', 'action_capture'):
+        OVERRIDE + ' Solo NIEGA (AccessError) capturar un cobro a quien no es Caja, Gerencia, contabilidad o '
+                   'administrador (RV8b R9-3); no escribe nada propio.',
+    ('dcasa_base', 'payment.transaction', 'action_void'):
+        OVERRIDE + ' Solo NIEGA (AccessError) anular un cobro a quien no es Caja, Gerencia, contabilidad o '
+                   'administrador (RV8b R9-3); no escribe nada propio.',
+    ('dcasa_base', 'payment.transaction', 'create'):
+        OVERRIDE + ' Solo NIEGA (AccessError) crear una transacción de pago a quien no es Caja, Gerencia, contabilidad '
+                   'o administrador (RV8 R8-6); lo del sistema (sudo) pasa; no escribe nada propio.',
+    ('dcasa_base', 'account.payment', 'create'):
+        OVERRIDE + ' Un cobro de cliente exige Caja, Gerencia o contabilidad (A5); devolverle dinero, Gerencia (A7).',
+    ('dcasa_base', 'account.payment', 'write'):
+        OVERRIDE + ' Cambiar el monto, el cliente, el diario o el estado de un cobro de cliente: la misma regla.',
+    ('dcasa_base', 'account.payment', 'unlink'):
+        OVERRIDE + ' Borrar un cobro de cliente: la misma regla (A5, A7); sin sudo().',
+    ('dcasa_base', 'account.payment', 'action_post'):
+        OVERRIDE + ' Publicar un cobro de cliente: la misma regla (A5, A7); sin sudo().',
+    ('dcasa_base', 'account.payment', 'action_draft'):
+        OVERRIDE + ' Pasar a borrador un cobro de cliente: la misma regla (A5, A7); sin sudo().',
+    ('dcasa_base', 'account.payment', 'action_cancel'):
+        OVERRIDE + ' Cancelar un cobro de cliente: la misma regla (A5, A7); sin sudo().',
+    ('dcasa_base', 'account.payment', 'get_view'):
+        OVERRIDE + ' Solo quita «Nuevo» de las vistas de pagos a quien no registra cobros (la Vendedora); no lee ni '
+                   'escribe datos, sin sudo().',
+    ('dcasa_base', 'sale.order', 'action_confirm'):
+        OVERRIDE + ' Solo vuelve a tomar el costo de cada línea al confirmar (la ganancia de esa venta); corre como el '
+                   'usuario, sin sudo().',
+    ('dcasa_base', 'product.template', 'create'):
+        OVERRIDE + ' Solo le pone al producto nuevo su código público (sorteado, único); sin sudo().',
+    ('dcasa_base', 'product.product', 'name_search'):
+        OVERRIDE + ' Solo suma al buscador de «Producto» el código público; busca con los permisos de la persona '
+                   '(sin sudo) y no devuelve más que el nombre.',
+    ('dcasa_base', 'product.template', 'action_dcasa_regenerar_codigo_publico'):
+        'Botón: exige base.group_system (administrador) y escritura sobre el producto ANTES de cambiar el código; '
+        'deja nota en el historial del producto; sin sudo().',
+    **{('dcasa_base', modelo, metodo): COSTO_CERRADO
+       for modelo in ('dcasa.costo.cerrado', 'product.template', 'product.product', 'product.supplierinfo',
+                      'account.invoice.report')
+       for metodo in ('read', 'search_read', 'fields_get')},
+    # D1: descuento mayor al tope con la clave de Gerencia (models/descuento_autorizacion.py).
+    ('dcasa_base', 'dcasa.descuento.autorizacion', 'action_aprobar'):
+        'Botón «Aprobar y aplicar»: exige sales_team.group_sale_manager o administrador en el servidor '
+        '(_dcasa_exigir_gerencia) ANTES de aplicar el descuento con sudo.',
+    ('dcasa_base', 'dcasa.descuento.autorizacion', 'action_rechazar'):
+        'Botón «Rechazar»: exige sales_team.group_sale_manager o administrador en el servidor ANTES del sudo.',
+    ('dcasa_base', 'dcasa.descuento.autorizacion', 'action_ver_cotizacion'): ACCION_VENTANA,
+    ('dcasa_base', 'dcasa.descuento.pedir', 'action_pedir'):
+        ASISTENTE + ' _dcasa_pedir exige que quien pide tenga tope y check_access("write") de la cotización ANTES de '
+                    'crear la solicitud con sudo.',
+    ('dcasa_base', 'dcasa.descuento.pedir', 'action_aplicar'):
+        ASISTENTE + ' _dcasa_usar_clave exige que sea quien pidió, check_access("write") de la cotización, que siga '
+                    'vigente y la huella de la clave de Gerencia ANTES de aplicar con sudo; los intentos se cuentan.',
+    ('dcasa_base', 'sale.order', 'action_dcasa_pedir_descuento'): ACCION_VENTANA,
+    ('website_dcasa', 'sale.order', 'action_dcasa_apartar'): SIN_SUDO,
+    ('website_dcasa', 'dcasa.resena', 'create'):
+        'Bloquea: sin sudo lanza AccessError (las opiniones las crea solo Mi cuenta, ya comprobada la compra pagada).',
+    ('website_dcasa', 'dcasa.resena', 'write'):
+        'Bloquea: sin sudo lanza UserError (lo que dijo el cliente no se cambia; el estado, solo con sus botones).',
+    ('website_dcasa', 'dcasa.resena', 'unlink'):
+        OVERRIDE + ' Solo avisa al borde si estaba publicada; borrar lo frena el ACL (solo administrador); sin sudo().',
+    ('website_dcasa', 'dcasa.resena', 'action_aprobar'):
+        'Botón «Publicar»: exige Gerencia o administrador en el servidor y check_access ANTES del sudo que cambia el '
+        'estado (quién y cuándo lo pone el servidor).',
+    ('website_dcasa', 'dcasa.resena', 'action_rechazar'):
+        'Botón «No publicar»: exige Gerencia o administrador en el servidor y check_access ANTES del sudo que cambia '
+        'el estado (quién y cuándo lo pone el servidor).',
+    ('website_dcasa', 'ir.qweb.field.image', 'record_to_html'):
+        OVERRIDE + ' Solo agrega srcset/sizes/width/height/loading a la <img>; sin sudo().',
+    ('website_dcasa', 'ir.qweb.field.image_url', 'record_to_html'):
+        OVERRIDE + ' Hereda la anterior (image_url extiende image); sin sudo().',
+    # --- dcasa_catalogo -----------------------------------------------------------------
+    ('dcasa_catalogo', 'sale.order', 'action_dcasa_whatsapp'): SIN_SUDO,
+    ('dcasa_catalogo', 'sale.order', 'action_confirm'):
+        OVERRIDE + ' Solo agrega que un combo sin sus piezas no se confirma; corre como el usuario, sin sudo().',
+    # Combos cama + colchón que se arman en la venta (2026-10-22): el panel «Armar combo» corre como el usuario, sin
+    # sudo: check_access('read'/'write') de la cotización ANTES de leer o escribir (la vendedora, solo lo suyo), y las
+    # líneas se crean con el ORM (tope de descuento incluido). Solo lee productos a la venta.
+    ('dcasa_catalogo', 'sale.order', 'action_dcasa_armar_combo'):
+        'Botón: check_access("write") y que sea una cotización; solo devuelve la acción del panel. ' + SIN_SUDO,
+    ('dcasa_catalogo', 'sale.order.line', 'action_dcasa_armar_combo'):
+        'Botón de la lista de líneas: abre el panel de la cotización del contexto, con las mismas comprobaciones. '
+        + SIN_SUDO,
+    ('dcasa_catalogo', 'sale.order', 'dcasa_combo_panel'): 'API del panel: check_access("read"). ' + SIN_SUDO,
+    ('dcasa_catalogo', 'sale.order', 'dcasa_combo_camas'): 'API del panel: check_access("read"). ' + SIN_SUDO,
+    ('dcasa_catalogo', 'sale.order', 'dcasa_combo_colchones'): 'API del panel: check_access("read"). ' + SIN_SUDO,
+    ('dcasa_catalogo', 'sale.order', 'dcasa_combo_agregar'):
+        'API del panel: check_access("write"), solo cotizaciones; líneas por el ORM con el tope. ' + SIN_SUDO,
+    ('dcasa_catalogo', 'sale.order', 'dcasa_combo_cambiar'):
+        'API del panel: check_access("write"), solo cotizaciones y líneas de esa cotización. ' + SIN_SUDO,
+    ('dcasa_catalogo', 'sale.order', 'dcasa_combo_quitar'):
+        'API del panel: check_access("write"), solo cotizaciones y líneas de esa cotización. ' + SIN_SUDO,
+    ('dcasa_catalogo', 'sale.order', 'create'):
+        OVERRIDE + ' Promoción por pares (models/precio_par.py): después de crear (con el permiso de Odoo ya '
+        'revisado), acomoda las cajas de los productos con precio por par de ESA venta abierta en la línea de los '
+        'pares y la de la suelta, y mide el tope de la vendedora sobre el pedido entero. El acomodo corre en sudo() '
+        'solo sobre líneas de esa venta, con cantidades y precio del sistema; no se puede pedir desde afuera.',
+    ('dcasa_catalogo', 'sale.order', 'write'):
+        OVERRIDE + ' Promoción por pares (models/precio_par.py): solo si cambian las líneas y alguna tiene precio por '
+        'par; después de super().write (permiso de escribir ya revisado) acomoda las cajas de ESA venta abierta y mide '
+        'el tope sobre el pedido entero. El acomodo corre en sudo() solo sobre líneas de esa venta, con cantidades y '
+        'precio del sistema.',
+    ('dcasa_catalogo', 'sale.order.line', 'create'):
+        OVERRIDE + ' Solo quita de lo que llega los campos que pone el emparejamiento (CAMPOS_DEL_SISTEMA); '
+        'sin sudo().',
+    ('dcasa_catalogo', 'sale.order.line', 'write'):
+        OVERRIDE + ' Solo vuelve a emparejar camas y colchones (y su precio) de la misma venta; los campos que pone el '
+        'emparejamiento no se guardan desde afuera; sin sudo() (salvo la copia de una línea de camas que se parte, ya '
+        'con el permiso de escribir la cotización y con valores del sistema).',
+    ('dcasa_catalogo', 'sale.order.line', 'unlink'):
+        OVERRIDE + ' Antes de quitar una cama, su colchón vuelve a su precio normal; sin sudo().',
+    ('dcasa_catalogo', 'product.template', 'create'):
+        OVERRIDE + ' Agrega que los colchones por cama solo los pone Gerencia y pone el nombre en MAYÚSCULAS (F5); '
+                   'sin sudo().',
+    ('dcasa_catalogo', 'product.template', 'write'):
+        OVERRIDE + ' Agrega que cama/colchón y colchones por cama solo los cambia Gerencia y pone el nombre en '
+                   'MAYÚSCULAS (F5); sin sudo().',
+    ('dcasa_catalogo', 'product.product', 'create'):
+        OVERRIDE + ' Agrega que el precio en combo y el precio por par solo los pone Gerencia; sin sudo().',
+    ('dcasa_catalogo', 'product.product', 'write'):
+        OVERRIDE + ' Agrega que el precio en combo, la medida y el precio por par solo los cambia Gerencia; '
+                   'sin sudo().',
+    ('dcasa_catalogo', 'product.template', 'action_dcasa_precios_combo'): ACCION_VENTANA,
+    # F5: nombres en MAYÚSCULAS y productos repetidos (dcasa_catalogo/models/nombres_productos.py y siguientes).
+    ('dcasa_catalogo', 'dcasa.producto.mayusculas', 'default_get'):
+        OVERRIDE + ' Arma la vista previa; exige Gerencia (product.group_product_manager) o administrador.',
+    ('dcasa_catalogo', 'dcasa.producto.mayusculas', 'action_aplicar'):
+        ASISTENTE + ' (product.group_product_manager). Exige Gerencia o administrador y escribe con los permisos de '
+                    'la persona, sin sudo().',
+    ('dcasa_catalogo', 'dcasa.producto.repetido', 'action_ver'):
+        'Vista SQL de solo lectura (ACL de Gerencia); exige Gerencia o administrador y solo devuelve una acción.',
+    ('dcasa_catalogo', 'dcasa.producto.repetido', 'action_unir'):
+        'Exige Gerencia o administrador; solo abre el asistente de unir (no une nada).',
+    ('dcasa_catalogo', 'dcasa.producto.unir', 'action_cambiar'):
+        ASISTENTE + ' (product.group_product_manager). Solo intercambia los dos productos del asistente.',
+    ('dcasa_catalogo', 'dcasa.producto.unir', 'action_unir'):
+        ASISTENTE + ' (product.group_product_manager). Exige Gerencia o administrador y que no haya nada a medias '
+                    'ANTES de mover existencias (ajustes de inventario de Gerencia) y archivar; el sudo solo busca '
+                    'lo que hay que pasar (precios de proveedor, combos, reglas de tarifa, premios).',
+    # --- dcasa_contabilidad --------------------------------------------------------------
+    ('dcasa_contabilidad', 'dcasa.importar.extracto', 'action_importar'): ASISTENTE + ' (account.group_account_user)',
+    ('dcasa_abonos', 'account.move', 'action_dcasa_abono_whatsapp'):
+        'Botón «WhatsApp» de Abonos por vencer: check_access("read") de la factura y solo devuelve un enlace de '
+        'WhatsApp con el texto; no escribe nada ni usa sudo().',
+    ('dcasa_contabilidad', 'dcasa.saldos.centavos', 'action_cerrar'):
+        ASISTENTE + ' (account.group_account_user). Además exige Gerencia o contabilidad en el servidor; sin sudo(): '
+                    'crea y cruza el asiento de redondeo con los permisos de la persona.',
+    ('dcasa_contabilidad', 'dcasa.saldos.centavos', 'default_get'):
+        OVERRIDE + ' Arma la vista previa de saldos de centavos; exige Gerencia o contabilidad; sin sudo().',
+    ('dcasa_contabilidad', 'dcasa.presupuesto', 'action_aprobar'): SIN_SUDO,
+    ('dcasa_contabilidad', 'dcasa.presupuesto', 'action_cerrar'): SIN_SUDO,
+    ('dcasa_contabilidad', 'dcasa.presupuesto', 'action_borrador'): SIN_SUDO,
+    ('dcasa_contabilidad', 'dcasa.presupuesto', 'action_ver_apuntes'): ACCION_VENTANA,
+    ('dcasa_contabilidad', 'dcasa.presupuesto.linea', 'action_ver_apuntes'): ACCION_VENTANA,
+    ('dcasa_contabilidad', 'dcasa.reporte.contable', 'obtener'):
+        'Único punto de entrada de los reportes: exige account.group_account_readonly (C-07).',
+    ('dcasa_contabilidad', 'dcasa.reporte.contable', 'periodos'): 'Solo atajos de fechas; no lee apuntes.',
+    ('dcasa_contabilidad', 'account.journal', 'open_action'): OVERRIDE + ' Solo devuelve la acción.',
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'diarios'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'pendientes'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'candidatos'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'cuentas_rapidas'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'conciliar'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'automatico'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'deshacer'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'reglas'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'aplicar_regla'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'pagos_por_cruzar'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.conciliacion', 'cruzar_pago'): CONTADOR,
+    ('dcasa_contabilidad', 'dcasa.cierre.mes', 'create'): OVERRIDE + ' Normaliza el mes y arma la lista; sin sudo.',
+    ('dcasa_contabilidad', 'dcasa.cierre.mes', 'write'): OVERRIDE + ' Impide mover un mes cerrado; sin sudo.',
+    ('dcasa_contabilidad', 'dcasa.cierre.mes', 'action_revisar'): SIN_SUDO,
+    ('dcasa_contabilidad', 'dcasa.cierre.mes', 'action_cerrar'):
+        'Botón: exige account.group_account_manager ANTES de escribir la fecha de bloqueo de la empresa con sudo.',
+    ('dcasa_contabilidad', 'dcasa.cierre.mes', 'action_reabrir'):
+        'Botón: exige account.group_account_manager y motivo ANTES de bajar la fecha de bloqueo con sudo.',
+    ('dcasa_contabilidad', 'dcasa.cierre.mes.paso', 'action_ver'): ACCION_VENTANA,
+    # --- dcasa_meta_catalogo (catálogo para Meta, apagado de fábrica) ----------------------------------------
+    ('dcasa_meta_catalogo', 'product.feed', 'write'):
+        OVERRIDE + ' Solo impide convertir un catálogo de Meta en otro tipo y un token débil; sin sudo(). El ACL deja '
+                   'escribir solo a Gerencia y administradores.',
+    ('dcasa_meta_catalogo', 'product.feed', 'action_dcasa_meta_nueva_direccion'):
+        'Botón «Cambiar la dirección secreta»: exige sales_team.group_sale_manager o base.group_system en el servidor '
+        '(_dcasa_meta_exigir_gerencia); escribe el token nuevo con los permisos de la persona, sin sudo(), y no lo '
+        'anota en el historial.',
+    ('dcasa_meta_catalogo', 'dcasa.meta.campana', 'create'):
+        OVERRIDE + ' Solo calcula el código para Meta a partir del nombre; sin sudo(). El ACL deja crear solo a '
+                   'Gerencia y administradores.',
+    ('dcasa_meta_catalogo', 'product.feed', 'action_dcasa_meta_ver_fuera'):
+        'Botón «Ver los que quedan fuera»: exige Gerencia o administrador en el servidor ANTES del sudo() con que '
+        'reparte los productos; solo devuelve una acción de ventana con los ids.',
+    # --- dcasa_meta_eventos ---------------------------------------------------------------
+    ('dcasa_meta_eventos', 'res.config.settings', 'set_values'):
+        OVERRIDE + ' Valida las compuertas de Meta (ID, sección de privacidad publicada, token) ANTES de guardar y '
+                   'después solo enciende el aviso de cookies y marca las páginas del borde; res.config.settings es '
+                   'solo de administradores.',
+    ('dcasa_meta_eventos', 'res.config.settings', 'action_dcasa_meta_enviar_prueba'):
+        'Exige base.group_system en el servidor (también con ids=[]); manda UN evento de prueba con el código de '
+        'prueba y sin datos de personas; el token nunca sale en la respuesta.',
+    ('dcasa_meta_eventos', 'dcasa.meta.evento', 'action_dcasa_meta_reintentar'):
+        'Botón «Reintentar ahora»: exige Gerencia o administrador en el servidor ANTES del sudo; solo vuelve a poner '
+        'en la cola lo que tiene error (no revive lo omitido, descartado ni cancelado).',
+    ('dcasa_meta_eventos', 'res.partner', 'action_dcasa_meta_retirar_consentimiento'):
+        'Botón «Retirar consentimiento»: exige Gerencia o administrador en el servidor ANTES del sudo que borra el '
+        'consentimiento y cancela lo pendiente de esa persona.',
+    ('dcasa_meta_eventos', 'res.partner', 'write'):
+        OVERRIDE + ' Solo IMPIDE escribir a mano (sin sudo) los campos del consentimiento de Meta.',
+    ('dcasa_meta_eventos', 'res.partner', 'create'):
+        OVERRIDE + ' Solo IMPIDE crear una ficha con el consentimiento de Meta escrito a mano.',
+    ('dcasa_meta_eventos', 'account.move', 'button_draft'):
+        OVERRIDE + ' Comprueba check_access("write") antes de cancelar con sudo lo pendiente de Meta de la factura.',
+    ('dcasa_meta_eventos', 'account.move', 'button_cancel'):
+        OVERRIDE + ' Comprueba check_access("write") antes de cancelar con sudo lo pendiente de Meta de la factura.',
+    ('dcasa_meta_eventos', 'website', 'write'):
+        OVERRIDE + ' Si cambia el aviso de cookies marca «regenerar todo» del borde; sin sudo.',
+    # --- dcasa_migracion ----------------------------------------------------------------
+    ('dcasa_migracion', 'dcasa.migracion.carga', 'action_revisar'):
+        ASISTENTE + ' (base.group_system); además exige administrador en el servidor (_exigir_administrador) y '
+        'el ensayo se deshace por completo.',
+    ('dcasa_migracion', 'dcasa.migracion.carga', 'action_cargar'):
+        ASISTENTE + ' (base.group_system); además exige administrador en el servidor (_exigir_administrador) y '
+        'haber revisado antes los mismos archivos.',
+    # --- dcasa_nomina -------------------------------------------------------------------
+    ('dcasa_nomina', 'dcasa.nomina.config', 'action_abrir'):
+        ACCION_VENTANA + ' Exige leer la configuración (grupo Nómina).',
+    ('dcasa_nomina', 'dcasa.nomina.parametros', 'action_validar'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.parametros', 'action_reabrir'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.parametros', 'create'): OVERRIDE + ' Una copia nunca nace validada.',
+    ('dcasa_nomina', 'dcasa.nomina.parametros', 'write'): NOMINA_BLOQUEO,
+    ('dcasa_nomina', 'dcasa.nomina.isr.tramo', 'create'): NOMINA_BLOQUEO,
+    ('dcasa_nomina', 'dcasa.nomina.isr.tramo', 'write'): NOMINA_BLOQUEO,
+    ('dcasa_nomina', 'dcasa.nomina.isr.tramo', 'unlink'): NOMINA_BLOQUEO,
+    ('dcasa_nomina', 'dcasa.nomina.planilla', 'action_calcular'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.planilla', 'action_confirmar'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.planilla', 'action_pagar'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.planilla', 'action_borrador'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.planilla', 'action_cancelar'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.planilla', 'write'):
+        'Bloquea: el estado solo cambia con los botones y una planilla confirmada no cambia de periodo; sin sudo.',
+    ('dcasa_nomina', 'dcasa.nomina.linea', 'create'):
+        'Bloquea: no se agregan colaboradores a una planilla confirmada; sin sudo.',
+    ('dcasa_nomina', 'dcasa.nomina.linea', 'write'):
+        'Bloquea: una línea confirmada no cambia y el pago solo se anota con «Pagar»; sin sudo.',
+    ('dcasa_nomina', 'dcasa.nomina.vacacion', 'action_confirmar'): SIN_SUDO,
+    ('dcasa_nomina', 'dcasa.nomina.vacacion', 'action_cancelar'): SIN_SUDO,
+    ('dcasa_nomina', 'dcasa.nomina.vacacion', 'action_borrador'): SIN_SUDO,
+    ('dcasa_nomina', 'dcasa.nomina.liquidacion', 'action_calcular'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.liquidacion', 'action_revisar'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.liquidacion', 'action_borrador'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.reembolso', 'action_enviar'): NOMINA_REEMBOLSO,
+    ('dcasa_nomina', 'dcasa.nomina.reembolso', 'action_aprobar'): NOMINA_REEMBOLSO,
+    ('dcasa_nomina', 'dcasa.nomina.reembolso', 'action_rechazar'): NOMINA_REEMBOLSO,
+    ('dcasa_nomina', 'dcasa.nomina.reembolso', 'action_borrador'): NOMINA_REEMBOLSO,
+    ('dcasa_nomina', 'dcasa.nomina.reembolso', 'create'):
+        'Bloquea: el colaborador solo registra a su nombre y no pone estado ni aprobación; la foto sin dueño se '
+        'le asigna con sudo solo si la subió él.',
+    ('dcasa_nomina', 'dcasa.nomina.reembolso', 'write'):
+        'Bloquea: el colaborador solo edita su borrador; estado y aprobación solo por los botones (sudo).',
+    # --- dcasa_consolidacion (estados financieros de varias empresas) -----------------------------
+    # El motor (dcasa.consolidacion.motor) es todo privado: solo lo llaman los botones de abajo.
+    ('dcasa_consolidacion', 'dcasa.consolidacion', 'create'):
+        OVERRIDE + ' Bloquea estado, advertencias y líneas puestos a mano (solo «Calcular» los pone); sin sudo.',
+    ('dcasa_consolidacion', 'dcasa.consolidacion', 'write'):
+        OVERRIDE + ' Bloquea estado, advertencias y líneas puestos a mano, y cambiar empresas, reporte o fechas de '
+                   'una consolidación ya calculada; sin sudo.',
+    ('dcasa_consolidacion', 'dcasa.consolidacion', 'action_calcular'):
+        'Botón: exige account.group_account_user ANTES de calcular; lee los apuntes con los permisos de la persona '
+        '(sin sudo) y solo escribe con sudo las líneas ya calculadas.',
+    ('dcasa_consolidacion', 'dcasa.consolidacion', 'action_borrador'):
+        'Botón: exige account.group_account_user y escritura sobre el registro ANTES de soltar las líneas con sudo.',
+    ('dcasa_consolidacion', 'dcasa.consolidacion', 'action_ver_pivote'):
+        ACCION_VENTANA + ' Comprueba check_access("read") antes.',
+    ('dcasa_consolidacion', 'dcasa.consolidacion.mapa', 'create'):
+        OVERRIDE + ' Solo quita espacios del código consolidado; sin sudo (ACL: contador).',
+    ('dcasa_consolidacion', 'dcasa.consolidacion.mapa', 'write'):
+        OVERRIDE + ' Solo quita espacios del código consolidado; sin sudo (ACL: contador).',
+    # --- dcasa_contactos -------------------------------------------------------------------
+    ('dcasa_contactos', 'dcasa.contacto.duplicado', 'action_ver'):
+        ACCION_VENTANA + ' Solo lee las fichas de la fila (ACL: Gerencia).',
+    ('dcasa_contactos', 'dcasa.contacto.duplicado', 'action_fusionar'):
+        ACCION_VENTANA + ' El asistente de fusión de Odoo exige ser administrador de contactos; no escribe aquí.',
+    ('dcasa_contactos', 'res.partner', 'create'):
+        OVERRIDE + ' Solo agrega el candado de duplicados (sudo para buscar, nunca para escribir).',
+    ('dcasa_contactos', 'res.partner', 'write'):
+        OVERRIDE + ' Solo agrega el candado de duplicados (sudo para buscar, nunca para escribir).',
+    ('dcasa_contactos', 'base.partner.merge.automatic.wizard', 'action_start_automatic_process'):
+        OVERRIDE + ' Exige base.group_system en el servidor antes de fusionar en masa; sin sudo().',
+    ('dcasa_contactos', 'base.partner.merge.automatic.wizard', 'action_update_all_process'):
+        OVERRIDE + ' Exige base.group_system en el servidor antes de fusionar en masa; sin sudo().',
+    ('dcasa_contactos', 'base.partner.merge.automatic.wizard', 'parent_migration_process_cb'):
+        OVERRIDE + ' Exige base.group_system en el servidor antes de tocar los padres de los contactos; sin sudo().',
+    ('dcasa_contactos', 'res.users', 'create'): OVERRIDE + ' Solo crea el usuario sin el candado de su contacto.',
+    ('dcasa_contactos', 'res.company', 'create'): OVERRIDE + ' Solo crea la empresa sin el candado de su contacto.',
+    ('dcasa_contactos', 'res.partner', 'default_get'):
+        OVERRIDE + ' Sin sudo; solo para el equipo: pasa el nombre por defecto que parece un celular, una cédula o un '
+                   'correo a su campo (lo buscado antes de «Crear y editar»).',
+    # --- dcasa_barras -------------------------------------------------------------------------
+    ('dcasa_barras', 'dcasa.barras', 'buscar'):
+        'API del Escáner: exige stock.group_stock_user en el servidor ANTES de leer; no devuelve costos; sin sudo.',
+    ('dcasa_barras', 'dcasa.barras', 'buscar_por_nombre'):
+        'API del Escáner: exige stock.group_stock_user en el servidor ANTES de buscar; sin sudo.',
+    ('dcasa_barras', 'dcasa.barras', 'ficha'):
+        'API del Escáner: exige stock.group_stock_user en el servidor y lectura del producto; sin sudo.',
+    ('dcasa_barras', 'dcasa.barras', 'contar'):
+        'API del Escáner: exige stock.group_stock_manager (Gerencia) en el servidor ANTES de escribir; valida cada '
+        'argumento y usa el Inventario físico de Odoo con los permisos de la persona (sin sudo).',
+    ('dcasa_barras', 'dcasa.barras', 'cambiar_precio'):
+        'API del Escáner: exige la regla de precios de dcasa_base (Gerencia: product.group_product_manager) en el '
+        'servidor ANTES de escribir; valida el precio, rechaza variantes y escribe con los permisos de la persona.',
+    ('dcasa_barras', 'dcasa.barras', 'etiqueta'):
+        'API del Escáner › Asignar: exige stock.group_stock_manager y product.group_product_manager en el servidor '
+        'ANTES de leer; solo lee con los permisos de la persona (sin sudo).',
+    ('dcasa_barras', 'dcasa.barras', 'asignar_etiqueta'):
+        'API del Escáner › Asignar: exige stock.group_stock_manager y product.group_product_manager en el servidor '
+        'ANTES de escribir; el producto se escribe con los permisos de la persona (sin sudo); el único sudo es leer '
+        'si un empaque ya usa el código y escribir el historial, después de comprobar el permiso; tomar una etiqueta '
+        'ajena o retirada exige que la persona haya visto su estado actual.',
+    ('dcasa_barras', 'dcasa.barras', 'quitar_etiqueta'):
+        'API del Escáner › Asignar: exige stock.group_stock_manager y product.group_product_manager en el servidor '
+        'ANTES de escribir; el producto se escribe con los permisos de la persona; solo el historial usa sudo.',
+    ('dcasa_barras', 'product.product', 'write'):
+        OVERRIDE + ' Solo anota en el historial de etiquetas (con sudo, sin cambiar permisos ni valores) cuando cambia '
+                   'el código de barras.',
+    ('dcasa_barras', 'product.product', 'unlink'):
+        OVERRIDE + ' Solo anota en el historial de etiquetas el código del producto que se elimina; no cambia '
+                   'permisos.',
+    ('dcasa_barras', 'dcasa.barras.etiqueta', 'write'): 'Bloquea: el historial de etiquetas no se edita.',
+    ('dcasa_barras', 'dcasa.barras.etiqueta', 'unlink'): 'Bloquea: el historial de etiquetas no se borra.',
+    ('dcasa_barras', 'dcasa.barras.asignacion', 'action_revisar'):
+        'Botón: exige stock.group_stock_manager y escritura sobre el registro; no cambia productos (la lista de '
+        'líneas la arma con sudo, solo con lo que ya leyó).',
+    ('dcasa_barras', 'dcasa.barras.asignacion', 'action_aplicar'):
+        'Botón: exige stock.group_stock_manager y product.group_product_manager y escritura sobre el registro; vuelve '
+        'a comprobar cada producto y nunca pisa un código existente; el producto se escribe con los permisos de la '
+        'persona (sin sudo; solo las líneas de la lista se escriben con sudo).',
+    ('dcasa_barras', 'dcasa.barras.asignacion', 'action_deshacer'):
+        'Botón: exige stock.group_stock_manager y escritura sobre el registro; quita solo lo que sigue igual a lo '
+        'asignado.',
+    ('dcasa_barras', 'dcasa.bodega', 'pendientes'):
+        'API del panel de Bodega: exige stock.group_stock_user en el servidor ANTES de leer; las entregas se buscan '
+        'con los permisos de la persona; el único sudo lee del pedido su número, método de entrega, si lleva flete y '
+        'si está pagado (sí o no, sin montos).',
+    ('dcasa_barras', 'dcasa.bodega', 'abrir'):
+        'API del panel de Bodega: exige stock.group_stock_user y lectura de la entrega (check_access) en el servidor; '
+        'solo salidas; el único sudo es el del pedido (número, método de entrega, flete, pagado sí o no).',
+    ('dcasa_barras', 'dcasa.bodega', 'leer'):
+        'API del panel de Bodega: exige stock.group_stock_user ANTES de leer; el QR de un documento se abre con los '
+        'permisos de quien escanea (dcasa.documento, el mismo control del Escáner); las entregas y productos se buscan '
+        'con los permisos de la persona (sin sudo; el pedido de una factura solo da los ids de sus entregas).',
+    ('dcasa_barras', 'dcasa.bodega', 'validar'):
+        'API del panel de Bodega: exige stock.group_stock_user y escritura de la entrega (check_access) en el '
+        'servidor; revisa cada renglón y cantidad (nunca más de lo pedido) y valida con button_validate de Odoo con '
+        'los permisos de la persona (sin sudo): Odoo registra quién validó.',
+    # --- dcasa_marketing (fotos del producto y Marketing, 2026-10-22) ---------------------------
+    ('dcasa_marketing', 'product.template', 'dcasa_fotos'):
+        'Lectura: exige usuario interno y check_access("read") del producto ANTES del sudo, que solo lee sus fotos '
+        'extra (sin videos) y la versión (checksum) de sus adjuntos; no escribe.',
+    ('dcasa_marketing', 'product.template', 'dcasa_fotos_subir'): FOTOS_EDITAR,
+    ('dcasa_marketing', 'product.template', 'dcasa_fotos_reemplazar'): FOTOS_EDITAR,
+    ('dcasa_marketing', 'product.template', 'dcasa_fotos_ordenar'): FOTOS_EDITAR,
+    ('dcasa_marketing', 'product.template', 'dcasa_fotos_principal'): FOTOS_EDITAR,
+    ('dcasa_marketing', 'product.template', 'dcasa_fotos_quitar'): FOTOS_EDITAR,
+    ('dcasa_marketing', 'product.template', 'dcasa_fotos_girar'): FOTOS_EDITAR,
+    ('dcasa_marketing', 'product.template', 'dcasa_fotos_recortar'): FOTOS_EDITAR,
+    ('dcasa_marketing', 'dcasa.marketing', 'datos'): MARKETING_LECTURA,
+    ('dcasa_marketing', 'dcasa.marketing', 'buscar_fotos'): MARKETING_LECTURA,
+    ('dcasa_marketing', 'dcasa.rotacion', 'datos'):
+        'Lectura: exige Gerencia (ventas administrador), administrador o el rol Marketing en el servidor (_exigir, '
+        'AccessError) ANTES de leer; las ventas, llegadas y pedidos se leen con sudo solo después de eso; el dinero '
+        '(costos, capital, márgenes y la simulación de rebaja) solo sale para Gerencia y administradores; no escribe.',
+    ('dcasa_marketing', 'dcasa.movimiento_productos', 'datos'):
+        'Lectura: exige Gerencia (ventas administrador), administrador o el rol Marketing en el servidor (_exigir, '
+        'AccessError) ANTES de leer; las ventas se leen con sudo solo después de eso; el dinero (lo vendido en $ y el '
+        'capital parado) solo sale para Gerencia y administradores; las fechas se validan (sin futuro, sin cruzarse, '
+        'máximo 366 días); no escribe.',
+    ('dcasa_marketing', 'dcasa.marketing', 'accion_productos'):
+        'Exige Gerencia (ventas administrador), administrador o el rol Marketing en el servidor (_exigir, '
+        'AccessError); valida los ids y solo devuelve la acción de ventana de Productos con ese filtro; no lee ni '
+        'escribe datos, sin sudo().',
+    # --- dcasa_fe_pa (factura electrónica DGI) ------------------------------------------------
+    ('dcasa_fe_pa', 'dcasa.fe.documento', 'action_procesar'):
+        'Botón: exige account.group_account_invoice antes del sudo (envía al PAC).',
+    ('dcasa_fe_pa', 'dcasa.fe.documento', 'action_reintentar'):
+        'Botón: exige account.group_account_invoice antes del sudo (regenera un rechazado).',
+    ('dcasa_fe_pa', 'dcasa.fe.documento', 'action_anular'): ACCION_VENTANA + ' El asistente exige Facturación.',
+    ('dcasa_fe_pa', 'dcasa.fe.documento', 'write'):
+        'Bloquea: número, punto, tipo y factura no cambian; un autorizado solo pasa a anulado (ACL solo lectura).',
+    ('dcasa_fe_pa', 'dcasa.fe.documento', 'unlink'): 'Bloquea: los documentos electrónicos no se borran.',
+    ('dcasa_fe_pa', 'dcasa.fe.intento', 'write'): 'Bloquea: el histórico de intentos no se edita.',
+    ('dcasa_fe_pa', 'dcasa.fe.intento', 'unlink'): 'Bloquea: el histórico de intentos no se borra.',
+    ('dcasa_fe_pa', 'dcasa.fe.anular.wizard', 'action_confirmar'):
+        ASISTENTE + ' (Facturación); además exige account.group_account_invoice antes del sudo.',
+    ('dcasa_fe_pa', 'account.move', 'button_draft'):
+        OVERRIDE + ' Solo agrega el bloqueo si la factura ya existe ante la DGI; lee con sudo, no escribe.',
+    ('dcasa_fe_pa', 'account.move', 'button_cancel'):
+        OVERRIDE + ' Solo agrega el bloqueo si la factura ya existe ante la DGI; lee con sudo, no escribe.',
+    ('dcasa_fe_pa', 'account.move', 'action_l10n_pa_fe_procesar'):
+        'Delega en dcasa.fe.documento.action_procesar, que exige account.group_account_invoice.',
+    # --- dcasa_interfaz -----------------------------------------------------------------
+    ('dcasa_interfaz', 'dcasa.tablero', 'obtener_datos'):
+        SIN_SUDO + ' Cada bloque del tablero pregunta has_access antes de leer.',
+    ('dcasa_interfaz', 'dcasa.tablero', 'ventas_del_periodo'):
+        'Lectura. Pregunta has_access de pedidos; quien vende sin controlar ve solo lo suyo (sus pedidos), y la '
+        'ganancia solo sale con el grupo de Gerencia o de administrador (la lee con sudo ya comprobado ese grupo). '
+        'Valida la base («facturado»/«con_abonos»/«completadas») y rechaza con AccessError un «vendedor» ajeno a quien '
+        'no es Gerencia ni administrador, ANTES de leer. Las facturas las suma con sudo filtrado a out_invoice/'
+        'out_refund; la lista que abre la ve cada quien con sus permisos.',
+    ('dcasa_interfaz', 'dcasa.tablero', 'grafica_de_ventas'):
+        'Lectura de las barras de la semana y lo más vendido del panel completo: AccessError a quien vende sin '
+        'controlar la tienda (o no ve pedidos) ANTES de leer; valida la base y la vendedora como ventas_del_periodo. '
+        'Suma facturas con sudo filtrado a out_invoice/out_refund; devuelve solo totales por día y productos.',
+    # Compras › Reponer (2026-10-22): cada uno exige Gerencia o administrador en el servidor (_exigir_gerencia,
+    # AccessError) ANTES de leer con sudo, siempre filtrado a las empresas de quien mira.
+    ('dcasa_interfaz', 'dcasa.reponer', 'obtener'):
+        'Lectura de la pantalla Reponer: exige Gerencia o administrador ANTES de leer; valida meses (1 a 12), reserva '
+        '(0 a 12) y el proveedor; devuelve solo cifras por producto y por proveedor.',
+    ('dcasa_interfaz', 'dcasa.reponer', 'buscar_proveedores'):
+        'Buscador de proveedores de Reponer: exige Gerencia o administrador ANTES de leer; el texto se corta a 80 '
+        'caracteres y solo se compara (ilike/Python); devuelve a lo sumo 40 fichas (nombre, teléfono, RUC, productos, '
+        'última compra, tiempo de llegada).',
+    ('dcasa_interfaz', 'dcasa.reponer', 'poner_llegada'):
+        'Guarda el tiempo de llegada de un proveedor: exige Gerencia o administrador ANTES del sudo; valida de 1 día '
+        'a 24 meses; solo escribe delay y dcasa_llegada_puesta en los precios de ese proveedor de las empresas de '
+        'quien mira, y lo anota en su ficha.',
+    ('dcasa_interfaz', 'dcasa.tablero', 'comparar_ventas'):
+        'Lectura del bloque «Comparar»: exige Gerencia o administrador en el servidor (_exigir_gerencia, AccessError) '
+        'ANTES de leer; valida comparación, base, vendedora, mes (uno de los últimos 24), fechas no futuras, '
+        '«desde» ≤ «hasta» y hasta un año por rango. Las facturas y conciliaciones las lee con sudo ya comprobado '
+        'el grupo; no escribe nada.',
+    # «Por día», «Estadísticas» y «Movimientos» (2026-10-22): solo lectura, el grupo exigido ANTES de leer.
+    ('dcasa_interfaz', 'dcasa.tablero', 'por_dia'):
+        'Lectura del mes día por día: exige Gerencia o administrador en el servidor (_exigir_gerencia, AccessError) '
+        'ANTES de leer; valida la base (una de las cuatro), el mes (este o uno de los últimos 24) y la vendedora. Las '
+        'facturas las suma con sudo filtrado a out_invoice/out_refund (las mismas de _medir); los pedidos, sin sudo.',
+    ('dcasa_interfaz', 'dcasa.tablero', 'ventas_del_dia'):
+        'Lectura de lo que se hizo un día: exige Gerencia o administrador (_exigir_gerencia) ANTES de leer; valida la '
+        'base, la vendedora y el día (no futuro, de los últimos 24 meses). No escribe nada.',
+    ('dcasa_interfaz', 'dcasa.tablero', 'cobros_del_periodo'):
+        'Lectura de lo cobrado por forma de pago (con ITBMS) en el día, la semana, la quincena o el mes de un día: '
+        'exige Gerencia o administrador (_exigir_gerencia, AccessError) ANTES de leer; valida el periodo (uno de los '
+        'cuatro) y la fecha (bien escrita, no futura y de los últimos 24 meses), y recorta el periodo en curso a hoy. '
+        'Solo cuenta cobros (los de _dominio_de_cobros) sin sudo y no escribe nada.',
+    ('dcasa_interfaz', 'dcasa.tablero', 'estadisticas'):
+        'Lectura de las gráficas: exige Gerencia o administrador (_exigir_gerencia) ANTES de leer; valida el periodo '
+        '(uno de los botones o un rango de hasta un año, no futuro) y la base. Devuelve solo totales.',
+    ('dcasa_interfaz', 'dcasa.tablero', 'opciones_por_dia'):
+        'Lectura de las opciones de «Por día» y «Estadísticas» (bases, meses, vendedoras): exige Gerencia o '
+        'administrador (_exigir_gerencia) ANTES de leer; no escribe nada.',
+    ('dcasa_interfaz', 'dcasa.tablero', 'valor_del_inventario'):
+        'Lectura del valor del inventario (al costo y a precio de venta sin ITBMS): exige Gerencia o administrador '
+        '(_ve_utilidad, AccessError) ANTES de leer; recién después lee con sudo la valuación de Odoo, las existencias '
+        'y los precios. Sin argumentos; no escribe nada.',
+    ('dcasa_interfaz', 'dcasa.movimientos', 'movimientos'):
+        'Lectura de la línea de tiempo de inventario: exige Gerencia (administra Inventario) o administrador '
+        '(_exigir_permiso, AccessError) ANTES de leer con sudo, siempre filtrado a las empresas de quien mira; valida '
+        'producto, fechas, tipo y página. No escribe nada.',
+    ('dcasa_interfaz', 'dcasa.movimientos', 'buscar_productos'):
+        'Lectura: exige Gerencia o administrador (_exigir_permiso) ANTES de buscar con sudo productos de mercancía de '
+        'las empresas de quien mira; devuelve nombre, código, código de barras y existencia.',
+    ('dcasa_interfaz', 'dcasa.movimientos', 'opciones'):
+        'Lectura de los tipos de movimiento para los filtros: exige Gerencia o administrador (_exigir_permiso).',
+    ('dcasa_interfaz', 'product.product', 'dcasa_accion_sin_movimiento'):
+        'Lectura: exige Gerencia o administrador en el servidor (AccessError si no) y solo devuelve una acción de '
+        'ventana con un filtro; no escribe ni usa sudo().',
+    ('dcasa_guia', 'dcasa.guia', 'obtener'):
+        SIN_SUDO + ' Solo devuelve las tareas de la Guía cuyo menú (y los de arriba) ve quien pregunta; el catálogo '
+        'es un archivo del repositorio, sin datos del negocio.',
+    ('dcasa_guia', 'dcasa.guia', 'buscar'):
+        SIN_SUDO + ' Busca solo entre las tareas que quien pregunta puede abrir; el texto buscado no toca la base.',
+    ('dcasa_guia', 'dcasa.guia', 'registrar_uso'):
+        SIN_SUDO + ' Anota «+1» solo para quien llama y solo de una tarea que existe y que esa persona puede abrir; '
+        'cualquier otra cosa devuelve False sin error. La regla de registro de dcasa.guia.uso deja a cada quien la '
+        'suya.',
+    ('dcasa_interfaz', 'dcasa.sitio', 'vista_previa'):
+        'Solo devuelve la URL pública del sitio (web.base.url, ya visible en cualquier enlace) y su nombre.',
+    # El sitio se edita por código (models/sitio.py): solo AGREGAN un bloqueo, nunca un permiso.
+    ('dcasa_interfaz', 'ir.ui.view', 'create'): 'Bloquea: ninguna copia por sitio de una plantilla de D\'CASA.',
+    ('dcasa_interfaz', 'ir.ui.view', 'write'): 'Bloquea: las plantillas de D\'CASA no se editan desde el panel.',
+    ('dcasa_interfaz', 'ir.ui.view', 'unlink'): 'Bloquea: las plantillas de D\'CASA no se borran desde el panel.',
+    ('dcasa_interfaz', 'website.page', 'open_website_url'):
+        OVERRIDE + ' Devuelve la acción de la vista previa propia con la URL de la página; sin sudo().',
+    ('dcasa_interfaz', 'website.page', 'write'):
+        'Bloquea: de una página de D\'CASA solo se cambia publicar y SEO; el contenido viene del código.',
+    ('dcasa_interfaz', 'res.users', 'create'):
+        OVERRIDE + ' Solo deja «Notificación: En Odoo» al usuario interno recién creado, con los mismos permisos de '
+        'quien lo crea; sin sudo().',
+    # La marca del panel (Ajustes › Marca del panel, 2026-11-18, models/marca.py).
+    ('dcasa_interfaz', 'res.company', 'create'):
+        OVERRIDE + ' Solo deja los colores del panel como #RRGGBB (vacío = el de fábrica); sin sudo().',
+    ('dcasa_interfaz', 'res.company', 'write'):
+        OVERRIDE + ' Solo deja los colores del panel como #RRGGBB y cambia la versión de la marca si la marca cambia; '
+        'quién escribe la empresa lo siguen decidiendo el ACL y las reglas de Odoo (administradores); sin sudo().',
+    ('dcasa_interfaz', 'res.config.settings', 'action_dcasa_panel_fabrica'):
+        'Botón de Ajustes › Marca del panel: exige base.group_system en el servidor ANTES de escribir y solo vuelve a '
+        'fábrica el logo, el ícono y los colores de la empresa de esos ajustes; sin sudo().',
+    ('dcasa_interfaz', 'ir.http', 'session_info'):
+        OVERRIDE + ' Solo agrega, a quien es usuario interno, el logo y el nombre de SU empresa actual para la barra '
+        'lateral (lo que ya ve en el panel).',
+    ('dcasa_interfaz', 'ir.ui.menu', 'load_web_menus'):
+        OVERRIDE + ' Solo cambia los colores de los íconos SVG de las apps que quien llama ya ve; no agrega menús.',
+    # --- dcasa_invoice -------------------------------------------------------------------
+    ('dcasa_invoice', 'ir.qweb.field.monetary', 'value_to_html'): OVERRIDE + ' Solo formatea un valor.',
+    ('dcasa_invoice', 'account.move.line', 'get_section_subtotal'):
+        OVERRIDE + ' Solo suma los importes de las piezas del título de un combo; lectura, sin sudo().',
+    ('dcasa_invoice', 'account.move.line', 'get_section_total'):
+        OVERRIDE + ' Solo suma los importes de las piezas del título de un combo; lectura, sin sudo().',
+    # «Imprimir documentos»: el PDF solo sale por /dcasa/paquete.pdf con los permisos de quien lo pide (sin sudo).
+    ('dcasa_invoice', 'account.move', 'action_dcasa_imprimir_documentos'):
+        ACCION_VENTANA + ' Solo facturas de clientes publicadas; el cuadro corre sin sudo.',
+    ('dcasa_invoice', 'sale.order', 'action_dcasa_imprimir_documentos'):
+        ACCION_VENTANA + ' Solo facturas de clientes publicadas; el cuadro corre sin sudo.',
+    ('dcasa_invoice', 'dcasa.impresion.paquete', 'action_imprimir'):
+        ASISTENTE + ' (Facturación o lector contable). Solo devuelve la acción que pide el PDF al servidor.',
+    ('dcasa_invoice', 'dcasa.impresion.paquete', 'action_descargar'):
+        ASISTENTE + ' (Facturación o lector contable). Solo devuelve la acción que pide el PDF al servidor.',
+    ('dcasa_invoice', 'dcasa.impresion.paquete', 'action_cerrar'):
+        ASISTENTE + ' (Facturación o lector contable). Solo devuelve la acción de cerrar o la del pago.',
+    ('dcasa_invoice', 'account.payment.register', 'action_create_payments'):
+        OVERRIDE + ' Solo ofrece el cuadro «Imprimir documentos» si la factura quedó pagada; un fallo no deshace '
+        'el pago.',
+    ('dcasa_invoice', 'dcasa.facturas.panel', 'obtener_datos'):
+        SIN_SUDO + ' Las tarjetas de proveedores solo salen para contabilidad, Gerencia y administradores.',
+    ('dcasa_invoice', 'dcasa.facturas.panel', 'abrir'):
+        SIN_SUDO + ' Exige contabilidad para proveedores; solo devuelve la acción de la lista con su dominio.',
+    ('dcasa_invoice', 'product.product', 'get_product_multiline_description_sale'):
+        OVERRIDE + ' Solo quita la referencia del proveedor del nombre de la línea si la empresa lo pide; sin sudo().',
+    # --- dcasa_socios -------------------------------------------------------------------
+    ('dcasa_socios', 'res.partner', 'create'): OVERRIDE,
+    ('dcasa_socios', 'res.partner', 'write'): OVERRIDE,
+    ('dcasa_socios', 'res.partner', 'action_dcasa_crear_ficha'): 'Botón: exige sales_team.group_sale_salesman (S-01).',
+    ('dcasa_socios', 'res.partner', 'action_dcasa_ver_movimientos'): ACCION_VENTANA,
+    ('dcasa_socios', 'res.partner', 'action_dcasa_ajustar'): 'Botón: exige sales_team.group_sale_manager (S-01).',
+    ('dcasa_socios', 'res.partner', 'action_dcasa_reiniciar_pin'):
+        'Botón: exige sales_team.group_sale_manager y deja nota en el chatter (S-01).',
+    ('dcasa_socios', 'res.partner', 'action_dcasa_desbloquear'):
+        'Botón: exige sales_team.group_sale_manager y deja nota en el chatter (S-01). '
+        'El login de /socios usa el privado _dcasa_desbloquear.',
+    ('dcasa_socios', 'res.partner', 'action_dcasa_suspender'): 'Botón: exige sales_team.group_sale_manager (S-01).',
+    ('dcasa_socios', 'res.partner', 'action_dcasa_activar'): 'Botón: exige sales_team.group_sale_manager (S-01).',
+    ('dcasa_socios', 'dcasa.canje', 'action_entregar'): 'Botón: exige sales_team.group_sale_salesman (S-02).',
+    ('dcasa_socios', 'dcasa.canje', 'action_cancelar'): 'Botón: exige sales_team.group_sale_salesman (S-02).',
+    ('dcasa_socios', 'dcasa.compra', 'action_anular'): ACCION_VENTANA + ' El asistente es solo de gerencia.',
+    ('dcasa_socios', 'dcasa.movimiento', 'write'): 'Bloquea: el libro de puntos no se edita.',
+    ('dcasa_socios', 'dcasa.movimiento', 'unlink'): 'Bloquea: el libro de puntos no se borra.',
+    ('dcasa_socios', 'sale.order.line', 'create'):
+        OVERRIDE + ' Rechaza (AccessError) que quien no sea Gerencia ni el sistema escriba la marca de premio '
+                   'canjeado; sin sudo().',
+    ('dcasa_socios', 'sale.order.line', 'write'):
+        OVERRIDE + ' Rechaza (AccessError) que quien no sea Gerencia ni el sistema escriba la marca de premio '
+                   'canjeado; sin sudo().',
+    ('dcasa_socios', 'sale.order.line', 'unlink'):
+        OVERRIDE + ' Al quitar la línea del premio de un carrito web devuelve los puntos (sudo solo sobre el '
+                   'canje de esa línea, ya autorizada por el ACL de la línea).',
+    ('dcasa_socios', 'dcasa.ajuste.wizard', 'action_confirmar'): ASISTENTE + ' (gerencia)',
+    ('dcasa_socios', 'dcasa.anular.compra.wizard', 'action_confirmar'): ASISTENTE + ' (gerencia)',
+    ('dcasa_socios', 'dcasa.compra.manual.wizard', 'action_confirmar'): ASISTENTE + ' (gerencia)',
+    ('dcasa_socios', 'dcasa.cobrar.premio.wizard', 'action_confirmar'): ASISTENTE + ' (vendedora)',
+    ('dcasa_socios', 'account.move', 'button_draft'):
+        OVERRIDE + ' Comprueba check_access("write") antes de anular puntos con sudo.',
+    ('dcasa_socios', 'account.move', 'button_cancel'):
+        OVERRIDE + ' Comprueba check_access("write") antes de anular puntos con sudo.',
+    ('dcasa_socios', 'account.move', 'unlink'):
+        OVERRIDE + ' Comprueba check_access("unlink") antes de anular con sudo los puntos y la comisión de un borrador '
+                   'que se borra, y solo después de que Odoo aceptó borrarlo.',
+    ('website_dcasa', 'sale.order', 'action_quotation_sent'): OVERRIDE + ' Solo agrega la fecha del apartado.',
+    # Carrusel de la portada (models/portada.py): los segundos de cada foto viven en dcasa.portada.ajustes (uno por
+    # sitio, ACL de Gerencia y administradores); Gerencia no escribe nada en `website`.
+    ('website_dcasa', 'dcasa.portada.ajustes', 'action_abrir'):
+        'Abre los ajustes del carrusel del sitio actual; si faltan, los crea como el usuario (ACL: Gerencia y '
+        'administradores). ' + SIN_SUDO,
+    ('website_dcasa', 'dcasa.portada.ajustes', 'create'):
+        OVERRIDE + ' Revisa que los segundos sean un número finito de 2 a 15 antes de guardar; sin sudo: el ACL manda.',
+    ('website_dcasa', 'dcasa.portada.ajustes', 'write'):
+        OVERRIDE + ' Revisa que los segundos sean un número finito de 2 a 15 antes de guardar; sin sudo: el ACL manda.',
+    ('website_dcasa', 'dcasa.portada.diapositiva', 'create'):
+        OVERRIDE + ' Si llega el padre (``ajustes_id``) y no el sitio, el sitio es el de esos ajustes; sin sudo salvo '
+        'para leer ese padre.',
+    # Campaña del sitio (models/campana.py): el ACL de dcasa.campana es solo de Gerencia y administradores.
+    ('website_dcasa', 'dcasa.campana', 'action_abrir'):
+        'Abre la campaña del sitio actual; si falta, la crea como el usuario (ACL: Gerencia y administradores). '
+        + SIN_SUDO,
+    ('website_dcasa', 'dcasa.campana', 'action_productos'): ACCION_VENTANA,
+    ('website_dcasa', 'dcasa.campana', 'action_empezar_de_cero'):
+        'Botón: exige quien cambia precios (_exigir_precios) y el ACL antes de escribir los productos. ' + SIN_SUDO,
+    ('website_dcasa', 'dcasa.campana', 'create'):
+        OVERRIDE + ' El interruptor de los combos exige Gerencia o administrador (_exigir_gerencia); después pone al '
+        'día las reglas de campaña en sudo con los datos de la campaña, nunca con lo que llega.',
+    ('website_dcasa', 'dcasa.campana', 'write'):
+        OVERRIDE + ' El interruptor de los combos exige Gerencia o administrador (_exigir_gerencia); con fechas nuevas '
+        'pone al día las reglas en sudo con los datos de la campaña, nunca con lo que llega.',
+    ('website_dcasa', 'dcasa.campana', 'unlink'):
+        OVERRIDE + ' Después de borrar (ACL: solo administradores) quita en sudo las reglas que ya no tienen campaña.',
+    ('website_dcasa', 'dcasa.campana.descuento', 'action_aplicar'):
+        ASISTENTE + ' Además exige quien cambia precios (_exigir_precios) antes de escribir.',
+    ('website_dcasa', 'product.pricelist', 'create'):
+        OVERRIDE + ' Después, en sudo, deja de ofrecer al sitio la tarifa de respaldo si el sitio ya tiene una propia '
+        '(solo lee tarifas y sitios; nunca usa lo que llega).',
+    ('website_dcasa', 'product.pricelist', 'write'):
+        OVERRIDE + ' Después, en sudo, deja de ofrecer al sitio la tarifa de respaldo si el sitio ya tiene una propia '
+        '(solo lee tarifas y sitios; nunca usa lo que llega).',
+    ('website_dcasa', 'product.pricelist.item', 'write'):
+        OVERRIDE + ' Solo niega cambiar a mano una regla de la campaña (fuera de sudo).',
+    ('website_dcasa', 'product.pricelist.item', 'unlink'):
+        OVERRIDE + ' Solo niega borrar a mano una regla de la campaña (fuera de sudo).',
+    ('website_dcasa', 'product.template', 'create'):
+        OVERRIDE + ' Los campos de la campaña exigen quien cambia precios (_exigir_precios); después pone al día las '
+        'reglas en sudo con los datos de los productos y la campaña, nunca con lo que llega.',
+    ('website_dcasa', 'product.template', 'write'):
+        OVERRIDE + ' Los campos de la campaña exigen quien cambia precios (_exigir_precios); después pone al día las '
+        'reglas en sudo con los datos de los productos y la campaña, nunca con lo que llega.',
+    ('website_dcasa', 'sale.order', 'create'):
+        OVERRIDE + ' Solo deja con la hora actual la fecha de una cotización de quien no cambia precios.',
+    ('website_dcasa', 'sale.order', 'write'):
+        OVERRIDE + ' Solo niega cambiar la fecha de una cotización a quien no cambia precios.',
+    ('website_dcasa', 'sale.order.line', 'create'):
+        OVERRIDE + ' Pone la fecha del precio de la línea (I-B); la de quien no cambia precios es siempre la actual.',
+    ('website_dcasa', 'sale.order.line', 'write'):
+        OVERRIDE + ' Solo niega cambiar la fecha del precio de una línea a quien no cambia precios.',
+    ('dcasa_socios', 'sale.order', 'action_confirm'):
+        OVERRIDE + ' Comprueba check_access("write") antes de sellar premios con sudo.',
+    ('dcasa_socios', 'sale.order', 'action_dcasa_cobrar_premio'): ACCION_VENTANA,
+    # --- dcasa_socios: programa de vendedores ---------------------------------------------
+    ('dcasa_socios', 'res.partner', 'action_dcasa_afiliar_vendedor'):
+        'Botón: exige sales_team.group_sale_salesman en el servidor; solo abre el asistente.',
+    ('dcasa_socios', 'res.partner', 'action_dcasa_suspender_vendedor'):
+        'Botón: exige sales_team.group_sale_manager en el servidor.',
+    ('dcasa_socios', 'res.partner', 'action_dcasa_reactivar_vendedor'):
+        'Botón: exige sales_team.group_sale_manager en el servidor.',
+    ('dcasa_socios', 'res.partner', 'action_dcasa_ajustar_vendedor'):
+        'Botón: exige sales_team.group_sale_manager en el servidor; solo abre el asistente.',
+    ('dcasa_socios', 'res.partner', 'action_dcasa_ver_movimientos_vendedor'): ACCION_VENTANA,
+    ('dcasa_socios', 'dcasa.vend.canje', 'action_entregar'):
+        'Botón: exige sales_team.group_sale_salesman en el servidor (igual que el canje de socios).',
+    ('dcasa_socios', 'dcasa.vend.canje', 'action_cancelar'):
+        'Botón: exige sales_team.group_sale_salesman en el servidor (igual que el canje de socios).',
+    ('dcasa_socios', 'dcasa.vend.movimiento', 'write'): 'Bloquea: el libro de vendedores no se edita.',
+    ('dcasa_socios', 'dcasa.vend.movimiento', 'unlink'): 'Bloquea: el libro de vendedores no se borra.',
+    ('dcasa_socios', 'dcasa.afiliar.vendedor.wizard', 'action_confirmar'):
+        ASISTENTE + ' (vendedora; la afiliación exige sales_team.group_sale_salesman en el servidor).',
+    ('dcasa_socios', 'dcasa.vend.ajuste.wizard', 'action_confirmar'): ASISTENTE + ' (gerencia)',
+    ('dcasa_socios', 'sale.order', 'create'):
+        OVERRIDE + ' Solo anota quién escribió el código de vendedor.',
+    ('dcasa_socios', 'sale.order', 'write'):
+        OVERRIDE + ' Confirmada la venta, solo Gerencia cambia el vendedor, y nunca con una comisión ya pagada.',
+    ('dcasa_socios', 'account.move', 'write'):
+        OVERRIDE + ' Publicada la factura, solo Gerencia cambia el vendedor, y nunca con una comisión ya pagada.',
+    # --- dcasa_socios: Ajustes › Programa de vendedores (Gerencia cambia las cifras; solo hacia adelante) ---------
+    ('dcasa_socios', 'dcasa.vend.reglas', 'create'):
+        OVERRIDE + ' Solo numera la versión y exige que rija hacia adelante; el ACL no deja crear a nadie (la crea '
+                   'el servidor con sudo, después de exigir Gerencia o administrador).',
+    ('dcasa_socios', 'dcasa.vend.reglas', 'write'): 'Bloquea: el historial de reglas no se edita.',
+    ('dcasa_socios', 'dcasa.vend.reglas', 'unlink'): 'Bloquea: el historial de reglas no se borra.',
+    ('dcasa_socios', 'dcasa.vend.ajustes', 'default_get'):
+        OVERRIDE + ' Exige Gerencia o administrador (_exigir_gerencia) ANTES de leer las reglas; solo devuelve las '
+                   'cifras de la pantalla.',
+    ('dcasa_socios', 'dcasa.vend.ajustes', 'execute'):
+        'Botón «Guardar»: exige Gerencia o administrador en el servidor ANTES de escribir; vuelve a convertir y a '
+        'validar las cifras y solo entonces crea la versión (con sudo).',
+    ('dcasa_socios', 'dcasa.vend.ajustes', 'cancel'): ACCION_VENTANA,
+    ('dcasa_socios', 'dcasa.vend.ajustes', 'action_dcasa_vend_fabrica'):
+        'Botón: exige Gerencia o administrador en el servidor ANTES de crear la versión de fábrica (con sudo).',
+    ('dcasa_socios', 'dcasa.vend.ajustes', 'action_dcasa_vend_historial'):
+        ACCION_VENTANA + ' Exige Gerencia o administrador.',
+    ('dcasa_socios', 'dcasa.vend.ajustes.mixin', 'action_dcasa_vend_fabrica'):
+        'Botón del molde de la pantalla de ajustes: exige Gerencia o administrador en el servidor ANTES de escribir.',
+    ('dcasa_socios', 'dcasa.vend.ajustes.mixin', 'action_dcasa_vend_historial'):
+        ACCION_VENTANA + ' Exige Gerencia o administrador.',
+    ('dcasa_socios', 'res.config.settings', 'action_dcasa_vend_fabrica'):
+        'Botón del bloque en Ajustes (solo administradores por ACL): exige Gerencia o administrador en el servidor '
+        'ANTES de crear la versión de fábrica (con sudo).',
+    ('dcasa_socios', 'res.config.settings', 'action_dcasa_vend_historial'):
+        ACCION_VENTANA + ' Exige Gerencia o administrador.',
+    ('dcasa_socios', 'res.config.settings', 'get_values'):
+        OVERRIDE + ' Agrega las cifras del programa de vendedores solo si quien abre es Gerencia o administrador; '
+                   'res.config.settings es solo de administradores.',
+    ('dcasa_socios', 'res.config.settings', 'set_values'):
+        OVERRIDE + ' Después de los ajustes estándar entrega las cifras a dcasa.vend.reglas, que exige Gerencia o '
+                   'administrador y valida todo; res.config.settings es solo de administradores.',
+    # --- dcasa_tienda_borde ----------------------------------------------------------------
+    # Solo anotan «página pendiente» (dcasa.tienda.pendiente, tabla interna sin ACL de escritura)
+    # en el precommit; el registro del usuario se escribe sin sudo, con su propio ACL.
+    ('dcasa_tienda_borde', 'product.template', 'create'): OVERRIDE + ' Anota la marca de la tienda del borde.',
+    ('dcasa_tienda_borde', 'product.template', 'write'): OVERRIDE + ' Anota la marca de la tienda del borde.',
+    ('dcasa_tienda_borde', 'product.template', 'unlink'): OVERRIDE + ' Anota la marca de la tienda del borde.',
+    ('dcasa_tienda_borde', 'product.product', 'write'): OVERRIDE + ' Anota la marca de la tienda del borde.',
+    ('dcasa_tienda_borde', 'product.template.attribute.value', 'write'):
+        OVERRIDE + ' Anota la marca de la tienda del borde.',
+    ('dcasa_tienda_borde', 'product.public.category', 'create'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'product.public.category', 'write'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'product.public.category', 'unlink'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'website', 'write'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'ir.config_parameter', 'create'):
+        OVERRIDE + ' Marca «regenerar todo» si es un parámetro de Black Weekend (ACL: solo group_system).',
+    ('dcasa_tienda_borde', 'ir.config_parameter', 'write'):
+        OVERRIDE + ' Marca «regenerar todo» si es un parámetro de Black Weekend (ACL: solo group_system).',
+    ('dcasa_tienda_borde', 'ir.config_parameter', 'unlink'):
+        OVERRIDE + ' Marca «regenerar todo» si es un parámetro de Black Weekend (ACL: solo group_system).',
+    ('dcasa_tienda_borde', 'ir.ui.view', 'create'): OVERRIDE + ' Marca «regenerar todo» si es QWeb.',
+    ('dcasa_tienda_borde', 'ir.ui.view', 'write'): OVERRIDE + ' Marca «regenerar todo» si es QWeb.',
+    ('dcasa_tienda_borde', 'ir.ui.view', 'unlink'): OVERRIDE + ' Marca «regenerar todo» si es QWeb.',
+    ('dcasa_tienda_borde', 'website.menu', 'create'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'website.menu', 'write'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'website.menu', 'unlink'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'website.page', 'create'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'website.page', 'write'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'website.page', 'unlink'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'product.pricelist.item', 'create'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'product.pricelist.item', 'write'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'product.pricelist.item', 'unlink'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'dcasa.campana', 'create'):
+        OVERRIDE + ' Marca «regenerar todo» y programa la vigilancia de la campaña.',
+    ('dcasa_tienda_borde', 'dcasa.campana', 'write'):
+        OVERRIDE + ' Marca «regenerar todo» si cambia lo que sale en el sitio y programa la vigilancia.',
+    ('dcasa_tienda_borde', 'dcasa.campana', 'unlink'): OVERRIDE + ' Marca «regenerar todo».',
+    ('dcasa_tienda_borde', 'dcasa.portada.ajustes', 'create'):
+        OVERRIDE + ' Marca el carrusel de la portada para regenerar su HTML; sin sudo().',
+    ('dcasa_tienda_borde', 'dcasa.portada.ajustes', 'write'):
+        OVERRIDE + ' Marca el carrusel de la portada para regenerar su HTML; sin sudo().',
+    ('dcasa_tienda_borde', 'dcasa.portada.ajustes', 'unlink'):
+        OVERRIDE + ' Marca el carrusel de la portada para regenerar su HTML; sin sudo().',
+    ('dcasa_tienda_borde', 'dcasa.portada.diapositiva', 'create'):
+        OVERRIDE + ' Marca el carrusel de la portada para regenerar su HTML; sin sudo().',
+    ('dcasa_tienda_borde', 'dcasa.portada.diapositiva', 'write'):
+        OVERRIDE + ' Marca el carrusel de la portada para regenerar su HTML; sin sudo().',
+    ('dcasa_tienda_borde', 'dcasa.portada.diapositiva', 'unlink'):
+        OVERRIDE + ' Marca el carrusel de la portada para regenerar su HTML; sin sudo().',
+    # --- dcasa_brian ----------------------------------------------------------------------
+    # El chat del panel: ACL de group_user + regla «cada quien sus conversaciones»; los
+    # métodos validan dueño de la conversación y de la acción (B-04).
+    ('dcasa_brian', 'brian.conversacion', 'estado_proveedor'): 'Exige base.group_user; nunca devuelve la clave.',
+    ('dcasa_brian', 'brian.conversacion', 'estado_panel'):
+        'Exige base.group_user; cada pastilla pregunta has_access y lee sin sudo (reglas de registro); '
+        'el único sudo cuenta las claves de API del PROPIO usuario.',
+    ('dcasa_brian', 'brian.conversacion', 'mis_conversaciones'): SIN_SUDO,
+    ('dcasa_brian', 'brian.conversacion', 'nueva'): SIN_SUDO,
+    ('dcasa_brian', 'brian.conversacion', 'historial'): 'Solo conversaciones propias (_propia lanza AccessError).',
+    ('dcasa_brian', 'brian.conversacion', 'enviar'): 'Valida dueño de la conversación (_verificar_duenio).',
+    ('dcasa_brian', 'brian.conversacion', 'confirmar_accion'):
+        'Único camino público para confirmar: valida dueño de la conversación y de la acción (B-04).',
+    ('dcasa_brian', 'brian.conversacion', 'rechazar_accion'): 'Valida dueño de la conversación y de la acción.',
+    ('dcasa_brian', 'brian.conversacion', 'archivar'): 'Valida dueño de la conversación.',
+    ('dcasa_brian', 'brian.conversacion', 'renombrar'):
+        'Valida dueño de la conversación (_verificar_duenio); recorta a 60 caracteres; sin sudo.',
+    ('dcasa_brian', 'brian.conversacion', 'write'):
+        OVERRIDE + ' Impide cambiar dueño (usuario_id) y canal salvo superusuario; sin sudo.',
+    ('dcasa_brian', 'brian.conversacion', 'unlink'):
+        OVERRIDE + ' Valida dueño ANTES de cerrar con sudo SUS acciones por confirmar; el borrado '
+        'corre sin sudo (ACL + regla «cada quien sus conversaciones»).',
+    ('dcasa_brian', 'brian.mensaje', 'write'):
+        OVERRIDE + ' Impide mover un mensaje a otra conversación (historial falso); sin sudo.',
+    ('dcasa_brian', 'brian.accion', 'create'): 'Bloquea: solo el sistema escribe la auditoría (ACL solo lectura).',
+    ('dcasa_brian', 'brian.accion', 'write'): 'Bloquea: la auditoría no se edita.',
+    ('dcasa_brian', 'brian.accion', 'unlink'): 'Bloquea: la auditoría no se borra.',
+    ('dcasa_brian', 'brian.accion', 'argumentos_dict'): SIN_SUDO,
+    ('dcasa_brian', 'res.config.settings', 'set_values'): OVERRIDE + ' res.config.settings es solo de administradores.',
+    ('dcasa_brian', 'res.config.settings', 'action_dcasa_brian_probar'): 'Exige base.group_system (gasta la clave).',
+    ('dcasa_brian', 'brian.telegram.enlace', 'action_vincular'): 'Genera el código del propio usuario interno.',
+    ('dcasa_brian', 'brian.telegram.enlace', 'action_desvincular'):
+        'Solo el dueño del chat o un administrador (se comprueba antes del sudo).',
+    ('dcasa_brian', 'brian.telegram.enlace', 'action_registrar_webhook'): 'Exige base.group_system.',
+    ('dcasa_brian', 'res.users', 'action_dcasa_brian_vincular_telegram'): 'Solo sobre el propio usuario.',
+    ('dcasa_brian', 'res.users', 'write'):
+        OVERRIDE + ' Después del write estándar (que ya exige permisos), si se archiva al usuario apaga sus chats de '
+                   'Telegram; no devuelve datos.',
+    # --- dcasa_conversaciones (Juan, el asistente de clientes) ---------------------------------
+    # Todo lo que escribe con sudo() (registrar mensajes, estado, seguimiento, tokens) es privado (_ o @api.private)
+    # y solo lo llama la API /dcasa/juan/v1 (con token) o el propio módulo. Lo público de abajo:
+    # Cotizaciones del chatbot y de la web que vencen (sale_origen.py, 2026-11-03): después de que Odoo creó o reabrió
+    # la cotización con los permisos de la persona, solo escribe su «válida hasta» (hoy + los días de Ajustes de Juan)
+    # en las de origen chatbot o web abiertas; el sudo() es solo para ese campo (el carrito web lo crea el usuario
+    # público).
+    ('dcasa_conversaciones', 'sale.order', 'create'):
+        OVERRIDE + ' Solo pone el «válida hasta» de las cotizaciones del chatbot y de la web recién creadas.',
+    ('dcasa_conversaciones', 'sale.order', 'action_draft'):
+        OVERRIDE + ' Reabrir («Establecer como cotización») corre como el usuario; luego solo renueva el «válida '
+                   'hasta» de las del chatbot y de la web.',
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'write'):
+        OVERRIDE + ' Bloquea cambiar canal e id externo (salvo superusuario); sin sudo.',
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'unlink'):
+        OVERRIDE + ' Comprueba check_access("unlink") ANTES de borrar los mensajes con sudo (derecho de borrado).',
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'action_atender'): VENTAS_BOTON,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'action_devolver_al_bot'): VENTAS_BOTON,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'action_cerrar'): VENTAS_BOTON,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'action_traspaso_atendido'): VENTAS_BOTON,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'action_enviar'): VENTAS_BOTON,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'action_reintentar_envios'): VENTAS_BOTON,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'action_crear_oportunidad'): VENTAS_BOTON,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'action_ver_oportunidad'): ACCION_VENTANA,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'lista'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'hilo'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'refrescar'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'ficha'): PANEL_VENTAS,
+    # --- Celular y correo bien escritos y obligatorios (dcasa_contactos, 2026-10-17) ---------------------------
+    ('dcasa_contactos', 'sale.order', 'action_confirm'):
+        OVERRIDE + ' Botón Confirmar de Odoo; solo revisa celular y correo del cliente antes de super(); sin sudo.',
+    ('dcasa_contactos', 'res.partner', 'name_create'):
+        OVERRIDE + ' Creación rápida de Odoo; solo marca el contexto para no exigir celular y correo al crear.',
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'marcar_leida'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'enviar_respuesta'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'tomar'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'devolver'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'cerrar'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'eliminar'): PANEL_GERENCIA,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'documentos_del_cliente'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'cancelar_programado'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'adjuntar_a_documento'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'asignar'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'cancelar_seguimiento'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'poner_etiquetas'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'agregar_nota'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'buscar_catalogo'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'cotizaciones_abiertas'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'crear_cotizacion'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'descartar_adjunto'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'enviar_cotizacion'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'enviar_foto_catalogo'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'equipo'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'fotos_catalogo'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'iniciar_panel'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'fijar_disponible'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'presencia'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'resumir_conversacion'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'nueva_oportunidad'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'preparar_foto_catalogo'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'reintentar_envios_panel'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'subir_adjunto'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.conversacion', 'sugerir_respuesta'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'resumen'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'tasas_de_cierre'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'costos'): PANEL_GERENCIA,
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'por_persona'): PANEL_GERENCIA,
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'reparto'):
+        PANEL_VENTAS + ' Cada vendedora recibe solo lo suyo; el equipo completo solo viaja si es de Gerencia.',
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'fijar_fuera_del_reparto'):
+        'Solo Gerencia (sales_team.group_sale_manager, comprobado en el servidor antes de escribir con sudo): saca a '
+        'una persona del reparto o la vuelve a meter; no toca permisos y deja nota en el historial de los ajustes.',
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'fijar_modo_reparto'):
+        'Solo Gerencia (sales_team.group_sale_manager, comprobado en el servidor antes de escribir con sudo): '
+        'enciende o apaga el reparto de Ajustes de Juan; el campo lleva seguimiento (queda quién y cuándo).',
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'conexiones'): PANEL_GERENCIA,
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'qr'): PANEL_GERENCIA,
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'reiniciar_puente'): PANEL_GERENCIA,
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'desvincular_puente'): PANEL_GERENCIA,
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'pagar_ia'):
+        'Costos de IA › Pagar: exige Gerencia o administrador en el servidor (_exigir_pagos) ANTES de preguntarle al '
+        'Worker y de crear con sudo; el corte lo da el Worker en ese momento (nunca el cliente; sin Worker no se '
+        'registra) y el saldo que llega se valida (número, mayor que 0, no más que el saldo de ahora).',
+    ('dcasa_conversaciones', 'dcasa.juan.panel', 'deshacer_pago_ia'):
+        'Costos de IA › Deshacer: exige Gerencia o administrador en el servidor (_exigir_pagos) ANTES del sudo; solo '
+        'el último pago vigente, que se anula con motivo (no se borra).',
+    ('dcasa_conversaciones', 'dcasa.juan.pago.ia', 'write'):
+        'Bloquea: un pago de la IA no se edita (solo su anulación, por el panel con sudo); el ACL no da escritura.',
+    ('dcasa_conversaciones', 'dcasa.juan.pago.ia', 'unlink'):
+        'Bloquea: un pago de la IA no se borra, se anula con motivo.',
+    ('dcasa_conversaciones', 'dcasa.mensaje', 'write'): 'Bloquea: el historial de la conversación no se edita.',
+    ('dcasa_conversaciones', 'dcasa.mensaje', 'unlink'):
+        OVERRIDE + ' Tras el unlink estándar (ACL y reglas de registro) borra con sudo la copia del mensaje en la '
+                   'ficha del cliente (Ley 81); no devuelve datos.',
+    ('dcasa_conversaciones', 'crm.lead', 'write'):
+        OVERRIDE + ' Marca «una persona tomó el control» cuando alguien cambia etapa o temperatura a mano; escribe '
+                   'con los permisos del usuario (ACL y reglas de registro de crm.lead).',
+    ('dcasa_conversaciones', 'crm.lead', 'action_dcasa_devolver_control'):
+        'Botón: devuelve la oportunidad al CRM automático escribiendo con los permisos del usuario (ACL y reglas de '
+        'crm.lead).',
+    ('dcasa_conversaciones', 'dcasa.mensaje', 'action_reintentar'): VENTAS_BOTON,
+    ('dcasa_conversaciones', 'dcasa.mensaje', 'marcar_sensible'):
+        'Exige sales_team.group_sale_salesman; busca los mensajes SIN sudo, así que solo marca adjuntos de mensajes '
+        'que esa persona puede ver; solo escribe la marca de sensible.',
+    ('dcasa_conversaciones', 'dcasa.juan.ajustes', 'create'): 'Bloquea: los ajustes son un solo registro; sin sudo.',
+    ('dcasa_conversaciones', 'dcasa.juan.ajustes', 'unlink'): 'Bloquea: los ajustes no se borran.',
+    ('dcasa_conversaciones', 'dcasa.juan.ajustes', 'write'):
+        OVERRIDE + ' Si cambia el horario, solo anota «renovar la tienda» para el borde (models/horario_sitio.py); '
+                   'sin sudo().',
+    ('dcasa_conversaciones', 'dcasa.juan.ajustes', 'action_abrir'):
+        ACCION_VENTANA + ' Comprueba check_access("read") antes.',
+    ('dcasa_conversaciones', 'dcasa.juan.ajustes', 'action_probar_conexion'):
+        'Botón: exige sales_team.group_sale_manager; solo pregunta la salud del Worker (sin enviar datos del cliente).',
+    ('dcasa_conversaciones', 'dcasa.conocimiento', 'create'):
+        OVERRIDE + ' Solo Gerencia crea (ACL); si nace de una pregunta, la marca atendida con sudo.',
+    ('dcasa_conversaciones', 'dcasa.conocimiento', 'write'):
+        OVERRIDE + ' Pone la fecha de revisión; sin sudo (ACL: Gerencia).',
+    ('dcasa_conversaciones', 'dcasa.conocimiento', 'action_activar'): 'Botón: exige sales_team.group_sale_manager.',
+    ('dcasa_conversaciones', 'dcasa.conocimiento', 'action_desactivar'): 'Botón: exige sales_team.group_sale_manager.',
+    ('dcasa_conversaciones', 'dcasa.pregunta_pendiente', 'write'):
+        'Bloquea: solo Gerencia atiende las preguntas sin respuesta (se comprueba antes de escribir).',
+    ('dcasa_conversaciones', 'dcasa.pregunta_pendiente', 'action_convertir_en_conocimiento'):
+        'Botón: exige sales_team.group_sale_manager; solo devuelve la acción de ventana.',
+    ('dcasa_conversaciones', 'dcasa.pregunta_pendiente', 'action_contestar'):
+        'Botón: exige sales_team.group_sale_salesman y la pregunta «nueva»; solo devuelve la acción de la ventanita.',
+    ('dcasa_conversaciones', 'dcasa.pregunta.responder', 'action_guardar'):
+        ('Botón: exige sales_team.group_sale_salesman y la pregunta «nueva»; con sudo crea la entrada (activa) o, si '
+         'la vendedora puso cifras, solo la deja como propuesta para Gerencia. No da otros permisos.'),
+    ('dcasa_conversaciones', 'dcasa.pregunta_pendiente', 'action_descartar'):
+        'Botón: exige sales_team.group_sale_manager.',
+    ('dcasa_conversaciones', 'dcasa.pregunta_pendiente', 'action_reabrir'):
+        'Botón: exige sales_team.group_sale_manager.',
+    ('dcasa_conversaciones', 'dcasa.conversacion.etiqueta', 'create'):
+        OVERRIDE + ' Solo limpia el nombre; sin sudo (ACL: solo Gerencia crea).',
+    ('dcasa_conversaciones', 'dcasa.conversacion.etiqueta', 'write'):
+        OVERRIDE + ' Solo limpia el nombre; sin sudo (ACL: solo Gerencia escribe).',
+    ('dcasa_conversaciones', 'dcasa.conversacion.etiqueta', 'lista'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.respuesta.rapida', 'create'):
+        OVERRIDE + ' Solo limpia el atajo; sin sudo (ACL: solo Gerencia crea).',
+    ('dcasa_conversaciones', 'dcasa.respuesta.rapida', 'write'):
+        OVERRIDE + ' Solo limpia el atajo; sin sudo (ACL: solo Gerencia escribe).',
+    ('dcasa_conversaciones', 'dcasa.respuesta.rapida', 'lista'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'dcasa.respuesta.rapida', 'texto_para'): PANEL_VENTAS,
+    ('dcasa_conversaciones', 'res.partner', 'action_dcasa_ver_conversaciones'):
+        'Devuelve la acción que abre el chat del contacto; busca su conversación con los permisos de quien llama y '
+        'no escribe nada.',
+    ('dcasa_conversaciones', 'crm.lead', 'action_dcasa_abrir_chat'):
+        'Devuelve la acción que abre el chat de la oportunidad; la conversación se busca con los permisos de quien '
+        'llama y no escribe nada.',
+    ('dcasa_conversaciones', 'crm.team', 'action_your_pipeline'):
+        OVERRIDE + ' Solo quita el filtro «Mi flujo» del contexto de la acción.',
+    # --- dcasa_correo (correo a clientes por Resend) ----------------------------------------------------
+    ('dcasa_correo', 'dcasa.conversacion', 'correo_de_cotizacion'):
+        PANEL_VENTAS + ' Solo lee si «Enviar por correo» se puede usar (sin la clave ni datos de otro cliente).',
+    ('dcasa_correo', 'dcasa.conversacion', 'enviar_cotizacion_correo'):
+        PANEL_VENTAS + ' Solo cotizaciones abiertas del cliente de esa conversación; antidoble clic de 2 minutos.',
+    ('dcasa_correo', 'sale.order', 'action_quotation_send'):
+        OVERRIDE + ' Botón nativo «Enviar»: solo revisa el interruptor y el correo del cliente antes de super(); '
+                   'sin sudo().',
+    ('dcasa_correo', 'mail.mail', 'send'):
+        OVERRIDE + ' Con la clave de Resend solo marca «no enviado» lo que la política no deja salir antes de super(); '
+                   'mail.mail es solo de administradores (ACL).',
+    ('dcasa_correo', 'res.config.settings', 'action_dcasa_correo_prueba'):
+        'Exige base.group_system en el servidor; manda la prueba solo al correo de quien la pide.',
+    # --- dcasa_sofia (Sofía, la asistente del CRM, 2026-11-05) ----------------------------------------------------
+    ('dcasa_sofia', 'dcasa.sofia', 'panel'): SOFIA,
+    ('dcasa_sofia', 'dcasa.sofia', 'analizar'):
+        SOFIA + ' Revisar solo crea o pone al día propuestas (nada se cambia sin aprobación); una a la vez (candado) y '
+                'no más de una por minuto.',
+    ('dcasa_sofia', 'dcasa.sofia', 'aplicar'):
+        SOFIA + ' Cada acción corre con los permisos de quien aprueba (sin sudo): asignar exige Gerencia; escribir va '
+                'por enviar_respuesta (las mismas reglas que la pantalla de Conversaciones); guardar sus datos valida '
+                'cada campo (solo los que Sofía propuso), no pisa lo que la ficha ya tiene y pasa por las reglas de '
+                'Contactos.',
+    ('dcasa_sofia', 'dcasa.sofia', 'descartar'): SOFIA,
+    ('dcasa_sofia', 'crm.lead', 'action_dcasa_sofia'): ACCION_VENTANA,
+    # --- dcasa_nomina: adelantos y préstamos (G7) y comprobante de pago por correo (G4), 2026-10-22 ----------------
+    ('dcasa_nomina', 'dcasa.nomina.prestamo', 'create'):
+        'Exige «Administra la nómina» en el servidor y solo deja escribir los datos del borrador (el estado, la '
+        'autorización y el pago, nunca); sin sudo().',
+    ('dcasa_nomina', 'dcasa.nomina.prestamo', 'write'):
+        'Exige «Administra la nómina»; el estado, la autorización y el pago solo cambian con los botones (sudo ya '
+        'comprobado); un adelanto autorizado no cambia de monto ni de cuotas.',
+    ('dcasa_nomina', 'dcasa.nomina.prestamo', 'action_aprobar'):
+        'Autorizar exige Gerencia o administrador en el servidor (G7) ANTES del sudo que cambia el estado.',
+    ('dcasa_nomina', 'dcasa.nomina.prestamo', 'action_entregar'):
+        NOMINA_BOTON + ' El pago se crea como el usuario (sin sudo), contra la cuenta de adelantos configurada.',
+    ('dcasa_nomina', 'dcasa.nomina.prestamo', 'action_cancelar'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.prestamo', 'action_borrador'): NOMINA_BOTON,
+    ('dcasa_nomina', 'dcasa.nomina.linea', 'action_enviar_comprobante'):
+        'Exige «Administra la nómina» y check_access(write) en el servidor ANTES del sudo que arma el PDF y el correo; '
+        'solo de planillas confirmadas y con el interruptor de correos de D\'CASA encendido.',
+    ('dcasa_nomina', 'dcasa.nomina.planilla', 'action_enviar_comprobantes'):
+        'Exige «Administra la nómina» y check_access(write) en el servidor ANTES del sudo que arma los PDF y los '
+        'correos; solo de planillas confirmadas y con el interruptor de correos de D\'CASA encendido.',
+    # --- dcasa_contabilidad: ZIP de comprobantes (I6) ------------------------------------------------------------
+    ('dcasa_contabilidad', 'dcasa.comprobantes.paquete', 'create'):
+        'Exige contabilidad, Gerencia o administrador en el servidor; solo el periodo (la lista de documentos y los '
+        'archivos los pone el sistema); sin sudo().',
+    ('dcasa_contabilidad', 'dcasa.comprobantes.paquete', 'write'):
+        'Exige contabilidad, Gerencia o administrador y solo deja cambiar el periodo: la lista de documentos que el '
+        'cron mete al ZIP (con sudo) nunca se escribe por RPC.',
+    ('dcasa_contabilidad', 'dcasa.comprobantes.paquete', 'action_preparar'):
+        'Exige contabilidad, Gerencia o administrador; la lista de documentos se busca COMO el usuario (sin sudo): '
+        'solo entra lo que esa persona puede ver.',
+    # --- dcasa_existencias: mermas (F6), bitácora de bodega y alertas (etapa 4), 2026-10-22 ------------------------
+    ('dcasa_existencias', 'dcasa.existencias.config', 'write'):
+        'Exige Gerencia o administrador en el servidor (además del ACL); sin sudo().',
+    ('dcasa_existencias', 'dcasa.existencias.config', 'action_abrir'):
+        'Exige Gerencia o administrador en el servidor; solo crea (vacío) y abre el ajuste de la empresa activa.',
+    ('dcasa_existencias', 'dcasa.existencias.config', 'action_contabilizar_pendientes'):
+        'Exige Gerencia o administrador en el servidor ANTES del sudo que busca y contabiliza las mermas pendientes.',
+    ('dcasa_existencias', 'dcasa.bitacora.bodega', 'create'):
+        'Solo el sistema (sudo) escribe la bitácora: cualquier otro create falla.',
+    ('dcasa_existencias', 'dcasa.bitacora.bodega', 'write'):
+        'Siempre falla: la bitácora no se edita.',
+    ('dcasa_existencias', 'stock.quant', 'action_apply_inventory'):
+        OVERRIDE + ' Sin motivo exige Gerencia y devuelve la ventana del motivo; con motivo, Odoo; sin sudo().',
+    ('dcasa_existencias', 'stock.quant', 'create'):
+        OVERRIDE + ' Agrega: «A la mano» directo sin motivo no se escribe (hay que contar y aplicar); sin sudo().',
+    ('dcasa_existencias', 'stock.quant', 'write'):
+        OVERRIDE + ' Agrega: «A la mano» directo sin motivo no se escribe (hay que contar y aplicar); sin sudo().',
+    ('dcasa_existencias', 'stock.inventory.adjustment.name', 'action_apply'):
+        ASISTENTE + ' Además exige el motivo escrito; el ajuste pasa por el candado de Gerencia de stock.quant.',
+    ('dcasa_existencias', 'stock.move.line', 'action_revert_inventory'):
+        OVERRIDE + ' Deshacer un ajuste exige el gerente de Inventario (Gerencia); queda en la bitácora.',
+    ('dcasa_existencias', 'stock.move.line', 'create'):
+        OVERRIDE + ' Mover hacia o desde «Ajuste de inventario» o «Desecho» exige Gerencia; sin sudo().',
+    ('dcasa_existencias', 'stock.move.line', 'write'):
+        OVERRIDE + ' Mover hacia o desde «Ajuste de inventario» o «Desecho» exige Gerencia; sin sudo().',
+    ('dcasa_existencias', 'stock.move', 'create'):
+        OVERRIDE + ' Mover hacia o desde «Ajuste de inventario» o «Desecho» exige Gerencia; sin sudo().',
+    ('dcasa_existencias', 'stock.move', 'write'):
+        OVERRIDE + ' Mover hacia o desde «Ajuste de inventario» o «Desecho» exige Gerencia; sin sudo().',
+    ('dcasa_existencias', 'stock.scrap', 'action_validate'):
+        OVERRIDE + ' Dar de baja una merma exige el gerente de Inventario (Gerencia), el código y el costo; el asiento '
+                   'y la bitácora se escriben con sudo después de comprobarlo.',
+    ('dcasa_existencias', 'stock.scrap', 'do_scrap'):
+        OVERRIDE + ' La misma regla que «Dar de baja» (Gerencia, código y costo) antes de super().',
+    ('dcasa_existencias', 'dcasa.merma.resumen', 'action_ver_mermas'):
+        ASISTENTE + ' Exige el gerente de Inventario; solo devuelve la acción de la lista.',
+    ('dcasa_existencias', 'dcasa.merma.resumen', 'action_reclamo'):
+        ASISTENTE + ' Exige el gerente de Inventario; solo abre el asistente del reclamo.',
+    ('dcasa_existencias', 'dcasa.merma.resumen', 'action_contabilizar'):
+        ASISTENTE + ' Llama a action_contabilizar_pendientes, que exige Gerencia o administrador.',
+    ('dcasa_existencias', 'dcasa.merma.resumen', 'action_abrir'):
+        'Exige el gerente de Inventario; crea el resumen del mes (sin datos que guardar) y lo abre.',
+    ('dcasa_existencias', 'dcasa.merma.reclamo', 'action_imprimir'):
+        ASISTENTE + ' Exige el gerente de Inventario; solo devuelve el PDF del reclamo.',
+    ('dcasa_existencias', 'dcasa.merma.reclamo', 'action_marcar_reclamadas'):
+        ASISTENTE + ' Exige el gerente de Inventario en el servidor ANTES del sudo que marca las mermas.',
+    # --- dcasa_envios (calculadora de envíos, 2026-11-06) ----------------------------------------------------------
+    ('dcasa_envios', 'dcasa.envio.lugar', 'buscar_para_cotizar'): ENVIOS_LECTURA,
+    ('dcasa_envios', 'dcasa.envio.lugar', 'datos_de_la_calculadora'): ENVIOS_LECTURA,
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'cotizar_km'): ENVIOS_LECTURA,
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'cotizar_lugar'):
+        ENVIOS_LECTURA + ' Con un id lee ese lugar con sudo ya comprobado el permiso de lectura.',
+    ('dcasa_envios', 'dcasa.envio.lugar', 'get_view'):
+        OVERRIDE + ' Solo quita «Nuevo», editar y borrar a quien no es Gerencia; no lee ni escribe datos.',
+    ('dcasa_envios', 'dcasa.envio.lugar', 'create'):
+        'El ACL deja crear a todo el equipo (agregar un lugar que falta); quien no es Gerencia solo escribe nombre, '
+        'otros nombres, tipo (barrio, edificio o lugar conocido), distrito, corregimiento, km y peaje; el origen, '
+        'quién lo agregó y cuándo los pone el servidor; sin sudo().',
+    ('dcasa_envios', 'dcasa.envio.lugar', 'write'):
+        'ACL: solo Gerencia y administradores escriben; los campos del sistema (origen, llave, quién lo agregó) no se '
+        'escriben a mano y un lugar del archivo queda marcado «cambiado en Odoo»; sin sudo().',
+    ('dcasa_envios', 'dcasa.envio.lugar', 'unlink'): 'ACL: solo administradores borran; sube la versión del índice.',
+    ('dcasa_envios', 'dcasa.envio.lugar', 'action_volver_al_archivo'):
+        'Exige Gerencia o administrador y check_access("write") en el servidor; solo borra la marca «cambiado en '
+        'Odoo».',
+    ('dcasa_envios', 'sale.order', 'action_confirm'):
+        OVERRIDE + ' Comprueba check_access("write") y, antes de super(), revisa la promoción de envío (la quita con '
+                   'sudo y una nota si ya no vale; revisión adversarial B1).',
+    ('dcasa_envios', 'sale.order', 'write'):
+        OVERRIDE + ' Guardar la venta; con líneas, la promoción de envío se revisa una vez al final del guardado (con '
+                   'sudo solo para quitarla o ponerla al día; revisión adversarial M-1).',
+    ('dcasa_envios', 'sale.order', 'copy'):
+        OVERRIDE + ' Duplicar de Odoo; la copia (creada como el usuario) no trae la línea de la promoción de envío: se '
+                   'vuelve a calcular con sudo con la fecha y la compra de la copia, o queda una nota (M4).',
+    ('dcasa_envios', 'dcasa.envio.lugar', 'action_marcar_revisado'):
+        'Exige Gerencia o administrador y check_access("write") en el servidor; solo enciende «Revisado por '
+        'Gerencia» con quién y cuándo (I7: hasta entonces Juan no da el precio de un lugar que agregó el equipo).',
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'create'):
+        'Exige Gerencia o administrador en el servidor (y el ACL); una sola tarifa; la aprobación nunca viene en los '
+        'valores; sin sudo().',
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'write'): ENVIOS_TARIFA,
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'unlink'): 'Siempre falla: la tarifa no se borra (queda el historial).',
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'action_aprobar'): ENVIOS_TARIFA,
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'action_quitar_aprobacion'): ENVIOS_TARIFA,
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'action_subir_5'): ENVIOS_TARIFA,
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'action_bajar_5'): ENVIOS_TARIFA,
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'action_cargar_archivo'):
+        'Exige Gerencia o administrador; solo devuelve la acción de ventana del asistente (que además exige el ACL).',
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'action_abrir'):
+        'Exige Gerencia o administrador; crea la única tarifa vacía (sin cifras) si falta, como el usuario, y la abre.',
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'action_abrir_calculadora'): ACCION_VENTANA,
+    ('dcasa_envios', 'dcasa.envio.tarifa', 'action_choferes_enlace_nuevo'):
+        'Enlace para choferes (2026-11-09): exige Gerencia o administrador y check_access("write") en el servidor '
+        'ANTES de escribir; solo cambia el secreto del enlace (secrets.token_urlsafe), quién y cuándo, y anota en el '
+        'historial sin el secreto. Los campos del enlace solo los leen Gerencia y administradores (groups) y write '
+        'ignora el secreto que llegue en los valores.',
+    ('dcasa_envios', 'dcasa.envio.cargo', 'create'): ENVIOS_CARGO,
+    ('dcasa_envios', 'dcasa.envio.cargo', 'write'): ENVIOS_CARGO,
+    ('dcasa_envios', 'dcasa.envio.cargo', 'unlink'): ENVIOS_CARGO,
+    # La promoción de envío en la cotización (2026-11-12): la línea de la promoción no cuenta contra el tope de la
+    # vendedora, así que su marca solo la pone el servidor (o Gerencia).
+    ('dcasa_envios', 'sale.order.line', 'create'):
+        OVERRIDE + ' Rechaza (AccessError) que quien no sea Gerencia ni el sistema escriba la marca de la promoción de '
+                   'envío (la que exime del tope de descuento); sin sudo().',
+    ('dcasa_envios', 'sale.order.line', 'write'):
+        OVERRIDE + ' La misma regla de la marca de la promoción de envío; y si una persona cambia el precio, la '
+                   'cantidad o el producto de una línea de envío puesta por el sistema, le quita las marcas (con '
+                   'super().write sobre esas líneas, ya autorizado por el ACL) y la rebaja vuelve a contar contra su '
+                   'tope; sin sudo().',
+    ('dcasa_envios', 'dcasa.envio.importar', 'action_cargar'):
+        ASISTENTE + ' Además exige Gerencia o administrador en el servidor; escribe los lugares y la tarifa como el '
+                    'usuario (sin sudo), valida cada dato del archivo y no toca lo agregado en Odoo.',
+    # --- dcasa_camila (Camila, la asistente del mail marketing, 2026-11-06) ------------------------------------------
+    ('dcasa_camila', 'dcasa.camila', 'panel'): CAMILA,
+    ('dcasa_camila', 'dcasa.camila', 'armar'): CAMILA + ' Nunca envía.',
+    ('dcasa_camila', 'dcasa.camila', 'guardar'):
+        CAMILA + ' Solo un borrador; el texto pasa por la revisión de marca y los productos y precios los pone Odoo.',
+    ('dcasa_camila', 'dcasa.camila', 'buscar_productos'):
+        CAMILA + ' Solo lee productos de la tienda; marca cuáles se pueden poner (en tienda, publicados y con precio).',
+    ('dcasa_camila', 'dcasa.camila', 'nueva'):
+        CAMILA + ' Crea un borrador (nunca envía) con productos elegibles de Odoo; la idea es texto que va a la IA sin '
+                 'datos de clientes y el texto pasa por la revisión de marca.',
+    ('dcasa_camila', 'dcasa.camila', 'escribir'):
+        CAMILA + ' Solo un borrador editable; a la IA van solo datos del producto y la idea, el texto pasa por la '
+                 'revisión de marca y respeta los topes de gasto de IA del mes de Brian (de todos y por persona).',
+    ('dcasa_camila', 'dcasa.camila', 'sugerir_productos'):
+        CAMILA + ' Solo lee productos elegibles (en tienda y publicados); la IA recibe la idea y nombres de productos.',
+    ('dcasa_camila', 'dcasa.camila', 'enviar_prueba'):
+        CAMILA + ' La prueba sale solo al correo de quien la pide, por la política de siempre (clase «prueba»).',
+    ('dcasa_camila', 'dcasa.camila', 'enviar'):
+        CAMILA + ' Revisa producción, la clave, los 15 días, los precios de ahora y el permiso de cada cliente; '
+                 'confirma la base antes de hablar con Resend (sin doble envío).',
+    ('dcasa_camila', 'dcasa.camila', 'descartar'):
+        CAMILA + ' Una campaña aprobada (trabada) solo la descartan Gerencia o un administrador, y solo si en Resend '
+                 'no salió ni va a salir.',
+    ('dcasa_camila', 'dcasa.camila', 'actualizar_resultados'): CAMILA + ' Solo lee los resultados de Resend.',
+    ('dcasa_camila', 'dcasa.camila', 'ajustar_enlace_pie'):
+        CAMILA + ' Además exige Gerencia o administrador (AccessError) para prender o apagar la línea «Sí, quiero» '
+                 'del pie; el valor tiene que ser verdadero o falso.',
+    ('dcasa_camila', 'dcasa.camila', 'ajustar_remitente'):
+        CAMILA + ' Además exige Gerencia o administrador (AccessError) para cambiar el remitente de las campañas; '
+                 'acepta solo un correo bien escrito (sin nombre) o vacío. No toca el remitente de las facturas.',
+    ('dcasa_camila', 'dcasa.camila', 'revisar_remitente'):
+        CAMILA + ' Solo en producción con la clave de campañas: lee los dominios de Resend (sin la clave en la '
+                 'respuesta) y guarda si el remitente está verificado; no más de una vez cada pocos segundos.',
+    ('dcasa_camila', 'res.partner', 'action_dcasa_promos_baja'):
+        'Botón «Darle de baja» de la ficha: una ficha a la vez y check_access("write") en el servidor ANTES del sudo '
+        'que anota la baja (final) del permiso de novedades.',
+    ('dcasa_camila', 'res.partner', 'action_dcasa_promos_confirmar'):
+        'Botón «El cliente dijo que sí» de la ficha (solo si las novedades se activaron solas): una ficha a la vez y '
+        'check_access("write") ANTES del sudo; anota «tienda» con quien lo confirma.',
+    ('dcasa_camila', 'res.partner', 'write'):
+        OVERRIDE + ' IMPIDE escribir a mano (sin sudo) los campos del permiso de novedades por correo. Si una persona '
+                   'del equipo le agrega el correo a UNA ficha, activa las novedades con el origen «Se activó sola» '
+                   '(nunca importando, en bloque, instalando, por el sistema ni con baja o un «no»; en un savepoint).',
+    ('dcasa_camila', 'res.partner', 'create'):
+        OVERRIDE + ' IMPIDE crear una ficha con el permiso de novedades escrito a mano; una ficha nueva con correo, '
+                   'creada por una persona del equipo, queda con las novedades activadas solas (mismas reglas).',
+    ('dcasa_camila', 'res.users', 'create'):
+        OVERRIDE + ' Solo agrega al contexto que la ficha del usuario nuevo no active sola las novedades.',
+    ('dcasa_camila', 'res.partner', 'web_save'):
+        OVERRIDE + ' Solo agrega al contexto la marca de «una persona guardó la ficha en la pantalla» (con ella, un '
+                   'correo nuevo activa las novedades; sigue exigiendo un usuario del equipo y una sola ficha).',
+    ('dcasa_camila', 'sale.order', 'web_save'):
+        OVERRIDE + ' Igual que la ficha: la marca de la pantalla para el correo de «Sus datos».',
+    ('dcasa_camila', 'account.move', 'web_save'):
+        OVERRIDE + ' Igual que la ficha: la marca de la pantalla para el correo de «Sus datos».',
+    ('dcasa_camila', 'dcasa.camila.pregunta', 'create'):
+        OVERRIDE + ' IMPIDE crearlo fuera del sistema: el cuadro lo arma solo el servidor al confirmar o pagar.',
+    ('dcasa_camila', 'dcasa.camila.pregunta', 'write'):
+        OVERRIDE + ' IMPIDE escribir otra cosa que la casilla y el correo (lo demás lo arma el servidor).',
+    ('dcasa_camila', 'sale.order', 'create'):
+        OVERRIDE + ' Quita «Vino del correo» de lo que manda quien crea y, después de crear, lo anota Camila (en un '
+                   'savepoint, sin poder frenar la cotización).',
+    ('dcasa_camila', 'sale.order', 'write'):
+        OVERRIDE + ' Solo QUITA «Vino del correo» de lo que se escribe (solo lo escribe Camila, con una marca que no '
+                   'viaja por RPC).',
+    # Etapa 1b (2026-11-06): el cuadro de las novedades al confirmar una venta o registrar un pago.
+    ('dcasa_camila', 'sale.order', 'action_confirm'):
+        OVERRIDE + ' Después de confirmar (sin tocar la venta), con la marca del botón de la pantalla y un usuario del '
+                   'equipo, devuelve el cuadro de la pregunta; armarlo va en un savepoint y si falla no cambia nada.',
+    ('dcasa_camila', 'account.payment.register', 'action_create_payments'):
+        OVERRIDE + ' Después de pagar (sin tocar el pago), igual que al confirmar: devuelve el cuadro de la pregunta y '
+                   'lo que seguía sale al contestar.',
+    ('dcasa_camila', 'dcasa.camila.pregunta', 'action_listo'):
+        'Solo el equipo; revisa en el servidor que la venta esté confirmada o la factura publicada, que quien contesta '
+        'pueda leerla y que la ficha sea la de ese cliente. Desactivada anota el «no»; activada nunca da de alta a '
+        'quien tiene baja.',
+    ('dcasa_camila', 'dcasa.camila.pregunta', 'action_si'):
+        'Las mismas revisiones que «Listo». El correo pasa por las reglas de contactos y nunca da de alta a quien '
+        'tiene baja.',
+    ('dcasa_camila', 'dcasa.camila.pregunta', 'action_no'):
+        'Las mismas revisiones que «Listo»; anota el «no» (quita el permiso; no es la baja).',
+    ('dcasa_camila', 'dcasa.camila.pregunta', 'action_sin_correo'):
+        'Las mismas revisiones que «Listo»; no anota nada (sin correo no hay sí).',
+    # --- dcasa_buscar_foto («Busca con una foto» en la tienda, 2026-11-13) -------------------------------------------
+    ('dcasa_buscar_foto', 'dcasa.buscar.foto.ajustes', 'execute'):
+        'Botón «Guardar»: exige Gerencia o administrador en el servidor (_dcasa_exigir) ANTES del sudo con que guarda '
+        'el interruptor y los topes (ir.config_parameter), y valida cada tope (0 a 10 000).',
+    ('dcasa_buscar_foto', 'dcasa.buscar.foto.ajustes', 'cancel'): ACCION_VENTANA,
+    # --- dcasa_brian_tienda («Brian de la tienda», el chat de la web, 2026-11-13) -------------------------------------
+    ('dcasa_brian_tienda', 'dcasa.brian.tienda.ajustes', 'execute'):
+        'Botón «Guardar»: exige Gerencia o administrador en el servidor (_dcasa_exigir) ANTES del sudo con que guarda '
+        'el interruptor, el presupuesto y los topes (ir.config_parameter), y valida cada número (0 al máximo).',
+    ('dcasa_brian_tienda', 'dcasa.brian.tienda.ajustes', 'cancel'): ACCION_VENTANA,
+    # --- dcasa_pago_tilopay (pagos con tarjeta y Yappy, 2026-11-19) --------------------------------------------------
+    ('dcasa_pago_tilopay', 'payment.provider', 'action_dcasa_tilopay_probar'):
+        'Botón «Probar conexión»: exige Gerencia o administrador en el servidor (_dcasa_tilopay_exigir_gerencia) ANTES '
+        'de nada; solo abre sesión en Tilopay con las claves del entorno y dice sí o no (nunca las muestra, las '
+        'guarda ni las registra); lo único que escribe, con sudo ya comprobado el grupo, es la fecha y el resultado '
+        'de la prueba.',
+    # --- dcasa_pago_yappy (pago directo con Yappy, 2026-11-20) -------------------------------------------------------
+    ('dcasa_pago_yappy', 'payment.provider', 'action_dcasa_yappy_probar'):
+        'Botón «Probar conexión»: exige Gerencia o administrador en el servidor (_dcasa_yappy_exigir_gerencia) ANTES '
+        'de nada; solo le pide a Yappy que valide el ID de comercio y el dominio de las variables del entorno (el '
+        'token se tira; nunca muestra, guarda ni registra una clave); lo único que escribe, con sudo ya comprobado el '
+        'grupo, es la fecha y el resultado de la prueba.',
+    ('dcasa_pago_yappy', 'payment.transaction', 'action_dcasa_yappy_confirmar_cobro'):
+        'Botón «Confirmar que el dinero entró» (la persona de Caja ya miró la orden en Yappy Comercial): exige Caja, '
+        'Gerencia, contabilidad o administrador en el servidor (_dcasa_yappy_exigir_caja) ANTES de nada; solo sirve '
+        'con el cobro de Yappy directo abierto (borrador o pendiente) y pasa por el MISMO camino que el aviso firmado '
+        '(_process → _apply_updates, con sus comprobaciones de entorno, pedido vivo, pedido sin pagar por otra vía y '
+        'total): un solo cobro, queda quién y cuándo, y el aviso tardío no hace nada. Una transacción cerrada o en '
+        'revisión se rechaza; el sudo es después de comprobar el grupo.',
+    ('dcasa_brian_tienda', 'sale.order.line', 'write'):
+        OVERRIDE + ' Solo NIEGA: con el centinela interno de la tienda (CONSERVAR_ENVIO, que no se puede mandar por '
+                   'RPC) deja fuera las líneas de envío del sistema para que la tienda no las vuelva $0. Sin el '
+                   'centinela no cambia nada y sigue el super(); sin sudo().',
+    # --- dcasa_base: el origen de la venta online ------------------------------------------------------
+    ('dcasa_base', 'sale.order', 'write'):
+        OVERRIDE + ' Solo NIEGA escribir las marcas de origen de la venta online (nació en la web, Andrés, la llevó '
+                   'una vendedora): solo se escriben por código, con una llave interna que por RPC nunca llega; y '
+                   'ligar o soltar cobros (transaction_ids) a quien no cobra (RV8 R8-1); sin sudo().',
+    ('dcasa_base', 'sale.order', 'default_get'):
+        OVERRIDE + ' Solo QUITA del resultado las marcas de origen de la venta online (un ``default_*`` del contexto '
+                   'llega por RPC y no puede fabricarlas); sin sudo().',
+    # --- dcasa_comision_web ----------------------------------------------------------------------------
+    ('dcasa_comision_web', 'dcasa.web.liquidacion', 'default_get'):
+        OVERRIDE + ' Solo deja el estado en «borrador» y vacía quién aprobó, pagó o canceló, aunque el contexto '
+                   'diga otra cosa; sin sudo().',
+    ('dcasa_comision_web', 'dcasa.web.reglas', 'default_get'):
+        OVERRIDE + ' Solo deja la versión sin anular, aunque el contexto diga otra cosa; sin sudo().',
+    ('dcasa_comision_web', 'dcasa.web.liquidacion', 'action_armar'): COMISION_WEB_BOTON,
+    ('dcasa_comision_web', 'dcasa.web.liquidacion', 'action_aprobar'): COMISION_WEB_BOTON,
+    ('dcasa_comision_web', 'dcasa.web.liquidacion', 'action_pagar'): COMISION_WEB_BOTON,
+    ('dcasa_comision_web', 'dcasa.web.liquidacion', 'action_cancelar'): COMISION_WEB_BOTON,
+    ('dcasa_comision_web', 'dcasa.web.liquidacion', 'create'):
+        OVERRIDE + ' Solo numera la liquidación y descarta el estado que llegue; el ACL del grupo «Administra la '
+                   'nómina» manda; sin sudo().',
+    ('dcasa_comision_web', 'dcasa.web.liquidacion', 'write'):
+        OVERRIDE + ' Solo NIEGA editar lo que ya no es borrador (salvo la fecha y la referencia del pago de una '
+                   'aprobada); sin sudo().',
+    ('dcasa_comision_web', 'dcasa.web.liquidacion.linea', 'write'): COMISION_WEB_BLOQUEO,
+    ('dcasa_comision_web', 'dcasa.web.liquidacion.linea', 'unlink'): COMISION_WEB_BLOQUEO,
+    ('dcasa_comision_web', 'dcasa.web.movimiento', 'write'): COMISION_WEB_BLOQUEO,
+    ('dcasa_comision_web', 'dcasa.web.movimiento', 'unlink'): COMISION_WEB_BLOQUEO,
+    ('dcasa_comision_web', 'dcasa.web.reglas', 'write'): COMISION_WEB_BLOQUEO,
+    ('dcasa_comision_web', 'dcasa.web.reglas', 'create'):
+        OVERRIDE + ' Numera la versión, comprueba que solo rige hacia adelante y pone el autor; el ACL del grupo '
+                   '«Administra la nómina» manda; sin sudo().',
+    ('dcasa_comision_web', 'dcasa.web.reglas', 'action_nueva_version'): COMISION_WEB_ACCION,
+    ('dcasa_comision_web', 'dcasa.web.reglas', 'action_anular'): COMISION_WEB_BOTON,
+    ('dcasa_comision_web', 'dcasa.web.ajuste', 'action_anotar'): COMISION_WEB_BOTON,
+    ('dcasa_comision_web', 'dcasa.web.ajuste', 'create'):
+        OVERRIDE + ' Solo rechaza un monto que no es un número (inf, nan) con un mensaje claro; el ACL del grupo '
+                   '«Administra la nómina» manda; sin sudo().',
+    ('dcasa_comision_web', 'dcasa.web.ajuste', 'write'):
+        OVERRIDE + ' Solo rechaza un monto que no es un número (inf, nan) con un mensaje claro; el ACL del grupo '
+                   '«Administra la nómina» manda; sin sudo().',
+    ('dcasa_comision_web', 'account.move', 'button_draft'):
+        OVERRIDE + ' Solo DESPUÉS de pasar la factura a borrador compara con la verdad lo anotado en la comisión web '
+                   '(reversa lo que ya no está cobrado), dentro de un savepoint que nunca falla; sin sudo() para '
+                   'escribir en la factura.',
+    ('dcasa_comision_web', 'account.move', 'button_cancel'):
+        OVERRIDE + ' Solo DESPUÉS de anular la factura compara con la verdad lo anotado en la comisión web, dentro de '
+                   'un savepoint que nunca falla; sin sudo() para escribir en la factura.',
+    ('dcasa_comision_web', 'account.move', 'unlink'):
+        OVERRIDE + ' Solo DESPUÉS de borrar la factura reversa lo anotado en la comisión web, dentro de un savepoint '
+                   'que nunca falla.',
+    ('dcasa_comision_web', 'dcasa.web.reparto', 'write'): COMISION_WEB_BLOQUEO,
+    ('dcasa_comision_web', 'dcasa.web.reparto', 'create'):
+        OVERRIDE + ' Solo deja crear renglones junto con su versión (llave interna que por RPC nunca llega); sin '
+                   'sudo().',
+    ('dcasa_comision_web', 'dcasa.web.reparto', 'action_cambiar_quienes_reciben'): COMISION_WEB_ACCION,
+    ('dcasa_comision_web', 'dcasa.web.venta', 'write'):
+        OVERRIDE + ' Solo NIEGA escribir a quien no es el sistema (las ventas del sitio las anota el sistema); sin '
+                   'sudo().',
+    # Ubicación exacta de entrega (docs/UBICACION.md).
+    ('dcasa_ubicacion', 'res.partner', 'action_dcasa_enlace_ubicacion'):
+        'Botón: exige poder escribir en la ficha (check_access) y solo crea, en sudo, el enlace de un solo uso de ESA '
+        'ficha; devuelve la URL para copiarla.',
+    ('dcasa_ubicacion', 'sale.order', 'action_dcasa_abrir_entrega'):
+        'Botón: exige poder leer la venta (check_access); arma (en sudo) la entrega de ESA venta confirmada y devuelve '
+        'la URL de la página del motorizado.',
+    ('dcasa_ubicacion', 'sale.order', 'action_confirm'):
+        OVERRIDE + ' Después de confirmar (con el permiso de Odoo ya revisado) arma, en sudo, la entrega del '
+                   'motorizado de esa venta si va a domicilio y, si su dirección no tiene un punto confiable, le pide '
+                   'una vez la ubicación (mensaje «por enviar» del asistente o un pendiente para la vendedora) en un '
+                   'savepoint que nunca hace fallar la confirmación (models/avisos.py).',
+    ('dcasa_ubicacion', 'sale.order', 'action_dcasa_pedir_ubicacion_whatsapp'):
+        'Botón «📲 Pedir ubicación por WhatsApp»: exige sales_team.group_sale_salesman en el servidor y poder escribir '
+        'en ESA venta (check_access) ANTES del sudo con que crea el enlace de un solo uso de su dirección de entrega; '
+        'devuelve el enlace de WhatsApp con el texto, sin coordenadas.',
+    ('dcasa_ubicacion', 'sale.order', 'action_dcasa_avisar_sale_hoy'):
+        'Botón y acción de la lista «🚚 Sale hoy: avisarle»: exige sales_team.group_sale_salesman en el servidor y '
+        'poder escribir en esas ventas (check_access) ANTES de cualquier sudo; una vez por venta y por día; deja el '
+        'mensaje «por enviar» del asistente (sin coordenadas) o devuelve el enlace de WhatsApp para una persona.',
+    ('dcasa_ubicacion', 'stock.picking', 'action_dcasa_avisar_sale_hoy'):
+        'Botón «🚚 Sale hoy: avisarle» de la entrega: exige poder leer la entrega (check_access) y llama al de su '
+        'venta como el mismo usuario (que exige el grupo de ventas y poder escribir en la venta).',
+    ('dcasa_ubicacion', 'delivery.carrier', 'fixed_rate_shipment'):
+        OVERRIDE + ' Solo para la entrega a domicilio: el precio sale del punto confirmado de la dirección de entrega '
+                   'del pedido (la tabla de envíos aprobada); no escribe nada.',
+    ('dcasa_ubicacion', 'sale.order', 'set_delivery_line'):
+        OVERRIDE + ' Después de poner el envío (con el permiso de Odoo ya revisado), si es la entrega a domicilio y el '
+                   'precio salió del punto, marca esa línea como la del sistema (su lugar y la promoción de hoy), '
+                   'igual que el checkout; solo en borrador o enviada.',
+    ('dcasa_ubicacion', 'res.partner', 'action_dcasa_abrir_waze'):
+        'Botón: exige sales_team.group_sale_salesman y poder leer la ficha (check_access) antes de leer el punto en '
+        'sudo; devuelve la ruta de Waze de ESA ficha (no escribe nada).',
+    ('dcasa_ubicacion', 'res.partner', 'action_dcasa_abrir_google_maps'):
+        'Botón: exige sales_team.group_sale_salesman y poder leer la ficha (check_access) antes de leer el punto en '
+        'sudo; devuelve la ruta de Google Maps de ESA ficha (no escribe nada).',
+    ('dcasa_ubicacion', 'res.partner', 'action_dcasa_quitar_fachada'):
+        'Botón: exige poder escribir en la ficha (check_access) y solo quita, en sudo, la foto de la casa de ESA ficha '
+        '(el objeto de R2 lo recoge su limpieza; nunca se borra al momento).',
+}
+
+# Modelos abstractos sin ACL: por RPC no se puede llamar NINGÚN método suyo (S-09).
+SIN_SUPERFICIE = ('brian.herramientas', 'brian.proveedores', 'brian.politica', 'dcasa.mantenimiento',
+                  'dcasa.fe.pac', 'dcasa.fe.pac.simulado', 'dcasa.correo', 'dcasa.existencias.alertas')
+
+
+def es_publico(modelo, nombre):
+    try:
+        get_public_method(modelo, nombre)
+    except (AccessError, AttributeError):
+        return False
+    return True
+
+
+def metodos_de_dcasa(env):
+    """{(módulo, modelo, método)} definidos en addons/ e invocables por RPC."""
+    encontrados = set()
+    for nombre_modelo in env.registry:
+        modelo = env[nombre_modelo]
+        for clase in type(modelo).mro():
+            if not clase.__module__.startswith(PREFIJOS):
+                continue
+            modulo = clase.__module__.split('.')[2]
+            for nombre, valor in vars(clase).items():
+                if nombre.startswith('_') or not inspect.isfunction(valor):
+                    continue
+                if es_publico(modelo, nombre):
+                    encontrados.add((modulo, nombre_modelo, nombre))
+    return encontrados
+
+
+@tagged('post_install', '-at_install')
+class TestSuperficieRpc(TransactionCase):
+
+    def test_metodos_publicos_en_lista_blanca(self):
+        encontrados = metodos_de_dcasa(self.env)
+        nuevos = sorted(encontrados - set(LISTA_BLANCA))
+        self.assertFalse(nuevos, (
+            'Métodos públicos (invocables por RPC) que no están en la lista blanca. Hazlos privados '
+            '(_nombre o @api.private) o exige el grupo en el servidor y anótalos con su motivo en '
+            f'LISTA_BLANCA: {nuevos}'))
+
+    def test_lista_blanca_al_dia(self):
+        """Una entrada que ya no es pública (o ya no existe) se borra: la lista no se pudre."""
+        instalados = set(self.env['ir.module.module'].search([('state', '=', 'installed')]).mapped('name'))
+        encontrados = metodos_de_dcasa(self.env)
+        viejas = sorted(clave for clave in LISTA_BLANCA if clave[0] in instalados and clave not in encontrados)
+        self.assertFalse(viejas, f'Entradas de LISTA_BLANCA que ya no son públicas: {viejas}')
+
+    def test_motivo_en_cada_entrada(self):
+        for clave, motivo in LISTA_BLANCA.items():
+            self.assertTrue(motivo and len(motivo) > 10, f'{clave} necesita un motivo')
+
+    def test_ningun_boton_de_las_vistas_llama_a_un_metodo_api_model(self):
+        """Un botón ``type="object"`` llama con ``[ids]`` (vacía en la cabecera de una lista sin filas marcadas); un
+        método ``@api.model`` no acepta ese argumento y falla con «takes 1 positional argument but 2 were given».
+        Así falló «Vincular mi Telegram» en producción. Los métodos de botón van SIN ``@api.model`` (``self`` puede
+        venir vacío)."""
+        datos = self.env['ir.model.data'].search([
+            ('model', '=', 'ir.ui.view'), '|', ('module', '=like', 'dcasa_%'), ('module', '=', 'website_dcasa')])
+        vistas = self.env['ir.ui.view'].browse(datos.mapped('res_id')).exists()
+        revisados, culpables = 0, []
+        for vista in vistas:
+            if not vista.model or vista.model not in self.env:
+                continue
+            raiz = etree.fromstring(vista.arch_db.encode())
+            for boton in raiz.xpath('//button[@type="object"][@name]'):
+                modelo = vista.model
+                # Un botón dentro de <field name="x"><list>…</list></field> es del modelo relacionado.
+                for campo in reversed([a for a in boton.iterancestors() if a.tag == 'field']):
+                    definicion = self.env[modelo]._fields.get(campo.get('name'))
+                    modelo = definicion.comodel_name if definicion and definicion.comodel_name else modelo
+                metodo = getattr(type(self.env[modelo]), boton.get('name'), None)
+                if metodo is None:
+                    continue
+                revisados += 1
+                if getattr(metodo, '_api_model', False):
+                    culpables.append(f'{modelo}.{boton.get("name")} (vista {vista.get_external_id().get(vista.id)})')
+        self.assertTrue(revisados, 'La prueba no encontró ningún botón: ya no revisa nada')
+        self.assertFalse(culpables, f'Botones ligados a métodos @api.model (quita el decorador): {sorted(culpables)}')
+
+    def test_abstractos_sin_acl_no_exponen_nada(self):
+        """S-09: brian.herramientas, brian.proveedores y brian.politica: nada propio por RPC."""
+        for nombre_modelo in SIN_SUPERFICIE:
+            if nombre_modelo not in self.env:
+                continue
+            modelo = self.env[nombre_modelo]
+            for clase in type(modelo).mro():
+                if not clase.__module__.startswith(PREFIJOS):
+                    continue
+                for nombre, valor in vars(clase).items():
+                    if inspect.isfunction(valor):
+                        self.assertFalse(es_publico(modelo, nombre), f'{nombre_modelo}.{nombre} es público')

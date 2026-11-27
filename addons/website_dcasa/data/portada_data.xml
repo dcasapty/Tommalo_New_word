@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- El carrusel de la portada nace con los productos de models/portada.py, CARRUSEL_INICIAL (vacío en Tommalo). Corre al
+         instalar y en cada actualización, pero solo la primera vez hace algo: después la lista es de Gerencia. -->
+    <function model="dcasa.portada.diapositiva" name="_dcasa_sembrar"/>
+</odoo>

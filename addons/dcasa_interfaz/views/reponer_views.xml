@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- «Reponer» (Compras › Reponer): cuánto pedirle a cada proveedor según el ritmo de venta y lo que tarda en llegar.
+     Una pantalla propia (static/src/js/reponer.js); los números los da dcasa.reponer.obtener, que exige Gerencia o
+     administrador en el servidor. Solo Gerencia y administradores ven el menú. -->
+<odoo>
+    <record id="action_dcasa_reponer" model="ir.actions.client">
+        <field name="name">Reponer</field>
+        <field name="tag">dcasa_reponer</field>
+    </record>
+
+    <menuitem id="menu_dcasa_reponer" name="Reponer" parent="purchase.menu_purchase_root"
+              action="action_dcasa_reponer" sequence="4" groups="dcasa_base.group_gerencia,base.group_system"/>
+</odoo>

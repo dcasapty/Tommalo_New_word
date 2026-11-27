@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Lo contable «de un jefe» no se ve por datos (URL, enlace o RPC), aunque el menú esté oculto.
+
+        Problema: Odoo le da a quien tiene Facturación (account.group_account_invoice: la Vendedora y la
+        Caja) reglas de registro con dominio [(1, '=', 1)]: todos los asientos y apuntes (facturas y
+        pagos de PROVEEDORES, asientos varios como la contabilización de la nómina, etc.). Las reglas
+        de grupo se combinan con «o», así que con una sola que abra todo, las demás no sirven.
+
+        Qué hace este archivo:
+        1. Estrecha esas reglas estándar para Facturación a LO SUYO (pedido de la dueña, 2026-10-16): sus
+           facturas, notas de crédito y recibos de CLIENTE (invoice_user_id = ella, o sin vendedora), sus
+           cobros (los que registró o los de sus facturas), sus asientos y su conciliación. Nada de lo de las
+           compañeras, de proveedores, asientos varios, pagos salientes (proveedores, nómina), extractos
+           bancarios, líneas analíticas de gastos, cuentas bancarias de empleados ni el análisis de facturas
+           con compras. «Suyo» es siempre invoice_user_id, nunca quién lo creó: Caja crea la factura desde la
+           cotización de la vendedora.
+        1b. «Toda la tienda, solo de clientes» para Caja (sales_team.group_sale_salesman_all_leads) y el lector
+           contable: lo mismo que Facturación veía antes de este cambio.
+        2. Le devuelve TODO (lectura y escritura) a quien tiene contabilidad: account.group_account_user
+           (contador, Gerencia, Nómina) y account.group_account_manager. account.group_account_readonly
+           conserva su lectura total (la regla estándar de solo lectura ya existía).
+        3. No toca las reglas globales de varias empresas ni las de otros grupos (Compras sigue viendo
+           las facturas de proveedor; Nómina y RR. HH. siguen viendo las cuentas de sus empleados).
+
+        Las reglas estándar son «noupdate» y no se reescriben con un -u normal; por eso se cambian con
+        <function> (que corre en cada instalación y en cada actualización, idempotente) en vez de
+        redefinir el registro. Ver docs/PERMISOS.md.
+    -->
+
+    <!-- ================================================================== -->
+    <!-- 1. Contabilidad (contador, Gerencia, administrador): todo, como hoy -->
+    <!-- ================================================================== -->
+    <record id="regla_asientos_contabilidad" model="ir.rule">
+        <field name="name">Contabilidad: todos los asientos</field>
+        <field name="model_id" ref="account.model_account_move"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_user')), (4, ref('account.group_account_manager'))]"/>
+    </record>
+
+    <record id="regla_apuntes_contabilidad" model="ir.rule">
+        <field name="name">Contabilidad: todos los apuntes</field>
+        <field name="model_id" ref="account.model_account_move_line"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_user')), (4, ref('account.group_account_manager'))]"/>
+    </record>
+
+    <record id="regla_pagos_contabilidad" model="ir.rule">
+        <field name="name">Contabilidad: todos los pagos</field>
+        <field name="model_id" ref="account.model_account_payment"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_user')), (4, ref('account.group_account_manager'))]"/>
+    </record>
+
+    <record id="regla_pagos_lectura_contable" model="ir.rule">
+        <field name="name">Contabilidad (solo lectura): todos los pagos</field>
+        <field name="model_id" ref="account.model_account_payment"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_readonly'))]"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="regla_extractos_contabilidad" model="ir.rule">
+        <field name="name">Contabilidad: todos los extractos bancarios</field>
+        <field name="model_id" ref="account.model_account_bank_statement"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_user')), (4, ref('account.group_account_manager'))]"/>
+    </record>
+
+    <record id="regla_extractos_lectura_contable" model="ir.rule">
+        <field name="name">Contabilidad (solo lectura): todos los extractos bancarios</field>
+        <field name="model_id" ref="account.model_account_bank_statement"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_readonly'))]"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="regla_lineas_extracto_contabilidad" model="ir.rule">
+        <field name="name">Contabilidad: todos los movimientos bancarios</field>
+        <field name="model_id" ref="account.model_account_bank_statement_line"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_user')), (4, ref('account.group_account_manager'))]"/>
+    </record>
+
+    <record id="regla_lineas_extracto_lectura_contable" model="ir.rule">
+        <field name="name">Contabilidad (solo lectura): todos los movimientos bancarios</field>
+        <field name="model_id" ref="account.model_account_bank_statement_line"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_readonly'))]"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="regla_conciliaciones_contabilidad" model="ir.rule">
+        <field name="name">Contabilidad: todas las conciliaciones</field>
+        <field name="model_id" ref="account.model_account_partial_reconcile"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_user')), (4, ref('account.group_account_manager'))]"/>
+    </record>
+
+    <record id="regla_conciliaciones_lectura_contable" model="ir.rule">
+        <field name="name">Contabilidad (solo lectura): todas las conciliaciones</field>
+        <field name="model_id" ref="account.model_account_partial_reconcile"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_readonly'))]"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="regla_analitica_contabilidad" model="ir.rule">
+        <field name="name">Contabilidad: todas las líneas analíticas</field>
+        <field name="model_id" ref="analytic.model_account_analytic_line"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_user')), (4, ref('account.group_account_manager'))]"/>
+    </record>
+
+    <record id="regla_cuentas_bancarias_contabilidad" model="ir.rule">
+        <field name="name">Contabilidad: cuentas bancarias, también las de empleados</field>
+        <field name="model_id" ref="base.model_res_partner_bank"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_user')), (4, ref('account.group_account_manager'))]"/>
+    </record>
+
+    <record id="regla_informe_facturas_contabilidad" model="ir.rule">
+        <field name="name">Contabilidad: análisis de todas las facturas</field>
+        <field name="model_id" ref="account.model_account_invoice_report"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_readonly')), (4, ref('account.group_account_user')), (4, ref('account.group_account_manager'))]"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <!-- ================================================================== -->
+    <!-- 2. Facturación (Vendedora): solo lo suyo del flujo de venta          -->
+    <!-- ================================================================== -->
+    <!-- Cobros de cliente (pagos entrantes): los que ella registró o los de sus facturas (aunque los haya
+         registrado Caja). Los pagos salientes (proveedores, nómina, devoluciones de dinero) los hace
+         contabilidad o Gerencia. -->
+    <record id="regla_pagos_facturacion" model="ir.rule">
+        <field name="name">Facturación: solo sus cobros de clientes</field>
+        <field name="model_id" ref="account.model_account_payment"/>
+        <field name="domain_force">[('payment_type', '=', 'inbound'), '|', ('create_uid', '=', user.id), ('invoice_ids', 'any', [('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False)])]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_invoice'))]"/>
+    </record>
+
+    <!-- Los extractos y movimientos bancarios no son de Facturación: ninguno. -->
+    <record id="regla_extractos_facturacion" model="ir.rule">
+        <field name="name">Facturación: sin extractos bancarios</field>
+        <field name="model_id" ref="account.model_account_bank_statement"/>
+        <field name="domain_force">[('id', '=', 0)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_invoice'))]"/>
+    </record>
+
+    <record id="regla_lineas_extracto_facturacion" model="ir.rule">
+        <field name="name">Facturación: sin movimientos bancarios</field>
+        <field name="model_id" ref="account.model_account_bank_statement_line"/>
+        <field name="domain_force">[('id', '=', 0)]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_invoice'))]"/>
+    </record>
+
+    <!-- Conciliaciones: solo las de apuntes que ella ya ve (su factura contra su cobro o su nota de crédito). -->
+    <record id="regla_conciliaciones_facturacion" model="ir.rule">
+        <field name="name">Facturación: solo conciliaciones de sus facturas y cobros</field>
+        <field name="model_id" ref="account.model_account_partial_reconcile"/>
+        <field name="domain_force">[('debit_move_id', 'any', [('move_id', 'any', ['|', '&amp;', ('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False), ('origin_payment_id', 'any', [('payment_type', '=', 'inbound'), '|', ('create_uid', '=', user.id), ('invoice_ids', 'any', [('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False)])])])]), ('credit_move_id', 'any', [('move_id', 'any', ['|', '&amp;', ('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False), ('origin_payment_id', 'any', [('payment_type', '=', 'inbound'), '|', ('create_uid', '=', user.id), ('invoice_ids', 'any', [('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False)])])])])]</field>
+        <field name="groups" eval="[(4, ref('account.group_account_invoice'))]"/>
+    </record>
+
+    <!-- Líneas analíticas (rentabilidad por canal): solo las de SUS facturas de clientes, para todo empleado.
+         Con dcasa_contabilidad todo empleado entra a la analítica (ACL); sin esta regla leería costos. -->
+    <record id="regla_analitica_empleados" model="ir.rule">
+        <field name="name">Empleados: líneas analíticas solo de sus facturas de clientes</field>
+        <field name="model_id" ref="analytic.model_account_analytic_line"/>
+        <field name="domain_force">[('move_line_id.move_id', 'any', [('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False)])]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <!-- ================================================================== -->
+    <!-- 2b. Toda la tienda, solo de clientes: Caja (Ventas «todos los       -->
+    <!--     documentos») y el lector contable. Es lo que Facturación veía   -->
+    <!--     antes de «solo lo suyo»; contabilidad tiene sus reglas de todo. -->
+    <!-- ================================================================== -->
+    <record id="regla_asientos_toda_la_tienda" model="ir.rule">
+        <field name="name">Caja y lector: asientos de clientes de toda la tienda</field>
+        <field name="model_id" ref="account.model_account_move"/>
+        <field name="domain_force">['|', ('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), ('origin_payment_id.payment_type', '=', 'inbound')]</field>
+        <field name="groups" eval="[(4, ref('sales_team.group_sale_salesman_all_leads')), (4, ref('account.group_account_readonly'))]"/>
+    </record>
+
+    <record id="regla_apuntes_toda_la_tienda" model="ir.rule">
+        <field name="name">Caja y lector: apuntes de clientes de toda la tienda</field>
+        <field name="model_id" ref="account.model_account_move_line"/>
+        <field name="domain_force">['|', ('move_id.move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), ('payment_id.payment_type', '=', 'inbound')]</field>
+        <field name="groups" eval="[(4, ref('sales_team.group_sale_salesman_all_leads')), (4, ref('account.group_account_readonly'))]"/>
+    </record>
+
+    <record id="regla_pagos_toda_la_tienda" model="ir.rule">
+        <field name="name">Caja y lector: cobros de clientes de toda la tienda</field>
+        <field name="model_id" ref="account.model_account_payment"/>
+        <field name="domain_force">[('payment_type', '=', 'inbound')]</field>
+        <field name="groups" eval="[(4, ref('sales_team.group_sale_salesman_all_leads')), (4, ref('account.group_account_readonly'))]"/>
+    </record>
+
+    <record id="regla_conciliaciones_toda_la_tienda" model="ir.rule">
+        <field name="name">Caja y lector: conciliaciones de facturas y cobros de clientes de toda la tienda</field>
+        <field name="model_id" ref="account.model_account_partial_reconcile"/>
+        <field name="domain_force">[
+            ('debit_move_id', 'any', ['|', ('move_id.move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), ('payment_id.payment_type', '=', 'inbound')]),
+            ('credit_move_id', 'any', ['|', ('move_id.move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), ('payment_id.payment_type', '=', 'inbound')]),
+        ]</field>
+        <field name="groups" eval="[(4, ref('sales_team.group_sale_salesman_all_leads')), (4, ref('account.group_account_readonly'))]"/>
+    </record>
+
+    <record id="regla_analitica_toda_la_tienda" model="ir.rule">
+        <field name="name">Caja y lector: líneas analíticas de facturas de clientes de toda la tienda</field>
+        <field name="model_id" ref="analytic.model_account_analytic_line"/>
+        <field name="domain_force">[('move_line_id.move_id.move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt'))]</field>
+        <field name="groups" eval="[(4, ref('sales_team.group_sale_salesman_all_leads')), (4, ref('account.group_account_readonly'))]"/>
+    </record>
+
+    <!-- ================================================================== -->
+    <!-- 3. Reglas estándar «ver todo» de Facturación que se estrechan        -->
+    <!--    (corre en cada instalación y actualización: ver docs/PERMISOS.md) -->
+    <!-- ================================================================== -->
+    <data noupdate="0">
+        <!-- Asientos: SU factura/nota/recibo de cliente (o sin vendedora) o el asiento de SU cobro. -->
+        <function model="ir.rule" name="write" eval="[
+            [ref('account.account_move_see_all'), ref('account.account_move_rule_group_invoice')],
+            {'domain_force': &quot;['|', '&amp;', ('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False), ('origin_payment_id', 'any', [('payment_type', '=', 'inbound'), '|', ('create_uid', '=', user.id), ('invoice_ids', 'any', [('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False)])])]&quot;},
+        ]"/>
+        <!-- Apuntes: los de esos mismos asientos. -->
+        <function model="ir.rule" name="write" eval="[
+            [ref('account.account_move_line_see_all'), ref('account.account_move_line_rule_group_invoice')],
+            {'domain_force': &quot;[('move_id', 'any', ['|', '&amp;', ('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False), ('origin_payment_id', 'any', [('payment_type', '=', 'inbound'), '|', ('create_uid', '=', user.id), ('invoice_ids', 'any', [('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False)])])])]&quot;},
+        ]"/>
+        <!-- Líneas analíticas (gastos y costos por canal) solo de SUS facturas de clientes. -->
+        <function model="ir.rule" name="write" eval="[
+            [ref('account.account_analytic_line_rule_billing_user')],
+            {'domain_force': &quot;[('move_line_id.move_id', 'any', [('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False)])]&quot;},
+        ]"/>
+        <!-- Cuentas bancarias: como el resto de empleados (sin las de empleados: es nómina). Sin RR. HH.
+             instalado no hay cuentas de empleados y el campo no existe: la condición se evalúa al usar la
+             regla, así que no importa en qué orden se instalen los módulos. -->
+        <function model="ir.rule" name="write" eval="[
+            [ref('account.ir_rule_res_partner_bank_billing_officers')],
+            {'domain_force': &quot;[('partner_id.employee_ids', '=', False)] if 'hr.employee' in user.env else [(1, '=', 1)]&quot;},
+        ]"/>
+        <!-- Análisis de facturas (reporte): sin facturas de proveedor ni sus costos. -->
+        <function model="ir.rule" name="write" eval="[
+            [ref('sale.account_invoice_report_rule_see_all')],
+            {'domain_force': &quot;[('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt'))]&quot;},
+        ]"/>
+        <function model="ir.rule" name="write" eval="[
+            [ref('sale.account_invoice_report_rule_see_personal')],
+            {'domain_force': &quot;[('move_type', 'in', ('out_invoice', 'out_refund', 'out_receipt')), '|', ('invoice_user_id', '=', user.id), ('invoice_user_id', '=', False)]&quot;},
+        ]"/>
+    </data>
+</odoo>

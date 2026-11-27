@@ -1,0 +1,39 @@
+# Atajos del proyecto Tommalo. `make help` para ver todo.
+PYTHON ?= .venv/bin/python
+ODOO := $(PYTHON) vendor/odoo/odoo-bin --addons-path=vendor/odoo/addons,vendor/odoo/odoo/addons,addons
+DB ?= dcasa
+MODULES ?= dcasa_base,dcasa_invoice,dcasa_abonos,dcasa_socios,website_dcasa,dcasa_mi_cuenta,dcasa_catalogo,dcasa_interfaz,dcasa_contabilidad,dcasa_brian,dcasa_tienda_borde,dcasa_conversaciones,dcasa_nomina,dcasa_contactos,dcasa_consolidacion,dcasa_equipo,dcasa_barras,dcasa_existencias,dcasa_migracion,dcasa_guia,dcasa_correo,dcasa_meta_catalogo,dcasa_meta_eventos,dcasa_marketing,dcasa_sofia,dcasa_envios,dcasa_camila,dcasa_buscar_foto,dcasa_brian_tienda,dcasa_pago_tilopay,dcasa_pago_yappy,dcasa_comision_web
+
+.PHONY: help setup test lint run init update up down edge-test
+
+help: ## Muestra esta ayuda
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
+
+setup: ## Clona Odoo (submódulo) y crea el entorno Python
+	git submodule update --init --depth 1
+	python3 -m venv .venv
+	.venv/bin/pip install -r vendor/odoo/requirements.txt -r docker/requirements-dcasa.txt ruff==0.16.9
+
+test: ## Tests de los módulos de Tommalo (necesita PostgreSQL)
+	PYTHON=$(PYTHON) scripts/test.sh
+
+lint: ## Ruff sobre los módulos propios
+	.venv/bin/ruff check addons scripts
+
+init: ## Crea la base $(DB) con los módulos y español
+	$(ODOO) -d $(DB) -i $(MODULES) --load-language=es_419 --stop-after-init
+
+update: ## Actualiza los módulos de Tommalo en la base $(DB)
+	$(ODOO) -d $(DB) -u $(MODULES) --stop-after-init
+
+run: ## Levanta Odoo en http://localhost:8069 con recarga de vistas
+	$(ODOO) -d $(DB) --dev=xml
+
+up: ## Todo en Docker (PostgreSQL + Odoo)
+	docker compose up --build
+
+down: ## Apaga Docker
+	docker compose down
+
+edge-test: ## Tests y typecheck del Worker de Cloudflare
+	cd edge && npm ci && npm run typecheck && npm test

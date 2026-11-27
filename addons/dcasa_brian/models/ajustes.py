@@ -1,0 +1,76 @@
+"""Ajustes de Brian (Ajustes › Brian). Lo que se deja vacío toma las variables de entorno."""
+from odoo import api, fields, models
+from odoo.exceptions import AccessError
+
+from .proveedores import PROVEEDORES
+
+
+class ResConfigSettings(models.TransientModel):
+    _inherit = 'res.config.settings'
+
+    dcasa_brian_proveedor = fields.Selection(
+        [(clave, datos['nombre']) for clave, datos in PROVEEDORES.items()],
+        string='Proveedor de IA', config_parameter='dcasa_brian.proveedor',
+        help='Vacío: usa la variable BRIAN_PROVEEDOR (por defecto Anthropic).')
+    dcasa_brian_modelo = fields.Char(
+        'Modelo', config_parameter='dcasa_brian.modelo',
+        help='Ej.: claude-sonnet-5-5 (por defecto), claude-haiku-4-5, gpt-4o-mini, llama-3.3-70b-versatile. '
+             'Vacío: BRIAN_MODELO o el modelo por defecto del proveedor.')
+    dcasa_brian_base_url = fields.Char(
+        'Dirección del API', config_parameter='dcasa_brian.base_url',
+        help='Solo si cambia la dirección por defecto (p. ej. un Ollama propio). Vacío: BRIAN_BASE_URL.')
+    dcasa_brian_herramientas_max = fields.Integer(
+        'Máximo de herramientas por mensaje', config_parameter='dcasa_brian.herramientas_max',
+        help='0: todas con modelos grandes y 12 con modelos pequeños.')
+    dcasa_brian_tope_mensual_usd = fields.Float(
+        'Tope de gasto de IA del mes (todos)', config_parameter='dcasa_brian.tope_mensual_usd', default=0.0,
+        help='Dólares por mes (hora de Panamá) que Brian puede gastar en IA entre todos. Al llegar, Brian avisa y '
+             'espera al mes siguiente o a que lo subas. 0 = sin tope (de fábrica): el límite que pongas en el panel de '
+             'tu proveedor de IA es el freno más fuerte.')
+    dcasa_brian_tope_por_persona_usd = fields.Float(
+        'Tope de gasto de IA del mes (por persona)', config_parameter='dcasa_brian.tope_por_persona_usd', default=0.0,
+        help='Lo mismo, pero por persona: una clave o un script descontrolado de una sola persona no se come el '
+             'tope de todos. 0 = sin tope.')
+    dcasa_brian_clave_nueva = fields.Char(
+        'Clave de API nueva', store=False,
+        help='Se guarda solo si escribes una. Si existe BRIAN_API_KEY en el servidor, esa tiene prioridad.')
+    dcasa_brian_clave_actual = fields.Char('Clave de API', compute='_compute_dcasa_brian_estado')
+    dcasa_brian_estado = fields.Char('Estado de Brian', compute='_compute_dcasa_brian_estado')
+
+    @api.depends('dcasa_brian_proveedor', 'dcasa_brian_modelo')
+    def _compute_dcasa_brian_estado(self):
+        estado = self.env['brian.proveedores'].sudo().estado()
+        for ajustes in self:
+            ajustes.dcasa_brian_clave_actual = estado['clave'] or self.env._('(sin clave)')
+            ajustes.dcasa_brian_estado = estado['mensaje'] or self.env._(
+                'Listo: %(p)s · %(m)s', p=estado['nombre'], m=estado['modelo'])
+
+    def set_values(self):
+        super().set_values()
+        for ajustes in self:
+            if ajustes.dcasa_brian_clave_nueva:
+                self.env['ir.config_parameter'].sudo().set_param(
+                    'dcasa_brian.api_key', ajustes.dcasa_brian_clave_nueva.strip())
+
+    def _dcasa_brian_exigir_admin(self):
+        """Los botones de Ajustes › Brian se pueden llamar por RPC aun sin registro (``ids=[]``):
+        el grupo se comprueba en el servidor antes de tocar la clave con ``sudo()``."""
+        if not self.env.su and not self.env.user.has_group('base.group_system'):
+            raise AccessError(self.env._('Solo un administrador cambia la configuración de Brian.'))
+
+    def action_dcasa_brian_probar(self):
+        """Guarda los ajustes y hace una llamada mínima al proveedor."""
+        self._dcasa_brian_exigir_admin()
+        self.ensure_one()
+        self.set_values()
+        resultado = self.env['brian.proveedores'].sudo().probar()
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': self.env._('Brian'),
+                'message': resultado['mensaje'],
+                'type': 'success' if resultado['ok'] else 'danger',
+                'sticky': not resultado['ok'],
+            },
+        }

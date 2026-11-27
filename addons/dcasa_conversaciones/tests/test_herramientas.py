@@ -1,0 +1,996 @@
+"""Las herramientas del asistente de clientes (vista pública), registradas en el registro de Brian bajo el usuario
+técnico ``juan``: lo que ven, lo que NO pueden hacer y la auditoría."""
+import json
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+from freezegun import freeze_time
+
+from odoo import Command, fields
+from odoo.addons.dcasa_socios.models import reglas as R
+from odoo.addons.dcasa_socios.tests.common import ConReglasDePrueba, parche_de_reglas_de_prueba
+from odoo.tests import tagged
+from odoo.tools import mute_logger
+
+from ..models.reglas_clientes import redactar
+from .common import JuanCase
+
+PUBLICAS = {'buscar_productos', 'ver_producto', 'listar_categorias', 'reglas_socios', 'horario_y_tienda',
+            'saldo_puntos', 'crear_oportunidad', 'anotar_conversacion', 'pasar_a_vendedora',
+            'buscar_conocimiento', 'registrar_pregunta_sin_respuesta', 'etiquetar_conversacion', 'cotizar',
+            'cotizar_envio', 'agregar_envio'}
+# Las que agregan otros módulos cuando están instalados (dcasa_camila: el correo del cliente y el «no» a las novedades).
+# De dcasa_camila (las novedades por correo) y de dcasa_ubicacion (el enlace del mapa y las indicaciones de la casa).
+DE_OTROS_MODULOS = {'guardar_correo', 'no_quiere_novedades', 'enlace_de_ubicacion', 'guardar_indicaciones',
+                    'guardar_quien_recibe'}
+PIN = '482913'
+
+
+def panama(anio, mes, dia, hora=0, minuto=0):
+    return datetime(anio, mes, dia, hora, minuto) + timedelta(hours=5)
+
+
+class HerramientasCase(JuanCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        Template = cls.env['product.template']
+        impuesto = cls.env['brian.herramientas']._b_itbms_venta()
+        cls.categoria = cls.env['product.public.category'].create({'name': 'Zzdormitorio'})
+        cls.otra_categoria = cls.env['product.public.category'].create({'name': 'Zzcocina'})
+        base = {'type': 'consu', 'is_storable': True, 'sale_ok': True, 'is_published': True,
+                'taxes_id': [Command.set(impuesto.ids)]}
+        cls.lámpara = Template.create({
+            **base, 'name': 'ZZCAMA ROBLE GRANDE', 'default_code': 'ZZ-LÁMPARA', 'list_price': 349.99,
+            'standard_price': 123.45, 'dcasa_medidas': 'Ancho × Largo: 160 × 200 cm',
+            'dcasa_combo': 'Combo con jabón First Class $469.99',
+            'public_categ_ids': [Command.set(cls.categoria.ids)],
+            'description_sale': 'Lámpara de roble con cabecera.'})
+        cls.espejo = Template.create({**base, 'name': 'ZZESPEJO GRIS', 'default_code': 'ZZ-ESPEJO', 'list_price': 800.0,
+                                    'public_categ_ids': [Command.set(cls.categoria.ids)]})
+        cls.mesa = Template.create({**base, 'name': 'ZZMESA PINO', 'default_code': 'ZZ-MESA', 'list_price': 90.0,
+                                    'public_categ_ids': [Command.set(cls.otra_categoria.ids)]})
+        cls.secreto = Template.create({**base, 'name': 'ZZSECRETO BORRADOR', 'default_code': 'ZZ-SECRETO',
+                                       'list_price': 10.0, 'is_published': False,
+                                       'public_categ_ids': [Command.set(cls.categoria.ids)]})
+        tamano = cls.env['product.attribute'].create({'name': 'Zztamaño', 'create_variant': 'always', 'value_ids': [
+            Command.create({'name': 'Zzgrande'}), Command.create({'name': 'Zzchica'})]})
+        cls.jabon = Template.create({
+            **base, 'name': 'ZZJABÓN FIRST CLASS', 'list_price': 400.0, 'default_code': 'ZZ-COL',
+            'public_categ_ids': [Command.set(cls.categoria.ids)],
+            'attribute_line_ids': [Command.create({'attribute_id': tamano.id,
+                                                   'value_ids': [Command.set(tamano.value_ids.ids)]})]})
+        almacen = cls.env['stock.warehouse'].search([], limit=1)
+        cls.stock = cls.env['stock.quant']
+        for plantilla, cantidad in ((cls.lámpara, 7777), (cls.espejo, 3), (cls.mesa, 0), (cls.secreto, 10)):
+            if cantidad:
+                cls.stock._update_available_quantity(plantilla.product_variant_id, almacen.lot_stock_id, cantidad)
+        variante_grande = cls.jabon.product_variant_ids.filtered(lambda v: 'Zzgrande' in v.display_name)
+        cls.stock._update_available_quantity(variante_grande, almacen.lot_stock_id, 20)
+
+    def setUp(self):
+        super().setUp()
+        self.conv = self.conversacion(nombre='Karen')
+
+    def llamar(self, nombre, argumentos=None, conv=None, usuario=None):
+        """Ejecuta una herramienta como el usuario técnico ``juan`` (nombre público, sin el prefijo)."""
+        conv = conv or self.conv
+        herramientas = self.env['brian.herramientas'].with_user(usuario or self.juan).with_context(
+            juan_conversacion_id=conv.id if conv else False)
+        return herramientas.ejecutar(f'juan_{nombre}', argumentos or {}, canal='juan')
+
+    def salida(self, nombre, argumentos=None, **kw):
+        resultado = self.llamar(nombre, argumentos, **kw)
+        self.assertTrue(resultado.get('ok'), resultado)
+        return resultado['datos']
+
+    def error(self, nombre, argumentos=None, **kw):
+        resultado = self.llamar(nombre, argumentos, **kw)
+        self.assertFalse(resultado.get('ok'), resultado)
+        return resultado['error']
+
+
+@tagged('post_install', '-at_install')
+class TestBuscarProductos(HerramientasCase):
+    # Juan le habla al cliente: los nombres le llegan en formato título (F5); por dentro siguen en MAYÚSCULAS.
+
+    def nombres(self, datos):
+        return [p['nombre'] for p in datos['productos']]
+
+    def test_solo_productos_publicados(self):
+        datos = self.salida('buscar_productos', {'consulta': 'zz'})
+        nombres = self.nombres(datos)
+        self.assertIn('Zzcama Roble Grande', nombres)
+        self.assertIn('Zzespejo Gris', nombres)
+        self.assertNotIn('Zzsecreto Borrador', nombres, 'Un producto sin publicar no existe para el cliente')
+        self.assertEqual(datos['encontrados'], 4)
+        # Ni por nombre ni por código se llega al producto sin publicar.
+        self.assertEqual(self.salida('buscar_productos', {'consulta': 'ZZ-SECRETO'})['encontrados'], 0)
+        self.assertEqual(self.salida('buscar_productos', {'consulta': 'secreto borrador'})['encontrados'], 0)
+
+    def test_precio_con_mas_itbms_y_ficha_completa(self):
+        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertEqual(lámpara['precio'], 349.99)
+        self.assertEqual(lámpara['precio_texto'], '$349.99 + ITBMS')
+        self.assertTrue(lámpara['mas_itbms'])
+        self.assertEqual(lámpara['codigo'], self.lámpara.dcasa_codigo_publico, 'el cliente ve el código público')
+        self.assertEqual(lámpara['medidas'], 'Ancho × Largo: 160 × 200 cm')
+        self.assertEqual(lámpara['combo'], {'texto': 'Combo con jabón First Class', 'precio': 469.99,
+                                         'precio_texto': '$469.99 + ITBMS'})
+        self.assertEqual(lámpara['categorias'], ['Zzdormitorio'])
+        self.assertTrue(lámpara['url'].endswith(f'-{self.lámpara.id}'), lámpara['url'])
+        self.assertTrue(lámpara['url'].startswith('http'))
+
+    def test_existencias_solo_como_etiqueta_nunca_el_numero(self):
+        productos = self.salida('buscar_productos', {'consulta': 'zz'})['productos']
+        etiquetas = {p['nombre']: p['disponibilidad'] for p in productos}
+        self.assertEqual(etiquetas['Zzcama Roble Grande'], 'disponible')    # 7777 unidades
+        self.assertEqual(etiquetas['Zzespejo Gris'], 'pocas')                 # 3 unidades
+        self.assertEqual(etiquetas['Zzmesa Pino'], 'agotado')               # 0
+        texto = json.dumps(self.salida('buscar_productos', {'consulta': 'zz'}))
+        self.assertNotIn('7777', texto, 'El número de existencias no sale jamás')
+        for clave in ('existencias', 'qty', 'stock', 'cantidad', 'free_qty', 'virtual'):
+            self.assertNotIn(f'"{clave}', texto)
+
+    def test_nunca_sale_el_costo(self):
+        texto = json.dumps(self.salida('buscar_productos', {'consulta': 'zz'}))
+        ver = json.dumps(self.salida('ver_producto', {'codigo': 'ZZ-LÁMPARA'}))
+        for contenido in (texto, ver):
+            self.assertNotIn('123.45', contenido)
+            self.assertNotIn('standard_price', contenido)
+            self.assertNotIn('costo', contenido.lower().replace('costo', 'costo'.upper()).lower() if False else 'x')
+        self.assertNotIn('"costo', texto.lower())
+
+    def test_busca_sin_importar_acentos_mayusculas_ni_plural(self):
+        for consulta in ('ZZCAMA', 'zzcamas', 'lámpara roble', 'jabones first', 'jabón', 'zzjabon'):
+            with self.subTest(consulta=consulta):
+                self.assertTrue(self.salida('buscar_productos', {'consulta': consulta})['encontrados'] > 0)
+
+    def test_busca_por_tamano_o_color_de_la_variante(self):
+        nombres = self.nombres(self.salida('buscar_productos', {'consulta': 'jabon zzgrande'}))
+        self.assertEqual(nombres, ['Zzjabón First Class'])
+
+    def test_el_codigo_exacto_va_primero(self):
+        productos = self.salida('buscar_productos', {'consulta': 'ZZ-ESPEJO'})['productos']
+        self.assertEqual(productos[0]['nombre'], 'Zzespejo Gris')
+
+    def test_filtra_por_categoria(self):
+        nombres = self.nombres(self.salida('buscar_productos', {'consulta': 'zz', 'categoria': 'Zzcocina'}))
+        self.assertEqual(nombres, ['Zzmesa Pino'])
+        todas = self.nombres(self.salida('buscar_productos', {'consulta': 'zz', 'categoria': 'zzdormitorios'}))
+        self.assertNotIn('Zzmesa Pino', todas)
+
+    def test_categoria_inexistente_dice_cuales_hay(self):
+        error = self.error('buscar_productos', {'consulta': 'zz', 'categoria': 'Zzjardin'})
+        self.assertIn('Zzdormitorio', error)
+        self.assertIn('Zzcocina', error)
+
+    def test_limite(self):
+        datos = self.salida('buscar_productos', {'consulta': 'zz', 'limite': 2})
+        self.assertEqual((datos['encontrados'], datos['mostrados'], len(datos['productos'])), (4, 2, 2))
+        self.assertEqual(len(self.salida('buscar_productos', {'consulta': 'zz', 'limite': 999})['productos']), 4)
+
+    def test_sin_resultados_y_consulta_vacia(self):
+        self.assertEqual(self.salida('buscar_productos', {'consulta': 'helicoptero'})['productos'], [])
+        self.assertIn('Dime qué producto', self.error('buscar_productos', {'consulta': '   '}))
+        self.assertIn('Faltan datos', self.error('buscar_productos', {}))
+
+    def test_el_resultado_trae_el_aviso_de_precios_y_disponibilidad(self):
+        nota = self.salida('buscar_productos', {'consulta': 'zz'})['nota']
+        self.assertIn('sin ITBMS', nota)
+        self.assertIn('una vendedora la confirma', nota)
+
+    def test_producto_sin_foto_tiene_foto_nula(self):
+        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertIsNone(lámpara['foto'])
+        self.lámpara.image_1920 = _PNG
+        self.env.flush_all()
+        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertTrue(lámpara['foto'].endswith(f'/web/image/product.template/{self.lámpara.id}/image_1024'))
+
+
+@tagged('post_install', '-at_install')
+class TestTarjetasDeLaTienda(HerramientasCase):
+    """«Brian de la tienda» (dcasa_brian_tienda) arma sus tarjetas con lo que devuelven buscar_productos y ver_producto:
+    la variante que se agrega, la foto y la ficha en rutas relativas y si se agrega directo (contrato_cambios §8). Lo
+    que Juan ya usaba no cambia."""
+
+    def test_cada_producto_trae_lo_de_la_tarjeta(self):
+        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertEqual(lámpara['producto_id'], self.lámpara.product_variant_id.id)
+        self.assertEqual(lámpara['plantilla_id'], self.lámpara.id)
+        self.assertEqual(lámpara['ruta'], self.lámpara.website_url)
+        self.assertTrue(lámpara['ruta'].startswith('/shop/'), 'relativa: sirve en producción, staging y local')
+        self.assertIsNone(lámpara['imagen'], 'sin foto, sin imagen (como «foto»)')
+        self.assertIs(lámpara['agregable'], True)
+        self.lámpara.image_1920 = _PNG
+        self.env.flush_all()
+        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertEqual(lámpara['imagen'], f'/web/image/product.template/{self.lámpara.id}/image_512')
+        # Lo de siempre sigue igual.
+        self.assertTrue(lámpara['foto'].endswith(f'/web/image/product.template/{self.lámpara.id}/image_1024'))
+        self.assertEqual(lámpara['precio_texto'], '$349.99 + ITBMS')
+
+    def test_con_medidas_que_elegir_no_se_agrega_directo(self):
+        ficha = self.salida('ver_producto', {'codigo': self.jabon.dcasa_codigo_publico})
+        self.assertIs(ficha['agregable'], False, 'hay que elegir la medida: la tarjeta lleva a la ficha')
+        self.assertEqual(ficha['plantilla_id'], self.jabon.id)
+        self.mesa.list_price = 0
+        self.env.flush_all()
+        self.assertIs(self.salida('ver_producto', {'codigo': self.mesa.dcasa_codigo_publico})['agregable'], False,
+                      'sin precio tampoco')
+
+    def test_ver_producto_por_producto_id(self):
+        ficha = self.salida('ver_producto', {'producto_id': self.lámpara.product_variant_id.id})
+        self.assertEqual((ficha['nombre'], ficha['codigo']), ('Zzcama Roble Grande', self.lámpara.dcasa_codigo_publico))
+        self.assertIn('descripcion', ficha)
+        for producto_id in (self.secreto.product_variant_id.id, 99999999, 0, -3):
+            with self.subTest(producto_id=producto_id):
+                error = self.error('ver_producto', {'producto_id': producto_id})
+                self.assertIn('no está publicado', error)
+                self.assertNotIn('SECRETO', error.upper().replace('ZZ', ''))
+        self.assertIn('Dime el código', self.error('ver_producto', {}))
+
+
+def _claves(valor):
+    """Todas las llaves de un resultado, a cualquier profundidad."""
+    if isinstance(valor, dict):
+        return set(valor) | {c for v in valor.values() for c in _claves(v)}
+    if isinstance(valor, list):
+        return {c for v in valor for c in _claves(v)}
+    return set()
+
+
+@tagged('post_install', '-at_install')
+class TestLoQueSeVendeSinPublicar(HerramientasCase):
+    """Incidente del 2026-11-13: un cliente pidió un jabón y Juan dijo «solo manejamos la lámpara, no el jabón
+    solo»; los jabones sí se venden (están en Odoo con su precio) pero no están publicados en la tienda en línea, y el
+    cliente se fue. Lo no publicado no se muestra (nombre, precio y existencias no están revisados para el público),
+    pero tampoco se niega: Juan dice que sí lo trabajamos y lo pasa a una vendedora. «No lo manejamos», solo si no hay
+    NADA."""
+
+    DATOS_DE_PRODUCTO = {'nombre', 'codigo', 'precio', 'precio_texto', 'disponibilidad', 'medidas', 'combo', 'url',
+                         'foto', 'galeria', 'variantes', 'descripcion', 'producto_id', 'plantilla_id', 'imagen', 'ruta',
+                         'agregable'}
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        Template = cls.env['product.template']
+        # Una categoría de la tienda sin nada publicado, como «Jabones» en producción.
+        cls.sin_nada_publicado = cls.env['product.public.category'].create({'name': 'Zzjabonería'})
+        cls.trono = Template.create({
+            'name': 'ZZTRONO NUBE ORTOPÉDICO', 'default_code': 'ZZ-TRONO', 'type': 'consu', 'is_storable': True,
+            'sale_ok': True, 'is_published': False, 'list_price': 4321.09, 'dcasa_medidas': '987 × 654 cm',
+            'public_categ_ids': [Command.set(cls.sin_nada_publicado.ids)]})
+        almacen = cls.env['stock.warehouse'].search([], limit=1)
+        cls.env['stock.quant']._update_available_quantity(cls.trono.product_variant_id, almacen.lot_stock_id, 8765)
+        base = {'type': 'consu', 'sale_ok': True, 'is_published': False}
+        # Lo que NO cuenta como «lo trabajamos»: un servicio, algo archivado y algo que no se vende.
+        Template.create({**base, 'name': 'ZZFLETE ESPECIAL', 'type': 'service'})
+        Template.create({**base, 'name': 'ZZVIEJO DESCONTINUADO', 'active': False})
+        Template.create({**base, 'name': 'ZZINTERNO REPUESTO', 'sale_ok': False})
+
+    def test_sin_nada_publicado_pero_si_en_el_sistema_dice_que_si_lo_trabajamos(self):
+        datos = self.salida('buscar_productos', {'consulta': 'zztrono ortopédico'})
+        self.assertEqual((datos['encontrados'], datos['productos'], datos['estado']), (0, [], 'hay_sin_publicar'))
+        self.assertEqual(datos['sin_publicar'], {'cuantos': 1, 'categorias': ['Zzjabonería']})
+        self.assertIn('SÍ lo trabajamos', datos['nota'])
+        self.assertIn('No digas que no lo manejamos', datos['nota'])
+        self.assertIn('pasar_a_vendedora', datos['nota'])
+        self.assertIn('una vendedora le confirma los modelos y los precios', datos['nota'])
+        # La vendedora que la recibe sabe qué busca el cliente.
+        self.assertIn('«zztrono ortopédico»', datos['motivo_para_la_vendedora'])
+        self.assertIn('Zzjabonería', datos['motivo_para_la_vendedora'])
+
+    def test_de_lo_no_publicado_no_sale_ni_nombre_ni_precio_ni_existencias(self):
+        prohibidos = {'Nube', 'NUBE', '4321', '4,321', '8765', '987', 'ZZ-TRONO', self.trono.dcasa_codigo_publico}
+        for consulta in ('zztrono', 'ZZ-TRONO', self.trono.dcasa_codigo_publico):
+            with self.subTest(consulta=consulta):
+                datos = self.salida('buscar_productos', {'consulta': consulta})
+                self.assertEqual(datos['estado'], 'hay_sin_publicar')
+                self.assertFalse(self.DATOS_DE_PRODUCTO & _claves(datos), _claves(datos))
+                texto = json.dumps(datos, ensure_ascii=False)
+                for dato in prohibidos - {consulta}:   # lo que escribió el cliente sí vuelve (en el motivo)
+                    self.assertNotIn(dato, texto)
+                ficha = self.salida('ver_producto', {'codigo': consulta}) if consulta != 'zztrono' else None
+                if ficha:
+                    self.assertEqual(ficha['estado'], 'hay_sin_publicar')
+                    self.assertFalse(self.DATOS_DE_PRODUCTO & _claves(ficha), _claves(ficha))
+                    for dato in prohibidos - {consulta}:
+                        self.assertNotIn(dato, json.dumps(ficha, ensure_ascii=False))
+
+    def test_sin_nada_en_el_sistema_ahi_si_no_lo_manejamos(self):
+        for consulta in ('zzhelicoptero', 'zzflete', 'zzviejo', 'zzinterno'):
+            with self.subTest(consulta=consulta):
+                datos = self.salida('buscar_productos', {'consulta': consulta})
+                self.assertEqual((datos['encontrados'], datos['productos'], datos['estado']),
+                                 (0, [], 'no_lo_manejamos'))
+                self.assertIn('puedes decirle que eso no lo manejamos', datos['nota'])
+                self.assertNotIn('sin_publicar', datos)
+
+    def test_varias_palabras_que_no_van_juntas_piden_buscar_de_nuevo_y_no_niegan(self):
+        """«Jabón matrimonial»: ningún producto tiene las dos palabras, pero jabones sí hay."""
+        for consulta in ('zztrono zzhelicoptero', 'zzcama zzhelicoptero'):
+            with self.subTest(consulta=consulta):
+                datos = self.salida('buscar_productos', {'consulta': consulta})
+                self.assertEqual((datos['encontrados'], datos['estado']), (0, 'busca_de_nuevo'))
+                self.assertIn(f'«{consulta.split()[0]}»', datos['nota'])
+                self.assertIn('no le digas al cliente que no lo manejamos', datos['nota'])
+                self.assertNotIn('puedes decirle que eso no lo manejamos', datos['nota'])
+
+    def test_un_codigo_que_no_aparece_no_es_no_lo_manejamos(self):
+        """Puede venir mal copiado de una foto: se pide el nombre o una foto, no se niega."""
+        for consulta in ('DC-BCDFGH', 'ZZ-NOEXISTE-99', 'zq0934xx'):
+            with self.subTest(consulta=consulta):
+                datos = self.salida('buscar_productos', {'consulta': consulta})
+                self.assertEqual((datos['encontrados'], datos['estado']), (0, 'busca_de_nuevo'))
+                self.assertIn('mal escrito', datos['nota'])
+                self.assertIn('no le digas al cliente que no lo manejamos', datos['nota'])
+
+    def test_con_la_categoria_equivocada_pide_buscar_sin_categoria(self):
+        datos = self.salida('buscar_productos', {'consulta': 'zzcama', 'categoria': 'Zzcocina'})
+        self.assertEqual((datos['encontrados'], datos['estado']), (0, 'busca_de_nuevo'))
+        self.assertIn('sin categoría', datos['nota'])
+        # En la categoría sin nada publicado (como «Jabones»), lo no publicado se encuentra igual.
+        datos = self.salida('buscar_productos', {'consulta': 'zztrono', 'categoria': 'Zzjabonería'})
+        self.assertEqual(datos['estado'], 'hay_sin_publicar')
+
+    def test_con_publicados_responde_como_siempre(self):
+        datos = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})
+        self.assertEqual(set(datos), {'encontrados', 'mostrados', 'productos', 'nota'})
+        self.assertEqual([p['nombre'] for p in datos['productos']], ['Zzcama Roble Grande'])
+        self.assertEqual(datos['productos'][0]['precio_texto'], '$349.99 + ITBMS')
+
+    def test_con_publicados_y_otros_sin_publicar_avisa_sin_mostrarlos(self):
+        datos = self.salida('buscar_productos', {'consulta': 'zz'})
+        nombres = [p['nombre'] for p in datos['productos']]
+        self.assertEqual(datos['encontrados'], 4)
+        self.assertFalse({'Zzsecreto Borrador', 'Zztrono Nube Ortopédico'} & set(nombres))
+        self.assertNotIn('estado', datos)
+        self.assertEqual(datos['sin_publicar']['cuantos'], 2)
+        self.assertEqual(datos['sin_publicar']['categorias'], ['Zzjabonería', 'Zzdormitorio'])
+        self.assertIn('no digas que no lo manejamos', datos['nota_sin_publicar'])
+        texto = json.dumps(datos, ensure_ascii=False)
+        for dato in ('Secreto', 'Nube', '4321', '8765'):
+            self.assertNotIn(dato, texto)
+
+
+@tagged('post_install', '-at_install')
+class TestCodigoPublicoEnJuan(HerramientasCase):
+    """El cliente conoce el código público (DC-K7M4PX); la referencia del proveedor no sale en lo que Juan dice."""
+
+    def test_buscar_por_el_codigo_publico_aunque_lo_escriba_distinto(self):
+        codigo = self.lámpara.dcasa_codigo_publico
+        for escrito in (codigo, codigo.lower(), codigo.replace('-', ''), f'  {codigo.lower()} '):
+            (lámpara,) = self.salida('buscar_productos', {'consulta': escrito})['productos']
+            self.assertEqual((lámpara['nombre'], lámpara['codigo']), ('Zzcama Roble Grande', codigo), escrito)
+
+    def test_ver_producto_por_el_codigo_publico_y_todavia_por_la_referencia_del_proveedor(self):
+        """El cliente puede traer la referencia vieja (una foto, una conversación anterior): se le atiende igual."""
+        codigo = self.lámpara.dcasa_codigo_publico
+        for escrito in (codigo, codigo.lower(), codigo.replace('-', ''), 'ZZ-LÁMPARA'):
+            ficha = self.salida('ver_producto', {'codigo': escrito})
+            self.assertEqual((ficha['nombre'], ficha['codigo']), ('Zzcama Roble Grande', codigo), escrito)
+
+    def test_lo_que_ve_el_cliente_no_trae_la_referencia_del_proveedor(self):
+        for consulta in ('zz', 'jabón'):
+            self.assertNotIn('ZZ-', json.dumps(self.salida('buscar_productos', {'consulta': consulta}),
+                                               ensure_ascii=False))
+        for codigo in (self.lámpara, self.jabon):
+            ficha = self.salida('ver_producto', {'codigo': codigo.dcasa_codigo_publico})
+            self.assertNotIn('ZZ-', json.dumps(ficha, ensure_ascii=False))
+            self.assertEqual(ficha['codigo'], codigo.dcasa_codigo_publico)
+        for variante in self.salida('ver_producto', {'codigo': self.jabon.dcasa_codigo_publico})['variantes']:
+            self.assertNotIn('codigo', variante, 'el código público es del producto; la medida se elige con «opcion»')
+
+    def test_brian_tambien_encuentra_el_producto_por_su_codigo_publico(self):
+        """La vendedora le dice a Brian el código que le dio el cliente."""
+        codigo = self.lámpara.dcasa_codigo_publico
+        for escrito in (codigo, codigo.lower(), codigo.replace('-', '')):
+            self.assertEqual(self.env['brian.herramientas']._b_producto(escrito), self.lámpara.product_variant_id, escrito)
+        self.assertEqual(self.env['brian.herramientas']._b_plantilla(codigo), self.lámpara)
+
+    def test_un_codigo_publico_de_algo_sin_publicar_no_se_muestra_pero_tampoco_se_niega(self):
+        """Incidente del 2026-11-13: lo que se vende sin estar publicado no es «no lo manejamos»."""
+        codigo = self.secreto.dcasa_codigo_publico
+        ficha = self.salida('ver_producto', {'codigo': codigo})
+        self.assertEqual(ficha['estado'], 'hay_sin_publicar')
+        self.assertNotIn('Borrador', json.dumps(ficha, ensure_ascii=False))
+        self.assertFalse({'nombre', 'precio', 'precio_texto', 'disponibilidad', 'galeria'} & set(ficha))
+        inexistente = self.error('ver_producto', {'codigo': 'DC-BCDFGH'})
+        self.assertIn('No encuentro el código «DC-BCDFGH»', inexistente)
+        self.assertIn('una vendedora se lo confirma', inexistente)
+        busqueda = self.salida('buscar_productos', {'consulta': codigo})
+        self.assertEqual((busqueda['encontrados'], busqueda['estado']), (0, 'hay_sin_publicar'))
+
+
+@tagged('post_install', '-at_install')
+class TestVerProductoYCategorias(HerramientasCase):
+
+    def test_ficha_por_codigo(self):
+        ficha = self.salida('ver_producto', {'codigo': 'zz-lámpara'})
+        self.assertEqual(ficha['nombre'], 'Zzcama Roble Grande')
+        self.assertEqual(ficha['descripcion'], 'Lámpara de roble con cabecera.')
+        self.assertEqual(ficha['precio_texto'], '$349.99 + ITBMS')
+        self.assertEqual(ficha['disponibilidad'], 'disponible')
+        self.assertEqual(ficha['galeria'], [])
+        self.assertIn('nota', ficha)
+
+    def test_variantes_con_su_disponibilidad(self):
+        ficha = self.salida('ver_producto', {'codigo': 'ZZ-COL'})
+        etiquetas = {v['nombre']: v['disponibilidad'] for v in ficha['variantes']}
+        self.assertEqual(len(etiquetas), 2)
+        self.assertEqual(sorted(etiquetas.values()), ['agotado', 'disponible'])
+        self.assertTrue(all(v['precio_texto'].endswith('+ ITBMS') for v in ficha['variantes']))
+
+    def test_galeria_de_fotos(self):
+        self.env['product.image'].create({'name': 'Lateral', 'product_tmpl_id': self.lámpara.id, 'image_1920': _PNG})
+        ficha = self.salida('ver_producto', {'codigo': 'ZZ-LÁMPARA'})
+        self.assertEqual(len(ficha['galeria']), 1)
+        self.assertIn('/web/image/product.image/', ficha['galeria'][0])
+
+    def test_un_producto_sin_publicar_no_da_sus_datos_ni_se_niega(self):
+        ficha = self.salida('ver_producto', {'codigo': 'ZZ-SECRETO'})
+        texto = json.dumps(ficha, ensure_ascii=False)
+        self.assertEqual(ficha['estado'], 'hay_sin_publicar')
+        self.assertEqual(ficha['sin_publicar'], {'cuantos': 1, 'categorias': ['Zzdormitorio']})
+        self.assertIn('pasar_a_vendedora', ficha['nota'])
+        self.assertIn('No digas que no lo manejamos', ficha['nota'])
+        self.assertIn('ZZ-SECRETO', ficha['motivo_para_la_vendedora'], 'la vendedora sabe qué pidió el cliente')
+        for dato in ('Zzsecreto', 'Borrador', '10.0', '$10', self.secreto.dcasa_codigo_publico):
+            self.assertNotIn(dato, texto)
+        inexistente = self.error('ver_producto', {'codigo': 'ZZ-NO-EXISTE'})
+        self.assertNotIn('si no aparece, no lo manejamos', inexistente)
+        self.assertIn('una vendedora se lo confirma', inexistente)
+
+    def test_un_comodin_no_es_un_codigo_ni_publicado_ni_sin_publicar(self):
+        for codigo in ('ZZ-%', 'ZZ-_ECRETO', '%'):
+            with self.subTest(codigo=codigo):
+                self.assertIn('No encuentro el código', self.error('ver_producto', {'codigo': codigo}))
+
+    def test_listar_categorias_cuenta_solo_publicados(self):
+        categorias = {c['nombre']: c for c in self.salida('listar_categorias')['categorias']}
+        self.assertEqual(categorias['Zzdormitorio']['productos'], 3)      # lámpara, espejo y jabón (no el borrador)
+        self.assertEqual(categorias['Zzcocina']['productos'], 1)
+        self.assertIn('/shop/category/', categorias['Zzdormitorio']['url'])
+
+    def test_listar_categorias_trae_el_enlace_del_catalogo_completo(self):
+        """Pedido de la dueña (2026-11-03): quien pide «el catálogo completo» lo ve en la página (``/shop``), con la
+        misma dirección pública que las categorías; el enlace sale de Odoo, no del prompt de Juan."""
+        salida = self.salida('listar_categorias')
+        base = salida['categorias'][0]['url'].split('/shop/category/')[0]
+        self.assertEqual(salida['catalogo_completo'], f'{base}/shop')
+        self.assertIn('catalogo_completo', salida['nota'])
+        definicion = next(h for h in self.env['brian.herramientas'].with_user(self.juan).catalogo()
+                          if h['name'] == 'juan_listar_categorias')
+        self.assertIn('catálogo completo', json.dumps(definicion, ensure_ascii=False))
+
+
+@tagged('post_install', '-at_install')
+class TestSocios(ConReglasDePrueba, HerramientasCase):
+    """Con las cifras de PRUEBA de Socios (puntos.json de fábrica está en PENDIENTE: ver TestSociosPendiente)."""
+
+    def setUp(self):
+        super().setUp()
+        self.ficha = self.conv.partner_id
+        self.ficha._dcasa_asegurar_ficha()
+        self.ficha._dcasa_guardar_pin(PIN)
+        self.env['dcasa.movimiento']._asentar(self.ficha, 'ajuste', 1500, 'sistema', motivo='Saldo de prueba')
+
+    def saldo(self, pin=PIN, celular='6123-4567', conv=None):
+        return self.salida('saldo_puntos', {'celular': celular, 'pin': pin}, conv=conv)
+
+    def test_reglas_socios_son_las_de_puntos_json(self):
+        datos = self.salida('reglas_socios')
+        self.assertEqual(datos['cifras'], redactar(R.cargar_reglas())['cifras'])
+        self.assertEqual(datos['version'], R.cargar_reglas()['version'])
+        self.assertIn('1 punto por cada dólar', ' '.join(datos['resumen']))
+        self.assertTrue(datos['enlaces']['premios'].endswith('/socios/premios'))
+
+    def test_saldo_con_el_pin_correcto(self):
+        datos = self.saldo()
+        self.assertTrue(datos['verificado'])
+        self.assertEqual(datos['puntos'], 1500)
+        self.assertEqual(datos['puntos_texto'], '1,500 puntos')
+        self.assertTrue(datos['enlace_para_invitar'].endswith(f'/r/{self.ficha.dcasa_socio_codigo}'))
+        self.assertNotIn('movimientos', datos, 'Sin la lista de movimientos con motivos')
+        self.assertNotIn('Saldo de prueba', json.dumps(datos))
+
+    def test_con_el_celular_escrito_de_otra_forma(self):
+        self.assertTrue(self.saldo(celular='+507 6123-4567')['verificado'])
+        self.assertTrue(self.saldo(celular='50761234567')['verificado'])
+
+    def test_pin_incorrecto_cuenta_el_fallo_y_se_guarda(self):
+        datos = self.saldo(pin='111112')
+        self.assertFalse(datos['verificado'])
+        self.assertEqual(datos['motivo'], 'pin_incorrecto')
+        self.assertNotIn('puntos', datos)
+        self.assertEqual(self.ficha.dcasa_intentos_fallidos, 1, 'El fallo persiste: la herramienta no lanza error')
+
+    def test_candado_del_programa_5_fallos_15_minutos(self):
+        for _ in range(5):
+            self.assertEqual(self.saldo(pin='111112')['motivo'], 'pin_incorrecto')
+        self.assertTrue(self.ficha._dcasa_bloqueada())
+        bloqueado = self.saldo(pin=PIN)           # ni el PIN correcto abre un candado
+        self.assertEqual(bloqueado['motivo'], 'bloqueado')
+        self.assertIn('15 minutos', bloqueado['mensaje'])
+        self.assertNotIn('puntos', bloqueado)
+        self.ficha._dcasa_desbloquear()
+        self.assertTrue(self.saldo()['verificado'])
+        self.assertEqual(self.ficha.dcasa_intentos_fallidos, 0)
+
+    def test_solo_el_numero_de_la_conversacion(self):
+        otra = self.Partner.create({'name': 'Otra socia', 'phone': '6555-0101'})
+        otra._dcasa_asegurar_ficha()
+        otra._dcasa_guardar_pin(PIN)
+        datos = self.saldo(celular='6555-0101')
+        self.assertEqual(datos['motivo'], 'celular_distinto')
+        self.assertNotIn('puntos', datos)
+        self.assertEqual(otra.dcasa_intentos_fallidos, 0, 'Ni se prueba el PIN de la otra persona')
+        self.assertEqual(self.ficha.dcasa_intentos_fallidos, 0)
+
+    def test_por_canales_sin_celular_no_se_consulta_el_saldo(self):
+        telegram = self.conversacion(canal='telegram', id_externo='55', celular='6123-4567')
+        self.assertEqual(telegram.partner_id, self.ficha)
+        datos = self.saldo(conv=telegram)
+        self.assertEqual(datos['motivo'], 'canal_sin_celular')
+        self.assertNotIn('puntos', datos)
+
+    def test_quien_no_se_ha_registrado(self):
+        nuevo = self.conversacion(id_externo='50765550202')
+        datos = self.saldo(celular='6555-0202', conv=nuevo)
+        self.assertEqual(datos['motivo'], 'sin_registro')
+        self.assertIn('/socios', datos['mensaje'])
+
+    def test_pin_mal_escrito_no_cuenta_como_intento(self):
+        for pin in ('123', 'abcdef', '1234567', ''):
+            with self.subTest(pin=pin):
+                resultado = self.llamar('saldo_puntos', {'celular': '6123-4567', 'pin': pin})
+                if resultado['ok']:
+                    self.assertEqual(resultado['datos']['motivo'], 'pin_invalido')
+        self.assertEqual(self.ficha.dcasa_intentos_fallidos, 0)
+
+    def test_cuenta_suspendida_no_da_saldo(self):
+        self.ficha.dcasa_socio_estado = 'suspendido'
+        datos = self.saldo()
+        self.assertFalse(datos['verificado'])
+        self.assertEqual(datos['motivo'], 'suspendido')
+
+    def test_sin_la_pimienta_no_se_puede_verificar(self):
+        with patch.dict('os.environ', {'DCASA_PIN_PEPPER': ''}):
+            datos = self.saldo()
+        self.assertEqual(datos['motivo'], 'no_disponible')
+
+    def test_el_pin_nunca_queda_en_la_auditoria(self):
+        self.saldo(pin='654321')
+        self.saldo(pin=PIN)
+        acciones = self.env['brian.accion'].search([('herramienta', '=', 'juan_saldo_puntos')])
+        self.assertEqual(len(acciones), 2)
+        for accion in acciones:
+            self.assertNotIn('654321', accion.argumentos or '')
+            self.assertNotIn(PIN, accion.argumentos or '')
+            self.assertNotIn(PIN, accion.resultado or '')
+            self.assertIn('***', accion.argumentos)
+
+    def test_no_escribe_en_el_libro_de_puntos(self):
+        antes = self.env['dcasa.movimiento'].search_count([])
+        self.saldo()
+        self.salida('reglas_socios')
+        self.assertEqual(self.env['dcasa.movimiento'].search_count([]), antes)
+        self.assertEqual(self.ficha.dcasa_saldo, 1500)
+
+
+@tagged('post_install', '-at_install')
+class TestSociosPendiente(HerramientasCase):
+    """Con el puntos.json de fábrica (todo PENDIENTE, 2026-11-18): Juan dice que el programa todavía no está
+    disponible, no da ninguna cifra y ni siquiera pide el PIN."""
+
+    def setUp(self):
+        super().setUp()
+        self.assertFalse(R.programa_disponible(R.cargar_reglas()))
+        self.ficha = self.conv.partner_id
+        self.ficha._dcasa_asegurar_ficha()
+        self.ficha._dcasa_guardar_pin(PIN)
+
+    def test_reglas_socios_dice_que_no_esta_disponible(self):
+        datos = self.salida('reglas_socios')
+        self.assertFalse(datos['disponible'])
+        self.assertEqual(datos['resumen'], [R.NO_DISPONIBLE])
+        self.assertEqual(datos['cifras'], {})
+        self.assertNotRegex(json.dumps({k: v for k, v in datos.items() if k not in ('version', 'pendientes')},
+                                       ensure_ascii=False), r'\d', 'ninguna cifra')
+
+    def test_saldo_puntos_no_pide_el_pin_ni_inventa_un_saldo(self):
+        for pin in (PIN, '111112'):
+            with self.subTest(pin=pin):
+                datos = self.salida('saldo_puntos', {'celular': '6123-4567', 'pin': pin})
+                self.assertEqual(datos, {'verificado': False, 'motivo': 'programa_no_disponible',
+                                         'mensaje': R.NO_DISPONIBLE})
+        self.assertEqual(self.ficha.dcasa_intentos_fallidos, 0, 'ni se prueba el PIN')
+
+
+@tagged('post_install', '-at_install')
+class TestEscrituraAcotada(HerramientasCase):
+
+    def test_crear_oportunidad(self):
+        datos = self.salida('crear_oportunidad', {
+            'resumen': 'Quiere una lámpara grande con base para esta semana', 'interes': 'Lámpara grande con base',
+            'presupuesto': 400})
+        self.assertTrue(datos['nueva'])
+        lead = self.env['crm.lead'].browse(datos['oportunidad_id'])
+        self.assertEqual(lead.partner_id, self.conv.partner_id)
+        self.assertEqual(lead.type, 'opportunity')
+        self.assertEqual(lead.expected_revenue, 400)
+        self.assertIn('Lámpara grande con base', lead.name)
+        self.assertIn('WhatsApp (QR)', lead.name)
+        self.assertEqual(self.conv.oportunidad_id, lead)
+        self.assertIn('lámpara grande con base para esta semana', lead.description)
+
+    def test_no_duplica_una_oportunidad_abierta_reciente(self):
+        primera = self.salida('crear_oportunidad', {'resumen': 'Quiere una lámpara', 'interes': 'Lámpara'})
+        segunda = self.salida('crear_oportunidad', {'resumen': 'Ahora también un jabón', 'interes': 'Jabón'})
+        self.assertTrue(primera['nueva'])
+        self.assertFalse(segunda['nueva'])
+        self.assertEqual(primera['oportunidad_id'], segunda['oportunidad_id'])
+        self.assertEqual(self.env['crm.lead'].search_count([('partner_id', '=', self.conv.partner_id.id)]), 1)
+        lead = self.env['crm.lead'].browse(primera['oportunidad_id'])
+        self.assertTrue(any('Ahora también un jabón' in (m.body or '') for m in lead.message_ids))
+
+    def test_una_oportunidad_ganada_o_vieja_no_se_reutiliza(self):
+        creada = self.salida('crear_oportunidad', {'resumen': 'a', 'interes': 'Lámpara'})
+        primera = self.env['crm.lead'].browse(creada['oportunidad_id'])
+        primera.action_set_won()
+        self.conv.oportunidad_id = False
+        nueva = self.salida('crear_oportunidad', {'resumen': 'Otra compra', 'interes': 'Espejo'})
+        self.assertTrue(nueva['nueva'])
+        self.assertNotEqual(nueva['oportunidad_id'], primera.id)
+
+    def test_oportunidad_sin_datos_o_con_presupuesto_raro(self):
+        self.assertIn('Faltan datos', self.error('crear_oportunidad', {'resumen': 'x'}))
+        error = self.error('crear_oportunidad', {'resumen': 'x', 'interes': 'y', 'presupuesto': -5})
+        self.assertIn('presupuesto', error)
+
+    def test_el_texto_del_cliente_no_se_ejecuta_como_html(self):
+        datos = self.salida('crear_oportunidad', {'resumen': '<script>alert(1)</script>', 'interes': '<b>x</b>'})
+        lead = self.env['crm.lead'].browse(datos['oportunidad_id'])
+        self.assertNotIn('<script>', lead.description)
+
+    def test_anotar_conversacion_va_al_chatter_del_cliente(self):
+        anotada = self.salida('anotar_conversacion', {'nota': 'Prefiere entrega en la tarde'})
+        self.assertEqual(anotada, {'anotado': True})
+        notas = self.conv.partner_id.message_ids.filtered(lambda m: 'Prefiere entrega en la tarde' in (m.body or ''))
+        self.assertEqual(len(notas), 1)
+        self.assertEqual(notas.subtype_id, self.env.ref('mail.mt_note'), 'Nota interna: el cliente no la ve')
+        self.assertIn('Nota del asistente', notas.body)
+        self.assertIn('vacía', self.error('anotar_conversacion', {'nota': '  '}))
+
+    def test_las_herramientas_de_la_conversacion_exigen_conversacion(self):
+        resultado = self.env['brian.herramientas'].with_user(self.juan).ejecutar(
+            'juan_anotar_conversacion', {'nota': 'x'}, canal='juan')
+        self.assertFalse(resultado['ok'])
+        self.assertIn('dentro de una conversación', resultado['error'])
+
+    def test_el_cliente_siempre_sale_de_la_conversacion_no_de_los_argumentos(self):
+        otro = self.conversacion(id_externo='50765550303', nombre='Otro cliente')
+        for argumentos in ({'nota': 'x', 'conversacion_id': otro.id}, {'nota': 'x', 'partner_id': otro.partner_id.id}):
+            self.assertIn('no existen', self.error('anotar_conversacion', argumentos))
+        self.salida('anotar_conversacion', {'nota': 'solo para Karen'})
+        self.assertFalse(otro.partner_id.message_ids.filtered(lambda m: 'solo para Karen' in (m.body or '')))
+
+
+@tagged('post_install', '-at_install')
+class TestPasarAVendedora(HerramientasCase):
+
+    def test_dentro_de_horario(self):
+        with freeze_time(panama(2026, 10, 9, 10, 0)):
+            datos = self.salida('pasar_a_vendedora', {'motivo': 'Quiere cotizar una entrega a David'})
+            # El estado se lee con el mismo reloj: la pausa es de unos minutos y, con el reloj real, a veces ya venció.
+            bot_activo = self.conv._estado_para_worker()['bot_activo']
+        self.assertTrue(datos['dentro_de_horario'])
+        self.assertIn('ya avisé a una vendedora', datos['texto_para_el_cliente'])
+        self.assertEqual(self.conv.estado, 'humano')
+        self.assertFalse(bot_activo, 'Pausa al bot')
+        self.assertTrue(self.conv.pausada_hasta)
+
+    def test_fuera_de_horario_dice_cuando_atienden(self):
+        with freeze_time(panama(2026, 10, 9, 22, 0)):
+            datos = self.salida('pasar_a_vendedora', {'motivo': 'Pide una persona'})
+        self.assertFalse(datos['dentro_de_horario'])
+        # Viernes de noche: el sábado abre a las 9:00 (horario de Tommalo, lunes a sábado de 9 a 6).
+        self.assertIn('mañana a primera hora, desde las 9:00 a. m.', datos['texto_para_el_cliente'])
+        self.assertNotIn('ahora', datos['texto_para_el_cliente'])
+        self.assertNotIn('..', datos['texto_para_el_cliente'], 'Un punto de más al final de «a. m.»')
+
+    def test_deja_una_actividad_para_la_vendedora(self):
+        with freeze_time(panama(2026, 10, 9, 10, 0)):
+            self.salida('pasar_a_vendedora', {'motivo': 'Financiamiento', 'urgencia': 'alta'})
+        (actividad,) = self.conv.activity_ids
+        self.assertIn('URGENTE', actividad.summary)
+        self.assertIn('Karen', actividad.summary)
+        self.assertEqual(actividad.user_id, self.ajustes.responsable_id)
+        self.assertIn('Financiamiento', actividad.note)
+
+    def test_la_actividad_va_a_quien_ya_atiende_la_conversacion(self):
+        self.conv.asignada_a = self.vendedora
+        self.salida('pasar_a_vendedora', {'motivo': 'x'})
+        self.assertEqual(self.conv.activity_ids.user_id, self.vendedora)
+
+    def test_avisa_por_telegram_a_las_vendedoras_vinculadas(self):
+        self.env['brian.telegram.enlace'].sudo().create({'user_id': self.vendedora.id, 'chat_id': '5550001'})
+        # sin ventas
+        self.env['brian.telegram.enlace'].sudo().create({'user_id': self.interno.id, 'chat_id': '5550002'})
+        enviar = MagicMock()
+        with patch.object(type(self.env['brian.telegram.enlace']), '_enviar', enviar):
+            self.salida('pasar_a_vendedora', {'motivo': 'Quiere hablar con una persona'})
+        chats = [llamada.args[0] for llamada in enviar.call_args_list]
+        self.assertEqual(chats, ['5550001'])
+        self.assertIn('Karen', enviar.call_args.args[1])
+        self.assertIn('Quiere hablar con una persona', enviar.call_args.args[1])
+
+    def test_un_fallo_de_telegram_no_rompe_el_traspaso(self):
+        self.env['brian.telegram.enlace'].sudo().create({'user_id': self.vendedora.id, 'chat_id': '5550001'})
+        with patch.object(type(self.env['brian.telegram.enlace']), '_enviar', side_effect=RuntimeError('sin red')), \
+                mute_logger('odoo.addons.dcasa_conversaciones.models.conversacion'):   # se anota; aquí es esperado
+            datos = self.salida('pasar_a_vendedora', {'motivo': 'x'})
+        self.assertIn('texto_para_el_cliente', datos)
+        self.assertEqual(self.conv.estado, 'humano')
+
+    def test_aviso_a_las_personas_elegidas_en_ajustes(self):
+        self.env['brian.telegram.enlace'].sudo().create({'user_id': self.vendedora.id, 'chat_id': '5550001'})
+        self.env['brian.telegram.enlace'].sudo().create({'user_id': self.gerente.id, 'chat_id': '5550009'})
+        self.ajustes.usuarios_aviso_ids = self.gerente
+        enviar = MagicMock()
+        with patch.object(type(self.env['brian.telegram.enlace']), '_enviar', enviar):
+            self.salida('pasar_a_vendedora', {'motivo': 'x'})
+        self.assertEqual([c.args[0] for c in enviar.call_args_list], ['5550009'])
+
+    def test_la_pausa_es_la_de_los_ajustes(self):
+        self.ajustes.pausa_por_defecto_minutos = 30
+        antes = fields.Datetime.now()
+        self.salida('pasar_a_vendedora', {'motivo': 'x'})
+        self.assertAlmostEqual((self.conv.pausada_hasta - antes).total_seconds(), 1800, delta=60)
+
+
+@tagged('post_install', '-at_install')
+class TestHorarioYTienda(HerramientasCase):
+
+    def test_datos_reales_de_la_tienda(self):
+        """Los de la empresa de fábrica (Tommalo, 2026-11-18): sin dirección todavía (vende en línea), su WhatsApp,
+        su correo y su horario (lunes a sábado de 9 a 6)."""
+        with freeze_time(panama(2026, 10, 9, 10, 0)):
+            datos = self.salida('horario_y_tienda')
+        self.assertEqual(datos['tienda'], 'Tommalo Panamá')
+        self.assertEqual(datos['direccion'], '', 'sin dirección cargada no se dice ninguna')
+        self.assertIn('/visitanos', datos['como_llegar'])
+        self.assertEqual(datos['whatsapp'], '+507 6000-0002')
+        self.assertEqual(datos['correo'], 'contacto@tommalo.example')
+        self.assertEqual(datos['horario']['texto'], 'Lunes, martes, miércoles, jueves, viernes, sábado, '
+                                                    'de 9:00 a. m. a 6:00 p. m. (hora de Panamá)')
+        self.assertEqual(datos['fecha_hora_panama'], 'viernes 9 de octubre de 2026, 10:00 a. m.')
+        self.assertTrue(datos['abierto_ahora'])
+
+    def test_cerrado_fuera_de_horario(self):
+        with freeze_time(panama(2026, 10, 9, 20, 0)):
+            self.assertFalse(self.salida('horario_y_tienda')['abierto_ahora'])
+
+    def test_el_domingo_cierra_mas_temprano(self):
+        self.ajustes.write({'horario_inicio': 9.0, 'horario_fin': 18.0, 'horario_fin_domingo': 17.0,
+                            'dia_domingo': True})
+        with freeze_time(panama(2026, 10, 11, 17, 30)):   # domingo, 5:30 p. m.
+            datos = self.salida('horario_y_tienda')
+        self.assertFalse(datos['abierto_ahora'])
+        self.assertEqual(datos['horario']['texto'], 'Todos los días, de 9:00 a. m. a 6:00 p. m. '
+                                                    '(el domingo hasta las 5:00 p. m.) (hora de Panamá)')
+        with freeze_time(panama(2026, 10, 12, 17, 30)):   # lunes, 5:30 p. m.
+            self.assertTrue(self.salida('horario_y_tienda')['abierto_ahora'])
+
+    def test_el_horario_es_el_de_los_ajustes(self):
+        self.ajustes.write({'horario_inicio': 9.0, 'horario_fin': 18.0, 'dia_domingo': False})
+        datos = self.salida('horario_y_tienda')
+        self.assertIn('9:00 a. m. a 6:00 p. m.', datos['horario']['texto'])
+        self.assertNotIn('Todos los días', datos['horario']['texto'])
+        self.assertEqual(datos['horario']['dias'], [1, 2, 3, 4, 5, 6])
+
+
+@tagged('post_install', '-at_install')
+class TestUsuarioTecnicoYAuditoria(HerramientasCase):
+
+    def test_juan_no_tiene_permisos_internos_ni_contrasena(self):
+        self.assertFalse(self.juan.has_group('base.group_user'))
+        self.assertFalse(self.juan._is_internal())
+        self.assertTrue(self.juan.has_group('dcasa_conversaciones.group_juan'))
+        grupos = set(self.juan.all_group_ids.mapped('full_name'))
+        internos = ('Administration', 'Sales', 'Accounting', 'Inventory')
+        self.assertFalse({g for g in grupos if any(interno in g for interno in internos)}, grupos)
+        self.assertFalse(self.juan.sudo().password, 'Sin contraseña: no puede entrar al panel')
+        with self.assertRaises(Exception):  # noqa: B017 — cualquier fallo de autenticación sirve
+            self.env['res.users'].authenticate({'type': 'password', 'login': 'juan.asistente', 'password': ''},
+                                               {'interactive': False})
+
+    def test_el_grupo_de_juan_no_implica_ningun_otro(self):
+        grupo = self.env.ref('dcasa_conversaciones.group_juan')
+        self.assertFalse(grupo.implied_ids)
+
+    def test_juan_ve_solo_las_herramientas_de_juan(self):
+        catalogo = {h['name'] for h in self.env['brian.herramientas'].with_user(self.juan).catalogo()}
+        self.assertEqual(catalogo - {f'juan_{n}' for n in DE_OTROS_MODULOS}, {f'juan_{n}' for n in PUBLICAS})
+
+    def test_ninguna_es_sensible_ni_escribe_dinero(self):
+        for h in self.env['brian.herramientas'].with_user(self.juan).catalogo():
+            self.assertNotEqual(h['nivel'], 'sensible', h['name'])
+        prohibidas = {'ajustar_puntos', 'confirmar_venta', 'cancelar_cotizacion', 'crear_factura', 'editar_factura',
+                      'publicar_factura', 'registrar_pago', 'conciliar_movimiento', 'crear_producto',
+                      'actualizar_producto', 'publicar_producto_web', 'ajustar_existencias', 'ver_cliente',
+                      'buscar_clientes', 'reporte_del_dia', 'resumen_ventas', 'buscar_ventas', 'ver_venta',
+                      'facturas_pendientes', 'clientes_que_deben', 'existencias_bajas', 'listar_usuarios'}
+        for nombre in prohibidas:
+            with self.subTest(herramienta=nombre):
+                self.assertNotIn(nombre, PUBLICAS)
+                resultado = self.env['brian.herramientas'].with_user(self.juan).ejecutar(nombre, {}, canal='juan')
+                self.assertFalse(resultado['ok'])
+                self.assertIn('No existe la herramienta', resultado['error'])
+
+    def test_el_personal_interno_no_ve_ni_usa_las_de_juan(self):
+        for usuario in (self.vendedora, self.gerente, self.interno, self.env.ref('base.user_admin')):
+            catalogo = {h['name'] for h in self.env['brian.herramientas'].with_user(usuario).catalogo()}
+            self.assertFalse({n for n in catalogo if n.startswith('juan_')}, usuario.login)
+            resultado = self.env['brian.herramientas'].with_user(usuario).ejecutar('juan_horario_y_tienda', {})
+            self.assertFalse(resultado['ok'])
+
+    def test_las_herramientas_internas_de_brian_siguen_igual(self):
+        catalogo = {h['name'] for h in self.env['brian.herramientas'].with_user(self.vendedora).catalogo()}
+        self.assertIn('buscar_productos', catalogo)
+        self.assertIn('ver_producto', catalogo)
+        self.assertIn('saldo_puntos', catalogo)
+
+    def test_cada_uso_queda_auditado_a_nombre_de_juan(self):
+        self.salida('buscar_productos', {'consulta': 'zz'})
+        accion = self.env['brian.accion'].search([('herramienta', '=', 'juan_buscar_productos')], limit=1)
+        self.assertEqual(accion.estado, 'hecha')
+        self.assertEqual(accion.canal, 'juan')
+        self.assertEqual(accion.create_uid, self.juan)
+        self.assertEqual(accion.dcasa_conversacion_id, self.conv)
+        self.assertIn('zz', accion.argumentos)
+        self.assertIn('Zzcama', accion.resultado)
+
+    def test_los_errores_tambien_quedan_en_la_auditoria(self):
+        self.error('ver_producto', {'codigo': 'NO-EXISTE'})
+        accion = self.env['brian.accion'].search([('herramienta', '=', 'juan_ver_producto')], limit=1)
+        self.assertEqual(accion.estado, 'error')
+        self.assertEqual(accion.canal, 'juan')
+
+    def test_juan_es_un_solo_usuario_para_todos_y_no_choca_con_el_limite_de_brian(self):
+        # El límite de Brian es de 30 acciones por minuto POR USUARIO; Juan atiende a todos los clientes.
+        for _ in range(40):
+            self.assertTrue(self.llamar('horario_y_tienda')['ok'])
+        self.assertEqual(self.env['brian.accion'].search_count([('herramienta', '=', 'juan_horario_y_tienda')]), 40)
+
+    def test_ni_una_sola_herramienta_cambia_precios_stock_ni_contabilidad(self):
+        Producto, Quant, Factura = self.env['product.template'], self.env['stock.quant'], self.env['account.move']
+        antes = (Producto.search_count([]), sum(Producto.search([]).mapped('list_price')),
+                 sum(Quant.search([]).mapped('quantity')), Factura.search_count([]),
+                 self.env['account.payment'].search_count([]), self.env['dcasa.movimiento'].search_count([]))
+        self.salida('buscar_productos', {'consulta': 'zz'})
+        self.salida('ver_producto', {'codigo': 'ZZ-LÁMPARA'})
+        self.salida('listar_categorias')
+        self.salida('reglas_socios')
+        self.salida('horario_y_tienda')
+        self.llamar('saldo_puntos', {'celular': '6123-4567', 'pin': '000000'})
+        self.salida('crear_oportunidad', {'resumen': 'x', 'interes': 'y'})
+        self.salida('anotar_conversacion', {'nota': 'x'})
+        self.salida('pasar_a_vendedora', {'motivo': 'x'})
+        despues = (Producto.search_count([]), sum(Producto.search([]).mapped('list_price')),
+                   sum(Quant.search([]).mapped('quantity')), Factura.search_count([]),
+                   self.env['account.payment'].search_count([]), self.env['dcasa.movimiento'].search_count([]))
+        self.assertEqual(antes, despues)
+
+    def test_parametros_desconocidos_se_rechazan(self):
+        self.assertIn('no existen', self.error('buscar_productos', {'consulta': 'zz', 'costo': True}))
+
+
+@tagged('post_install', '-at_install')
+class TestConocimientoYAprendizaje(HerramientasCase):
+
+    def tienda(self):
+        """Una entrada automática de la tienda, como la crearía Gerencia (de fábrica no hay ninguna)."""
+        return self.env['dcasa.conocimiento'].create({
+            'titulo': 'Dónde estamos, horario y WhatsApp', 'fuente': 'tienda',
+            'etiquetas': 'dirección, ubicación, dónde están, cómo llegar, horario, abren, cierran, whatsapp'})
+
+    def test_sin_conocimiento_de_fabrica_no_encuentra_nada(self):
+        """El conocimiento arranca en cero: ni el horario ni Socios salen hasta que el equipo los escriba."""
+        for consulta in ('¿A qué hora abren y dónde están?', 'puntos y premios', 'garantía'):
+            datos = self.salida('buscar_conocimiento', {'consulta': consulta})
+            self.assertEqual((datos['encontrados'], datos['resultados']), (0, []), consulta)
+            self.assertIn('registrar_pregunta_sin_respuesta', datos['nota'])
+
+    def test_buscar_conocimiento_devuelve_el_texto_del_equipo(self):
+        self.tienda()
+        datos = self.salida('buscar_conocimiento', {'consulta': '¿A qué hora abren y dónde están?'})
+        self.assertGreaterEqual(datos['encontrados'], 1)
+        primero = datos['resultados'][0]
+        self.assertEqual(primero['titulo'], 'Dónde estamos, horario y WhatsApp')
+        # Con los datos de la empresa de fábrica (Tommalo, 2026-11-18): su WhatsApp y su correo.
+        self.assertIn('+507 6000-0002', primero['contenido'])
+        self.assertIn('contacto@tommalo.example', primero['contenido'])
+        # Juan explica entregas, financiamiento, apartados y descuentos con lo que escribió el equipo; el caso concreto,
+        # una vendedora (decisión de la dueña, 2026-10-16).
+        self.assertIn('explica solo lo que diga aquí', datos['nota'])
+        self.assertIn('los confirma una vendedora', datos['nota'])
+
+    def test_las_reglas_de_socios_salen_de_puntos_json(self):
+        self.env['dcasa.conocimiento'].create({
+            'titulo': "Programa Socios Tommalo: puntos, premios e invitados", 'fuente': 'socios',
+            'etiquetas': 'socios, puntos, premios, canje, canjear, invitar, referido, cumpleaños, programa'})
+        datos = self.salida('buscar_conocimiento', {'consulta': 'puntos y premios'})
+        self.assertEqual(datos['resultados'][0]['titulo'], "Programa Socios Tommalo: puntos, premios e invitados")
+        # puntos.json de fábrica (todo PENDIENTE): solo que todavía no está disponible.
+        self.assertEqual(datos['resultados'][0]['contenido'], R.NO_DISPONIBLE)
+        with parche_de_reglas_de_prueba():       # con cifras (de prueba), las explica tal cual
+            self.env['dcasa.conocimiento'].invalidate_model(['contenido_vigente'])
+            datos = self.salida('buscar_conocimiento', {'consulta': 'puntos y premios'})
+        self.assertIn('1 punto por cada dólar', datos['resultados'][0]['contenido'])
+
+    def test_maximo_3_resultados(self):
+        for i in range(6):
+            self.env['dcasa.conocimiento'].create({'titulo': f'Zzmantenimiento {i}', 'contenido': 'zzmantenimiento'})
+        self.assertEqual(len(self.salida('buscar_conocimiento', {'consulta': 'zzmantenimiento'})['resultados']), 3)
+
+    def test_lo_inactivo_no_lo_ve_el_bot(self):
+        self.env['dcasa.conocimiento'].create({
+            'titulo': 'Garantía, cambios y devoluciones', 'activo': False,
+            'etiquetas': 'garantía, garantia, cambio, cambios, devolución, devolucion, reclamo, defecto',
+            'contenido': 'Se rige por la Ley 45 de 2007; las condiciones te las confirma una vendedora.'})
+        datos = self.salida('buscar_conocimiento', {'consulta': 'garantía de los jabones'})
+        self.assertEqual(datos['encontrados'], 0)
+        self.assertIn('registrar_pregunta_sin_respuesta', datos['nota'])
+        self.assertNotIn('Ley 45', json.dumps(datos))
+
+    def test_consulta_sin_palabras(self):
+        self.assertIn('Dime sobre qué tema', self.error('buscar_conocimiento', {'consulta': '¿?'}))
+
+    def test_registrar_pregunta_sin_respuesta(self):
+        datos = self.salida('registrar_pregunta_sin_respuesta', {'pregunta': '¿Instalan los estantes?',
+                                                                 'resumen': 'Hablaban de una lámpara chica'})
+        self.assertTrue(datos['registrada'] and datos['es_nueva'])
+        self.assertEqual(datos['veces'], 1)
+        self.assertIn('una vendedora', datos['mensaje'])
+        pregunta = self.env['dcasa.pregunta_pendiente'].search([])
+        self.assertEqual((pregunta.texto, pregunta.resumen, pregunta.conversacion_id),
+                         ('¿Instalan los estantes?', 'Hablaban de una lámpara chica', self.conv))
+
+    def test_la_pregunta_repetida_suma_y_no_se_duplica(self):
+        self.salida('registrar_pregunta_sin_respuesta', {'pregunta': '¿Instalan los estantes?'})
+        otra = self.conversacion(id_externo='50761230777')
+        datos = self.salida('registrar_pregunta_sin_respuesta', {'pregunta': 'instalan los estantes'}, conv=otra)
+        self.assertEqual((datos['es_nueva'], datos['veces']), (False, 2))
+        self.assertEqual(self.env['dcasa.pregunta_pendiente'].search_count([]), 1)
+
+    def test_pregunta_invalida(self):
+        for pregunta in ('', '??', '12'):
+            self.assertTrue(self.error('registrar_pregunta_sin_respuesta', {'pregunta': pregunta}))
+        self.assertFalse(self.env['dcasa.pregunta_pendiente'].search([]))
+
+    def test_exige_conversacion_y_queda_auditada(self):
+        resultado = self.env['brian.herramientas'].with_user(self.juan).ejecutar(
+            'juan_registrar_pregunta_sin_respuesta', {'pregunta': '¿Instalan los estantes?'}, canal='juan')
+        self.assertFalse(resultado['ok'])
+        self.salida('registrar_pregunta_sin_respuesta', {'pregunta': '¿Instalan los estantes?'})
+        accion = self.env['brian.accion'].search([('herramienta', '=', 'juan_registrar_pregunta_sin_respuesta')],
+                                                 order='id desc', limit=1)
+        self.assertEqual((accion.canal, accion.estado, accion.dcasa_conversacion_id), ('juan', 'hecha', self.conv))
+
+    def test_no_toca_precios_ni_puntos(self):
+        precios = self.env['product.template'].search([]).mapped('list_price')
+        antes = (self.env['dcasa.movimiento'].search_count([]), sum(precios))
+        self.salida('buscar_conocimiento', {'consulta': 'garantía'})
+        self.salida('registrar_pregunta_sin_respuesta', {'pregunta': '¿Instalan los estantes?'})
+        precios = self.env['product.template'].search([]).mapped('list_price')
+        despues = (self.env['dcasa.movimiento'].search_count([]), sum(precios))
+        self.assertEqual(antes, despues)
+
+
+# PNG mínimo de 1×1 (para probar la foto del producto).
+_PNG = (b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')

@@ -1,0 +1,129 @@
+// Hoja «Condiciones de abono» (copia cliente y copia empresa). La placa, la banda, el pie, la rejilla del cliente, la
+// tabla de los productos y los títulos salen de dcasa_invoice (report_dcasa.scss); aquí solo lo propio de la hoja.
+// Marca Tommalo (docs/MARCA_TOMMALO.md): letra navy sobre blanco; el naranja solo de relleno y de filete, con la
+// letra navy encima. Montserrat (la declara report_dcasa.scss). Plano: sin degradados ni sombras.
+$dcasa-abono-tinta: #262626;
+$dcasa-abono-tinta-suave: #5C5C5C;
+$dcasa-abono-linea: #E4E6E9;
+$dcasa-abono-naranja: #D4D4D4;
+$dcasa-abono-letra: 'DCASA Montserrat', 'Montserrat', Arial, Helvetica, sans-serif;
+
+.o_report_layout_dcasa {
+    // El rótulo de la copia, a la derecha del título: una pastilla naranja con la letra navy (5.56).
+    .o_dcasa_copia_rotulo {
+        float: right;
+        margin-top: 6px;
+        padding: 3px 14px;
+        border-radius: 999px;
+        font-family: $dcasa-abono-letra;
+        font-weight: 700;
+        font-size: .78rem;
+        letter-spacing: .08em;
+        line-height: 1.4;
+        white-space: nowrap;  // «COPIA CLIENTE» en un solo renglón, nunca partido en dos
+        color: $dcasa-abono-tinta;
+        background-color: $dcasa-abono-naranja;
+    }
+
+    .o_dcasa_condiciones_hoja {
+        // La copia de la empresa empieza siempre en su propia hoja.
+        .o_dcasa_condiciones_salto {
+            page-break-before: always;
+            height: 0;
+        }
+
+        .o_dcasa_condiciones .o_dcasa_rejilla {
+            margin-bottom: 10px;
+        }
+
+        .o_dcasa_en_blanco {
+            display: inline-block;
+            width: 30mm;
+            border-bottom: 1px solid $dcasa-abono-tinta;
+        }
+
+        .o_dcasa_condiciones_muebles {
+            margin-bottom: 6px;
+        }
+
+        // «Y N productos más…»: solo en una factura enorme (la lista entera está en la factura).
+        .o_dcasa_condiciones_faltan {
+            font-style: italic;
+            color: $dcasa-abono-tinta-suave;
+        }
+
+        // Bootstrap deja «border-style: solid; border-width: 0» en tr, th y td y el QtWebKit de wkhtmltopdf lo pinta como
+        // un hilo gris (igual que en la factura): en los totales y las firmas no hay más rayas que las de abajo.
+        .o_dcasa_condiciones_totales,
+        .o_dcasa_firmas {
+            &, tbody, tr, th, td {
+                border: 0 none !important;
+                background: none !important;
+            }
+        }
+
+        // Total, abonado y saldo: a la derecha, el saldo en navy y con su filete naranja.
+        .o_dcasa_condiciones_totales {
+            width: 45%;
+            margin: 0 0 10px auto;
+            page-break-inside: avoid;
+
+            td {
+                padding: 2px 0 2px 10px;
+                color: $dcasa-abono-tinta;
+            }
+            .o_dcasa_condiciones_saldo td {
+                padding-top: 4px;
+                font-weight: 700;
+                color: $dcasa-abono-tinta;
+                border-top: 2px solid $dcasa-abono-naranja !important;
+            }
+        }
+
+        .o_dcasa_condiciones_texto {
+            clear: both;
+            padding-top: 6px;
+            border-top: 1px solid $dcasa-abono-linea;
+            font-size: .82rem;
+            line-height: 1.4;
+            page-break-inside: avoid;
+
+            ol {
+                margin: 4px 0 0;
+                padding-left: 20px;
+            }
+            li {
+                margin-bottom: 3px;
+            }
+        }
+
+        // Firma y cédula: dos rayas con su nombre debajo, con espacio para escribir a mano.
+        .o_dcasa_firmas {
+            width: 100%;
+            margin-top: 18mm;
+            page-break-inside: avoid;
+
+            .o_dcasa_firma {
+                width: 44%;
+                padding: 0;
+                vertical-align: bottom;
+            }
+            .o_dcasa_raya {
+                height: 1px;
+                border-bottom: 1px solid $dcasa-abono-tinta;
+            }
+            .o_dcasa_firma_nombre {
+                padding-top: 4px;
+                text-align: center;
+                font-family: $dcasa-abono-letra;
+                font-weight: 700;
+                font-size: .75rem;
+                letter-spacing: .06em;
+                color: $dcasa-abono-tinta;
+            }
+            .o_dcasa_firmas_espacio {
+                width: 12%;
+            }
+        }
+    }
+}

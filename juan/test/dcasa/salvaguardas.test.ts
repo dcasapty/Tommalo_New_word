@@ -1,0 +1,596 @@
+/**
+ * La guardia de salida: lo que se le dice al cliente se revisa por código, no por buena fe del modelo.
+ * Es el candado de las reglas 2, 3, 6 y 11 del contrato (docs/JUAN.md).
+ */
+import { describe, expect, it } from "vitest";
+import {
+  analizar,
+  asegurarItbms,
+  detectarExistencias,
+  detectarMandaALeer,
+  detectarNiegaProducto,
+  detectarPromesas,
+  detectarSerHumano,
+  extraerMontos,
+  limpiarForma,
+  MAX_EMOJIS,
+  notaDeCorreccion,
+  parseMonto,
+  quitarGraves,
+  TEXTO_FUGA,
+  TEXTO_SIN_DATO,
+  type ContextoRevision,
+} from "../../src/dcasa/salvaguardas";
+
+const ctx = (extra: Partial<ContextoRevision> = {}): ContextoRevision => ({
+  preciosProducto: new Set([499, 799.5, 129]),
+  cifrasConocidas: new Set([499, 799.5, 129, 20, 500, 160, 200]),
+  nombresHerramientas: ["buscar_productos", "pasar_a_vendedora", "reglas_socios", "enviar_foto_producto"],
+  ...extra,
+});
+
+describe("dinero: se reconoce como lo escribe la gente", () => {
+  it("$499, $ 1,299.00, US$ 20, B/. 15, 15 dólares, 20 USD", () => {
+    expect(extraerMontos("Cuesta $499 y el otro $ 1,299.00").map((m) => m.valor)).toEqual([499, 1299]);
+    expect(extraerMontos("US$ 20 o B/. 15").map((m) => m.valor)).toEqual([20, 15]);
+    expect(extraerMontos("son 15 dólares o 20 USD o 8 balboas").map((m) => m.valor)).toEqual([15, 20, 8]);
+  });
+
+  it("no toma medidas ni cantidades por dinero", () => {
+    expect(extraerMontos("Mide 160 x 200 cm y tiene 3 repisas")).toEqual([]);
+  });
+
+  it("parseMonto entiende miles y decimales", () => {
+    expect(parseMonto("1,299.00")).toBe(1299);
+    expect(parseMonto("12,50")).toBe(12.5);
+    expect(parseMonto("1.299")).toBe(1299);
+    expect(parseMonto("799.5")).toBe(799.5);
+  });
+});
+
+describe("regla 2 · todo precio de producto lleva «+ ITBMS»", () => {
+  const precios = new Set([499, 799.5]);
+
+  it("lo agrega donde falta", () => {
+    expect(asegurarItbms("La lámpara cuesta $499.", precios)).toBe("La lámpara cuesta $499 + ITBMS.");
+    expect(asegurarItbms("Sale en 499 dólares.", precios)).toBe("Sale en 499 dólares + ITBMS.");
+  });
+
+  it("no lo duplica cuando ya está, escrito de varias formas", () => {
+    for (const ok of ["$499 + ITBMS", "$499 +ITBMS", "$499 más ITBMS", "$499 mas ITBMS", "$499 (+ ITBMS)", "$499.00 + ITBMS"]) {
+      expect(asegurarItbms(`Cuesta ${ok}.`, precios)).toBe(`Cuesta ${ok}.`);
+    }
+  });
+
+  it("arregla varios precios en la misma frase", () => {
+    expect(asegurarItbms("La grande $499 y el espejo $799.50.", precios)).toBe("La grande $499 + ITBMS y el espejo $799.50 + ITBMS.");
+  });
+
+  it("no toca montos que no son precio de producto (p. ej. la compra mínima de Socios)", () => {
+    expect(asegurarItbms("La compra mínima es de $20.", precios)).toBe("La compra mínima es de $20.");
+  });
+
+  it("analizar lo hace antes de entregar el texto", () => {
+    const a = analizar("La lámpara cuesta $499.", ctx());
+    expect(a.limpio).toBe("La lámpara cuesta $499 + ITBMS.");
+    expect(a.graves).toEqual([]);
+  });
+});
+
+describe("regla 2 · nunca una cifra de dinero que no salió de una herramienta", () => {
+  it("un precio inventado es grave", () => {
+    const a = analizar("Esa lámpara te sale en $350.", ctx());
+    expect(a.graves.map((g) => g.tipo)).toEqual(["precio_inventado"]);
+    expect(a.graves[0].detalle).toContain("350");
+  });
+
+  it("una suma que el modelo calculó también (el total lo confirma una vendedora)", () => {
+    const a = analizar("Las dos lámparas serían $998 + ITBMS.", ctx());
+    expect(a.graves.some((g) => g.tipo === "precio_inventado")).toBe(true);
+  });
+
+  it("una cifra que sí salió de una herramienta pasa", () => {
+    expect(analizar("La compra mínima es de $20.", ctx()).graves).toEqual([]);
+  });
+
+  it("quitarGraves deja las oraciones buenas y elimina la inventada", () => {
+    const a = analizar("Tenemos la lámpara de prueba. Esa lámpara te sale en $350. ¿Te mando la foto?", ctx());
+    expect(quitarGraves(a.limpio, ctx())).toBe("Tenemos la lámpara de prueba. ¿Te mando la foto?");
+  });
+});
+
+describe("regla 2 · nunca un número de existencias", () => {
+  const dicen = [
+    "Quedan 3 unidades.",
+    "Tenemos 12 en stock.",
+    "Hay 5 disponibles.",
+    "Solo queda 1.",
+    "Nos quedan dos piezas.",
+    "Es la última unidad.",
+    "Quedan solo 4.",
+    "Hay 7 en existencia.",
+    "Tenemos tres en bodega.",
+    "stock: 8",
+    "Solo 2 más y se agota.",
+    "Quedan apenas cinco.",
+    "ULTIMAS PIEZAS: quedan pocas, 2 unidades.",
+  ];
+  it.each(dicen)("detecta: %s", (frase) => {
+    expect(detectarExistencias(frase).length, frase).toBeGreaterThan(0);
+  });
+
+  const noDicen = [
+    "Está disponible.",
+    "Quedan pocas.",
+    "Está agotado por ahora.",
+    "Mide 160 x 200 cm.",
+    "Tenemos 3 modelos de lámparas de prueba.",
+    "Viene en 2 colores.",
+    "Tiene 4 repisas.",
+    "Cuesta $499 + ITBMS.",
+    "Con 500 puntos puedes canjear un premio.",
+    "Abrimos de 8:00 a. m. a 5:00 p. m.",
+  ];
+  it.each(noDicen)("no confunde: %s", (frase) => {
+    expect(detectarExistencias(frase), frase).toEqual([]);
+  });
+
+  it("la guardia lo marca como grave", () => {
+    expect(analizar("Solo nos quedan 3 unidades.", ctx()).graves.map((g) => g.tipo)).toContain("existencias");
+  });
+});
+
+describe("Tommalo · las existencias de cremas se cuentan en cajas; lo que trae una caja no es existencia", () => {
+  const dicen = [
+    "Hay 3 cajas disponibles.",
+    "Tenemos 4 paquetes en stock.",
+    "Tenemos dos cajas de la talla M.",
+    "Nos quedan solo 2 cajas.",
+    "Quedan 5 paquetes.",
+    "Es la última caja.",
+    "Tenemos 5 unidades de la caja de talla M.",
+  ];
+  it.each(dicen)("detecta: %s", (frase) => {
+    expect(detectarExistencias(frase).length, frase).toBeGreaterThan(0);
+  });
+
+  // Textos como los del catálogo de Tommalo («Caja L — 15 a 39 lb — 128 uds», «caja de 960 mascarillas (12 paquetes de 80)»).
+  const noDicen = [
+    "La caja de 128 unidades cuesta $45 + ITBMS.",
+    "La caja de la talla M trae 144 unidades.",
+    "El paquete con 80 uds es el de viaje.",
+    "Cada caja contiene 12 paquetes de 80 unidades.",
+    "Viene en presentación de 960 unidades.",
+    "La caja trae 160 cremas.",
+    "Es una caja de 600 mascarillas (6 paquetes de 100).",
+    "Hay cremas en 3 tallas.",
+    "Está disponible en talla XXL.",
+  ];
+  it.each(noDicen)("no confunde: %s", (frase) => {
+    expect(detectarExistencias(frase), frase).toEqual([]);
+  });
+
+  it("decir cuántos cremas trae la caja no se borra de la respuesta", () => {
+    const c = ctx({ preciosProducto: new Set([50]), cifrasConocidas: new Set([50]) });
+    expect(analizar("La caja de la talla M trae 144 unidades y cuesta $50 + ITBMS.", c).graves).toEqual([]);
+    expect(analizar("Tenemos 3 cajas de la talla M a $50 + ITBMS.", c).graves.map((g) => g.tipo)).toContain("existencias");
+  });
+});
+
+describe("regla 3 · entregas, flete, financiamiento, apartados y descuentos: no se prometen", () => {
+  const prometen = [
+    "Te lo entregamos mañana.",
+    "Se lo enviamos el viernes.",
+    "Te la llevamos hoy mismo.",
+    "El envío es gratis.",
+    "La entrega es gratuita.",
+    "Flete incluido.",
+    "Llega en 3 días.",
+    "Te llega mañana sin falta.",
+    "Entregamos a todo Panamá.",
+    "Te lo apartamos hasta el sábado.",
+    "Te la reservamos por una semana.",
+    "Queda apartada a tu nombre.",
+    "Te doy un descuento si compras hoy.",
+    "Te hacemos un descuento del 10%.",
+    "Tiene 15% de descuento por ser cliente.",
+    "Financiamos en 12 cuotas.",
+    "Tenemos financiamiento disponible.",
+    "Lo pagas a 6 cuotas sin interés.",
+    "Te damos crédito.",
+  ];
+  it.each(prometen)("detecta: %s", (frase) => {
+    expect(detectarPromesas(frase).length, frase).toBeGreaterThan(0);
+  });
+
+  const noPrometen = [
+    "La entrega te la confirma una vendedora.",
+    "El flete lo confirma una vendedora.",
+    "El financiamiento te lo confirma una vendedora.",
+    "Eso te lo confirma una vendedora, ¿quieres que le pase tu consulta?",
+    "Si quieres, una vendedora te dice cómo apartar.",
+    "Los descuentos los confirma una vendedora.",
+    "Tenemos lámparas de prueba y grandes.",
+    "Con tus puntos puedes canjear premios.",
+  ];
+  it.each(noPrometen)("no confunde: %s", (frase) => {
+    expect(detectarPromesas(frase), frase).toEqual([]);
+  });
+
+  // La voz de Tommalo es de usted (2026-11-24): la guardia tiene que reconocer las mismas promesas dichas así.
+  const prometenDeUsted = [
+    "Se lo enviamos mañana.",
+    "Se la llevamos el viernes.",
+    "Lo recibe mañana.",
+    "Las recibe esta semana.",
+    "Le llega mañana sin falta.",
+    "Se lo apartamos hasta el sábado.",
+    "Queda apartada a su nombre.",
+    "Le hacemos un descuento del 10%.",
+    "Le damos crédito.",
+    "Le aprobamos el crédito.",
+    "El envío no le cuesta nada.",
+    "No paga el envío.",
+    "El envío se lo regalamos.",
+    "Le regalamos el envío.",
+    "Con esta compra acumula puntos.",
+    "Con su compra gana puntos.",
+    "Ganará 50 puntos con esta caja.",
+    "Le sumamos 50 puntos.",
+    "Recibimos su pago.",
+    "Ya vi su comprobante.",
+  ];
+  it.each(prometenDeUsted)("detecta dicho de usted: %s", (frase) => {
+    expect(detectarPromesas(frase).length, frase).toBeGreaterThan(0);
+  });
+
+  const noPrometenDeUsted = [
+    "La entrega se la confirma una vendedora.",
+    "Eso se lo confirma una vendedora, ¿desea que le pase su consulta?",
+    "Si desea, una vendedora le dice cómo apartar.",
+    "Con sus puntos puede canjear premios.",
+    "¿Le sirve la talla M para usted?",
+    "Con gusto le ayudo a elegir la talla 🙌🏻",
+  ];
+  it.each(noPrometenDeUsted)("no confunde dicho de usted: %s", (frase) => {
+    expect(detectarPromesas(frase), frase).toEqual([]);
+  });
+
+  it("un porcentaje que salió de una herramienta no es una promesa del bot", () => {
+    expect(detectarPromesas("El Black Weekend tiene 20% de descuento.", new Set([20]))).toEqual([]);
+    expect(detectarPromesas("Tiene 20% de descuento.", new Set())).toEqual(["descuento"]);
+  });
+});
+
+describe("la dueña · el bot no manda a nadie a leer políticas", () => {
+  const mandan = [
+    "Puedes leer nuestras políticas de garantía en la página.",
+    "Revisa los términos y condiciones antes de comprar.",
+    "Te recomiendo consultar el aviso de privacidad.",
+    "Más en tommalo.example/privacidad.",
+    "Visita tommalo.example/terminos para ver todo.",
+    // Las de este sistema (Tommalo): el dominio y las direcciones workers.dev de producción y de staging.
+    "Más en tommalo.example/privacidad.",
+    "Todo está en https://www.tommalo.example/terminos",
+    "Aquí: https://tommalo.subdominio-pendiente.workers.dev/privacidad",
+    "Aquí: tommalo-staging.subdominio-pendiente.workers.dev/terminos",
+    "Está en tommalo.example/politica-de-privacidad.",
+    "Eso está en nuestras políticas.",
+    "Lee la política de privacidad, por favor.",
+    "Mira nuestros términos.",
+    // De usted (la voz de Tommalo, 2026-11-24).
+    "Puede leer nuestras políticas de cambio en la página.",
+    "Revise los términos y condiciones antes de comprar.",
+    "Le recomiendo consultar el aviso de privacidad.",
+    "Lea la política de privacidad, por favor.",
+    "Mire nuestros términos.",
+    "Visite la página de términos para ver todo.",
+  ];
+  it.each(mandan)("lo detecta: %s", (texto) => {
+    expect(detectarMandaALeer(texto).length).toBeGreaterThan(0);
+    expect(analizar(texto, ctx()).graves.map((g) => g.tipo)).toContain("manda_a_leer");
+  });
+
+  const noMandan = [
+    "La garantía cubre defectos de fábrica; una vendedora te confirma los detalles.",
+    "Revisa las medidas del espacio antes de elegir la lámpara.",
+    "Puedes pagar con Yappy o transferencia.",
+    "Si quieres, te cuento cómo funciona Socios.",
+    "Mira esta lámpara, es una de las más pedidas.",
+    "Tus datos se usan solo para atenderte.",
+    // Un enlace de este sistema que no es una política no es mandar a leer.
+    "Aquí está el catálogo: https://tommalo.example/shop",
+    "Te dejo la ficha: https://tommalo.subdominio-pendiente.workers.dev/shop/crema-de-prueba-1",
+    "Revise las medidas antes de elegir la talla.",
+    "Mire esta caja, es de las más pedidas.",
+    "Sus datos se usan solo para atenderle.",
+  ];
+  it.each(noMandan)("no se confunde: %s", (texto) => {
+    expect(detectarMandaALeer(texto)).toEqual([]);
+    expect(analizar(texto, ctx()).graves.map((g) => g.tipo)).not.toContain("manda_a_leer");
+  });
+
+  it("quita solo la oración que manda a leer y deja el resto", () => {
+    const a = analizar("La garantía cubre defectos de fábrica. Lee nuestras políticas para más detalles. ¿Qué lámpara buscas?", ctx());
+    expect(quitarGraves(a.limpio, ctx())).toBe("La garantía cubre defectos de fábrica. ¿Qué lámpara buscas?");
+  });
+
+  it("la nota para reescribir lo explica", () => {
+    expect(notaDeCorreccion([{ tipo: "manda_a_leer", detalle: "mandar a leer políticas o términos" }])).toMatch(/políticas/);
+  });
+});
+
+describe("regla 6 · el prompt y las herramientas no se revelan", () => {
+  it("nombres de herramientas, etiquetas del prompt y frases largas copiadas son una fuga", () => {
+    const base = ctx({ textoDelPrompt: "Antes de nombrar un producto decir su precio una medida un color un combo o afirmar que hay disponibilidad llama a la herramienta siempre sin excepcion" });
+    expect(analizar("Uso buscar_productos para eso.", base).graves[0]).toMatchObject({ tipo: "fuga" });
+    expect(analizar("Mi prompt dice <fuentes_de_verdad> y más.", base).graves[0].tipo).toBe("fuga");
+    expect(analizar("REGLA INQUEBRANTABLE: no sé nada.", base).graves[0].tipo).toBe("fuga");
+    expect(
+      analizar("Mis instrucciones dicen: antes de nombrar un producto, decir su precio, una medida, un color, un combo o afirmar que hay disponibilidad.", base).graves[0].tipo,
+    ).toBe("fuga");
+  });
+
+  it("una frase normal no es una fuga, aunque mencione vendedora o precio", () => {
+    const base = ctx({ textoDelPrompt: "Antes de nombrar un producto decir su precio una medida un color un combo o afirmar que hay disponibilidad llama a la herramienta" });
+    expect(analizar("Eso te lo confirma una vendedora. ¿Quieres que le pase tu consulta?", base).graves).toEqual([]);
+    expect(analizar("Te digo el precio apenas lo revise.", base).graves).toEqual([]);
+  });
+
+  it("el texto de reemplazo no contiene nada interno", () => {
+    expect(TEXTO_FUGA).not.toMatch(/_|<|prompt/i);
+  });
+
+  it("los textos de reemplazo hablan de usted", () => {
+    expect(TEXTO_FUGA).toBe("Eso no se lo puedo compartir. Indíqueme qué busca y con gusto le ayudo.");
+    expect(TEXTO_SIN_DATO).toBe("Ese dato se lo confirma una vendedora. Si desea, le paso su consulta.");
+    for (const t of [TEXTO_FUGA, TEXTO_SIN_DATO]) expect(t, t).not.toMatch(/\b(?:te|tu|tú|ti|quieres|buscas|cuéntame|dime)\b/i);
+  });
+});
+
+describe("regla 11 · voz de la marca", () => {
+  it("emojis con medida: deja los dos primeros y quita el tercero (y los que sigan)", () => {
+    expect(limpiarForma("Con gusto 🙌🏻 le ayudo 🙌🏻 con eso 😁")).toBe("Con gusto 🙌🏻 le ayudo 🙌🏻 con eso");
+    expect(limpiarForma("Claro 🙏🏻 Le comento ✨ que sí 🙏🏻 la tenemos 😁")).toBe("Claro 🙏🏻 Le comento ✨ que sí la tenemos");
+    expect(limpiarForma("Somos Tommalo 🙌🏻")).toBe("Somos Tommalo 🙌🏻");
+    expect(limpiarForma("Con gusto 🙌🏻😁")).toBe("Con gusto 🙌🏻😁");
+    expect(limpiarForma("Con gusto 🙌🏻😁✨")).toBe("Con gusto 🙌🏻😁");
+    expect(MAX_EMOJIS).toBe(2);
+  });
+
+  it("un emoji se cuenta entero: con su tono de piel, su selector, sus uniones o su bandera", () => {
+    expect(limpiarForma("Hola 👍🏽 y ❤️ y 🇵🇦 y 👨‍👩‍👧")).toBe("Hola 👍🏽 y ❤️ y y");
+    expect(limpiarForma("Familia 👨‍👩‍👧 feliz 🇵🇦")).toBe("Familia 👨‍👩‍👧 feliz 🇵🇦");
+    // Una tecla que sobra deja su número, como antes; un tono de piel suelto no dice nada.
+    expect(limpiarForma("Opciones 1️⃣ 2️⃣ 3️⃣")).toBe("Opciones 1️⃣ 2️⃣ 3");
+    expect(limpiarForma("Hola 🏻 amiga")).toBe("Hola amiga");
+  });
+
+  it("las líneas que el modelo copia tal cual de una frase de Odoo conservan sus íconos (los pasos 1️⃣ 2️⃣ 3️⃣ del enlace de ubicación)", () => {
+    const frase = "📍 Marque su casa en el mapa:\nhttps://tommalo.example/u/abc\n1️⃣ Abra el enlace\n2️⃣ Toque «Mi ubicación» y permita\n3️⃣ Escriba su número de casa";
+    expect(limpiarForma(frase, [frase])).toBe(frase);
+    // Copiada con espacios de más también: se compara sin ellos.
+    expect(limpiarForma("📍 Hola 🙌🏻\n3️⃣  Escriba su número de casa ", [frase])).toBe("📍 Hola\n3️⃣ Escriba su número de casa");
+    // Sin la frase de Odoo, la regla de siempre: dos como mucho.
+    expect(limpiarForma(frase)).toBe(frase.replace("2️⃣", "2").replace("3️⃣", "3"));
+  });
+
+  it("los íconos de la frase gastan el cupo: los que agrega el modelo de su cuenta se quitan, y una línea cambiada no se salva", () => {
+    const frase = "📍 Marque su casa en el mapa:\n1️⃣ Abra el enlace\n2️⃣ Toque «Mi ubicación»";
+    expect(limpiarForma(`Con gusto 🙌🏻\n${frase}\nListo 🙌🏻`, [frase])).toBe(`Con gusto\n${frase}\nListo`);
+    // Una línea que el modelo reescribió ya no es de Odoo: cuenta como suya (y el cupo ya se lo gastó la frase).
+    expect(limpiarForma("📍 Marque su casa en el mapa:\n1️⃣ Abra el enlace ya\n2️⃣ Toque «Mi ubicación»", [frase])).toBe("📍 Marque su casa en el mapa:\n1 Abra el enlace ya\n2️⃣ Toque «Mi ubicación»");
+    // Una frase sin íconos no deja pasar nada de más; el «visto» se quita siempre, también de una frase de Odoo.
+    expect(limpiarForma("Hola 🙏🏻 🙌🏻 😁", ["Hola"])).toBe("Hola 🙏🏻 🙌🏻");
+    expect(limpiarForma("✅ Listo 📍 1️⃣ 2️⃣", ["✅ Listo 📍 1️⃣ 2️⃣"])).toBe("Listo 📍 1️⃣ 2️⃣");
+  });
+
+  it("los signos de «visto» (✓ ✔ ✅ ☑) se quitan siempre, aunque no haya otros emojis", () => {
+    expect(limpiarForma("Listo ✅ y gracias")).toBe("Listo y gracias");
+    expect(limpiarForma("Talla M ✓ caja ✔️ pago ☑ y ☑️")).toBe("Talla M caja pago y");
+    // No cuentan entre los dos: los emojis cálidos que vienen después se quedan.
+    expect(limpiarForma("✅ Con gusto 🙌🏻 se lo reviso 🙏🏻")).toBe("Con gusto 🙌🏻 se lo reviso 🙏🏻");
+  });
+
+  it("colapsa los signos dobles", () => {
+    expect(limpiarForma("¡¡Hola!! ¿¿Qué buscas??")).toBe("¡Hola! ¿Qué buscas?");
+  });
+
+  it("sin formato de documento: nada de títulos ni negritas dobles", () => {
+    expect(limpiarForma("## Lámparas\n**Grande** disponible")).toBe("Lámparas\n*Grande* disponible");
+  });
+
+  it("deja intactos los *asteriscos* sencillos de WhatsApp", () => {
+    expect(limpiarForma("Escríbeme *persona* y te atiende una vendedora.")).toBe("Escríbeme *persona* y te atiende una vendedora.");
+  });
+
+  it("«remate» y «¡corre!» son graves, con o sin acento, en cualquier mayúscula", () => {
+    for (const frase of ["Es un remate total.", "¡CORRE que se acaba!", "Aprovecha, es una última oportunidad.", "No te lo pierdas."]) {
+      expect(analizar(frase, ctx()).graves.some((g) => g.tipo === "palabra_prohibida"), frase).toBe(true);
+    }
+  });
+
+  it("las palabras que fije la dueña en Odoo también", () => {
+    const c = ctx({ palabrasProhibidas: ["ganga"] });
+    expect(analizar("Es una ganga.", c).graves[0]).toMatchObject({ tipo: "palabra_prohibida", detalle: "ganga" });
+    expect(analizar("Es una buena opción.", c).graves).toEqual([]);
+  });
+
+  it("«correr» o «corredor» no se confunden con «corre»", () => {
+    expect(analizar("El corredor del pasillo mide 2 metros.", ctx()).graves).toEqual([]);
+  });
+});
+
+describe("lo que se vende sin estar publicado no se niega (incidente del 2026-11-13: «solo manejamos la lámpara, no el difusor solo»)", () => {
+  const conRespaldo = (extra: Partial<ContextoRevision> = {}) => ctx({ haySinPublicar: true, ...extra });
+
+  it("reconoce las formas de negar un producto, en español y en inglés", () => {
+    for (const frase of [
+      "Revisé el catálogo y ahorita solo manejamos la lámpara (la estructura), no el difusor solo.",
+      "Difusores no los manejamos.",
+      "No tenemos difusores por ahora.",
+      "Eso ya no lo vendemos.",
+      "Tampoco trabajamos difusores.",
+      "No contamos con difusores sueltos.",
+      "Sorry, we don't carry mattresses.",
+      "We only sell the lamp frame.",
+    ]) {
+      expect(detectarNiegaProducto(frase), frase).not.toEqual([]);
+    }
+  });
+
+  it("decir que no está en la tienda en línea, o la etiqueta de existencias, no es negarlo", () => {
+    for (const frase of [
+      "Sí, los trabajamos. Los modelos y los precios te los confirma una vendedora.",
+      "No los tenemos publicados en la tienda en línea, pero sí los trabajamos.",
+      "Ahorita no lo tenemos disponible: sale agotado.",
+      "No lo tenemos en la página todavía; una vendedora te confirma los modelos.",
+      "We don't have it on the website yet, but a salesperson will confirm models and prices.",
+    ]) {
+      expect(detectarNiegaProducto(frase), frase).toEqual([]);
+    }
+  });
+
+  it("con el respaldo de la herramienta (hay productos así sin publicar), negarlo es grave y se reescribe", () => {
+    const a = analizar("Revisé el catálogo y ahorita solo manejamos la lámpara (la estructura), no el difusor solo.", conRespaldo());
+    expect(a.graves).toEqual([{ tipo: "niega_producto", detalle: "solo manejamos" }]);
+    expect(analizar("Sí, los trabajamos. Los modelos y los precios te los confirma una vendedora.", conRespaldo()).graves).toEqual([]);
+  });
+
+  it("sin ese respaldo no se toca: «no lo manejamos» es cierto cuando la herramienta dijo que no hay nada así", () => {
+    expect(analizar("Cunas no las manejamos. ¿Te muestro lámparas?", ctx()).graves).toEqual([]);
+    expect(analizar("Cunas no las manejamos. ¿Te muestro lámparas?", ctx({ haySinPublicar: false })).graves).toEqual([]);
+  });
+
+  it("si insiste, sale solo la oración que no niega", () => {
+    const texto = "No manejamos difusores. Una vendedora te confirma los modelos y los precios.";
+    expect(quitarGraves(texto, conRespaldo())).toBe("Una vendedora te confirma los modelos y los precios.");
+  });
+
+  it("la nota de corrección le dice que sí lo trabajamos y qué decir", () => {
+    const n = notaDeCorreccion([{ tipo: "niega_producto", detalle: "solo manejamos" }]);
+    expect(n).toMatch(/NO se envió/);
+    expect(n).toContain("SÍ trabajamos");
+    expect(n).toContain("una vendedora le confirma modelos y precios");
+    expect(n).toContain("sin dar ninguno");
+  });
+});
+
+describe("la nota para que el modelo reescriba", () => {
+  it("no nombra a Tommalo: es «el asistente virtual de la tienda», sin nombre propio, y lo abonado es de la tienda", () => {
+    const n = notaDeCorreccion([{ tipo: "se_hace_pasar_por_persona", detalle: "soy una persona" }]);
+    expect(n).toContain("eres el asistente virtual de la tienda, sin nombre propio");
+    expect(n).not.toMatch(/\bJuan\b|Andrés/);
+    expect(n).toContain("lo que la tienda abona o regala, solo como ahorro");
+    expect(n).not.toMatch(/D['’]CASA/);
+  });
+
+  it("dice qué estuvo mal sin soltar el texto malo como orden", () => {
+    const n = notaDeCorreccion([{ tipo: "existencias", detalle: "3 unidades" }, { tipo: "promesa", detalle: "plazo de entrega" }]);
+    expect(n).toMatch(/NO se envió/);
+    expect(n).toMatch(/número de existencias/);
+    expect(n).toMatch(/promesa de entrega/);
+    expect(n).toMatch(/se lo confirma una vendedora/);
+  });
+
+  it("pide reescribir de usted, con uno o dos emojis como mucho y los precios tal cual (sin «+ ITBMS» de más)", () => {
+    const n = notaDeCorreccion([{ tipo: "precio_inventado", detalle: "$5.00" }]);
+    expect(n).toMatch(/De usted, siempre \(nunca tutees\)/);
+    expect(n).toMatch(/uno o dos emojis como mucho/);
+    expect(n).toMatch(/tal cual los da precio_texto/);
+    expect(n).not.toMatch(/tuteo|sin emojis|\+ ITBMS/i);
+  });
+});
+
+describe("Juan nunca dice que es una persona ni que «no es un bot»", () => {
+  it.each([
+    "Soy una persona, tranquilo.",
+    "Soy humano, igual que tú.",
+    "Tranquilo, no soy un bot.",
+    "No soy un robot, soy Juan.",
+    "No soy una IA.",
+    "Soy una persona real de la tienda.",
+    "Soy vendedora de Tommalo.",
+    "Soy el vendedor de lámparas.",
+    "Soy asesor de ventas en la tienda.",
+  ])("«%s» es grave", (frase) => {
+    expect(detectarSerHumano(frase).length).toBeGreaterThan(0);
+    expect(analizar(frase, ctx()).graves.map((g) => g.tipo)).toContain("se_hace_pasar_por_persona");
+  });
+
+  it.each([
+    "Soy Juan, el asistente virtual de Tommalo. Si prefieres, te paso con una vendedora.",
+    "No soy una persona, soy el asistente virtual de Tommalo.",
+    "Si prefieres hablar con una persona, te paso con una vendedora.",
+    "Una vendedora te escribe mañana a las 8:00 a. m.",
+    "Soy Juan de Tommalo.",
+  ])("«%s» está bien", (frase) => {
+    expect(detectarSerHumano(frase)).toEqual([]);
+    expect(analizar(frase, ctx()).graves.map((g) => g.tipo)).not.toContain("se_hace_pasar_por_persona");
+  });
+
+  it("el borrador de una vendedora (escribe una persona de verdad) no se toca", () => {
+    const a = analizar("Hola Karen, soy Marisol, vendedora de Tommalo.", { ...ctx(), escribePersona: true });
+    expect(a.graves.map((g) => g.tipo)).not.toContain("se_hace_pasar_por_persona");
+  });
+
+  it("se quita solo la oración que lo dice y se le pide al modelo que la reescriba", () => {
+    const limpio = analizar("Soy una persona de verdad. Te ayudo con lámparas.", ctx()).limpio;
+    expect(quitarGraves(limpio, ctx())).toBe("Te ayudo con lámparas.");
+    expect(notaDeCorreccion([{ tipo: "se_hace_pasar_por_persona", detalle: "soy una persona" }])).toMatch(/decir que eres una persona o que no eres un bot/);
+  });
+});
+
+describe("en inglés también (Juan contesta en inglés a quien le escribe en inglés; decisión de la dueña, 2026-10-16)", () => {
+  it.each([
+    ["We'll deliver it tomorrow.", "plazo de entrega"],
+    ["We can ship it on Friday.", "plazo de entrega"],
+    ["It will arrive in 3 days.", "plazo de entrega"],
+    ["Delivery is free.", "entrega o flete gratis"],
+    ["Free shipping to all of Panama.", "entrega o flete gratis"],
+    ["Delivery costs $25.", "costo de entrega"],
+    ["We'll hold it for you until Saturday.", "apartado"],
+    ["It's reserved for you.", "apartado"],
+    ["I can give you a 10% discount.", "descuento"],
+    ["We offer financing with no-interest installments.", "financiamiento"],
+    ["You're approved.", "crédito"],
+    ["Your payment has been received.", "pago confirmado"],
+    ["We received your transfer.", "pago confirmado"],
+  ])("%s → %s", (frase, que) => {
+    expect(detectarPromesas(frase)).toContain(que);
+  });
+
+  it("explicar la política sin prometer nada no es una promesa", () => {
+    for (const frase of [
+      "We deliver to Ciudad de Prueba, Arraiján, Capira, Panama City and Colón. A salesperson confirms the cost and the date.",
+      "You can put it on layaway with a minimum 50% deposit; a salesperson does it with you.",
+      "Financing is through Tafi: you apply with your ID.",
+      "We don't have cash discounts.",
+    ]) {
+      expect(detectarPromesas(frase), frase).toEqual([]);
+    }
+  });
+
+  it("las cifras de política en inglés se revisan igual que en español", () => {
+    const sin = analizar("You have 30 days to exchange it.", ctx());
+    expect(sin.graves.map((g) => g.tipo)).toContain("cifra_inventada");
+    const con = analizar("You have 30 days to exchange it.", ctx({ numerosEnTexto: new Set([30]) }));
+    expect(con.graves).toEqual([]);
+  });
+
+  it("nunca dice en inglés que es humano ni que no es un bot", () => {
+    for (const frase of ["I'm a real person.", "I am human.", "I'm not a bot.", "I am not an AI.", "You're talking to a real person.", "I'm a salesperson."]) {
+      expect(detectarSerHumano(frase), frase).not.toEqual([]);
+    }
+    for (const frase of ["I'm Juan, Tommalo's virtual assistant.", "I'm not a person, I'm a virtual assistant."]) {
+      expect(detectarSerHumano(frase), frase).toEqual([]);
+    }
+  });
+
+  it("no manda a leer las políticas en inglés", () => {
+    expect(detectarMandaALeer("Please read our return policy on the website.")).not.toEqual([]);
+    expect(detectarMandaALeer("Check our terms and conditions.")).not.toEqual([]);
+    expect(detectarMandaALeer("The months and the payment depend on what you agree with Tafi.")).toEqual([]);
+  });
+});
+

@@ -1,0 +1,96 @@
+"""F5: los papeles que se lleva el cliente nombran los productos en formato título; por dentro siguen en MAYÚSCULAS.
+
+Decisión de la dueña (2026-10-22): «Lo que ve el cliente: "Lámpara Grande Tapizada", y solo por dentro queden en
+MAYÚSCULAS». La cotización, la factura y la nota de entrega (la de Odoo y la fácil de leer), con el código público
+apagado o encendido. Lo guardado en las líneas no cambia.
+"""
+from lxml import html as lxml_html
+
+from odoo.tests import tagged
+
+from .documentos import DocumentosDePrueba
+
+LAMPARA_GUARDADA, LAMPARA_CLIENTE = 'LÁMPARA GRANDE GREY CON ESTANTES', 'Lámpara Grande Grey con Estantes'
+JABON_GUARDADO, JABON_CLIENTE = 'JABON IMPERIAL TWIN 3/4 BUEN SUEÑO', 'Jabon Imperial Twin 3/4 Buen Sueño'
+
+
+@tagged('post_install', '-at_install')
+class TestNombresParaElClienteEnLosPapeles(DocumentosDePrueba):
+
+    def _texto(self, informe, registros):
+        arbol = lxml_html.document_fromstring(self.html(informe, registros, normalizado=False))
+        for nodo in arbol.xpath('//script|//style'):
+            nodo.drop_tree()
+        return ' '.join(arbol.find('body').text_content().split())
+
+    def assertParaElCliente(self, texto, donde):
+        for cliente, guardado in ((LAMPARA_CLIENTE, LAMPARA_GUARDADA), (JABON_CLIENTE, JABON_GUARDADO)):
+            self.assertIn(cliente, texto, donde)
+            self.assertNotIn(guardado, texto, f'{donde}: el cliente no lee el nombre en MAYÚSCULAS')
+
+    def test_cotizacion_y_factura(self):
+        for codigo_publico in (False, True):
+            self.interruptores(codigo_publico=codigo_publico)
+            pedido = self.cotizacion()
+            self.assertIn(LAMPARA_GUARDADA, ' '.join(pedido.order_line.mapped('name')), 'lo guardado no cambia')
+            self.assertParaElCliente(self._texto('sale.report_saleorder', pedido), f'cotización {codigo_publico}')
+            factura = self.factura_completa()
+            self.assertParaElCliente(self._texto('account.report_invoice', factura), f'factura {codigo_publico}')
+
+    def test_notas_de_entrega(self):
+        for codigo_publico in (False, True):
+            self.interruptores(codigo_publico=codigo_publico)
+            for facil in (False, True):
+                self.company.dcasa_entrega_facil = facil
+                entrega = self.entrega()
+                self.assertParaElCliente(self._texto('stock.report_deliveryslip', entrega),
+                                         f'nota de entrega (fácil={facil}, código público={codigo_publico})')
+                self.assertIn(LAMPARA_GUARDADA, ' '.join(entrega.move_ids.product_id.mapped('display_name')),
+                              'en la pantalla de la entrega sigue en MAYÚSCULAS')
+
+    def test_la_nota_de_entrega_no_repite_el_producto(self):
+        """Caso de caja (2026-10-23, WH/OUT/00155): la nota despachada imprimía cada producto dos veces, el nombre y
+        debajo la «descripción de la entrega». Odoo solo la omite si empieza EXACTAMENTE igual que el nombre, y la nota
+        compara con el nombre ya en formato título; la guardada puede traer además el de antes (otras mayúsculas o
+        espacios). Se compara sin importar mayúsculas ni espacios."""
+        viejos = {self.lampara: f'[{self.lampara.default_code}] Lámpara Grande  grey con estantes',
+                  self.jabon: f'[{self.jabon.default_code}] Jabon Imperial Twin 3/4 buen sueño '}
+        for codigo_publico in (False, True):
+            self.interruptores(codigo_publico=codigo_publico)
+            for facil in (False, True):
+                self.company.dcasa_entrega_facil = facil
+                for guardada in (False, True):
+                    for despachada in (False, True):
+                        entrega = self.entrega()
+                        if guardada:
+                            for movimiento in entrega.move_ids:
+                                if movimiento.product_id in viejos:
+                                    movimiento.description_picking = viejos[movimiento.product_id]
+                        if despachada:
+                            for movimiento in entrega.move_ids:
+                                movimiento.quantity = movimiento.product_uom_qty
+                            entrega.move_ids.picked = True
+                            entrega.button_validate()
+                            self.assertEqual(entrega.state, 'done')
+                        texto = self._texto('stock.report_deliveryslip', entrega).casefold()
+                        for cliente in (LAMPARA_CLIENTE, JABON_CLIENTE):
+                            self.assertEqual(
+                                texto.count(cliente.casefold()), 1,
+                                f'{cliente} (fácil={facil}, código público={codigo_publico}, nombre viejo guardado='
+                                f'{guardada}, despachada={despachada}): {texto}')
+
+    def test_una_descripcion_de_verdad_se_sigue_imprimiendo(self):
+        """Lo que alguien escribió en la entrega además del nombre («Color: gris») no se pierde."""
+        for despachada in (False, True):
+            entrega = self.entrega()
+            movimiento = entrega.move_ids.filtered(lambda m: m.product_id == self.lampara)
+            movimiento.description_picking = (
+                f'[{self.lampara.default_code}] {LAMPARA_GUARDADA}\nArmar en casa del cliente')
+            if despachada:
+                for linea in entrega.move_ids:
+                    linea.quantity = linea.product_uom_qty
+                entrega.move_ids.picked = True
+                entrega.button_validate()
+            texto = self._texto('stock.report_deliveryslip', entrega).casefold()
+            self.assertEqual(texto.count(LAMPARA_CLIENTE.casefold()), 1, texto)
+            self.assertIn('armar en casa del cliente', texto)

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Categorías de la tienda web (las que ve el cliente). Son las cuatro con que el proveedor de Tommalo clasifica
+         su mercadería (Belleza, Hogar, Salud, Otro). Una categoría sin nada publicado no la ve el visitante (regla de
+         Odoo). Los nombres definitivos los decide Tommalo (docs/PENDIENTES_DEL_CLIENTE.md). -->
+    <data noupdate="1">
+        <record id="public_category_belleza" model="product.public.category">
+            <field name="name">Belleza</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="public_category_hogar" model="product.public.category">
+            <field name="name">Hogar</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="public_category_salud" model="product.public.category">
+            <field name="name">Salud</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="public_category_otro" model="product.public.category">
+            <field name="name">Otros</field>
+            <field name="sequence">90</field>
+        </record>
+    </data>
+</odoo>

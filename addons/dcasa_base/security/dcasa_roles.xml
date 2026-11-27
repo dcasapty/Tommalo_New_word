@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Roles de la tienda (UI-02, UI-03, ronda 3 §4.1; Caja desde el 2026-10-17).
+        En la ficha del usuario aparecen como un solo selector con el nombre de la empresa («Tommalo»): Vendedora, Caja
+        o Gerencia. (En la plantilla de origen decía «D'CASA»; el registro no es noupdate, así que -u lo actualiza.)
+        Cada rol se arma con grupos estándar de Odoo; las reglas de «solo lo suyo» están en
+        dcasa_reglas_contables.xml y dcasa_reglas_ventas.xml (ver docs/PERMISOS.md).
+    -->
+    <record id="module_category_dcasa" model="ir.module.category">
+        <field name="name">Tommalo</field>
+        <field name="description">Roles de la tienda.</field>
+        <field name="sequence">1</field>
+    </record>
+
+    <record id="res_groups_privilege_dcasa" model="res.groups.privilege">
+        <field name="name">Tommalo</field>
+        <field name="description">Rol en la tienda: Vendedora (vende y factura lo suyo), Caja (factura y cobra todo) o Gerencia (además anula, devuelve dinero y controla).</field>
+        <field name="placeholder">Sin rol</field>
+        <field name="sequence">1</field>
+        <field name="category_id" ref="module_category_dcasa"/>
+    </record>
+
+    <!--
+        Vendedora: vende, factura y despacha LO SUYO (pedido de la dueña, 2026-10-16: «los vendedores deberían solo
+        poder ver las facturas que ellos hacen»). NO cobra (decisión de la gerencia A5, 2026-10-17: «el cobro solo en
+        Caja»; models/cobros.py lo niega en el servidor, con el interruptor encendido o apagado).
+        * Ventas «solo sus documentos» (sales_team.group_sale_salesman): sus cotizaciones y pedidos (user_id) y los
+          que no tienen vendedora (web, Juan sin asignar), el análisis de ventas y el de facturas, igual que Odoo.
+          Las facturas, notas, cobros y conciliaciones se cierran a «lo suyo» en dcasa_reglas_contables.xml
+          (Facturación las abría todas). Las oportunidades siguen compartidas (dcasa_reglas_ventas.xml).
+        * «Ventas: todos los documentos» (sales_team.group_sale_salesman_all_leads) NO se nombra aquí, ni con (4, …)
+          ni con (3, …): esa implicación es el interruptor «Cada vendedora ve solo sus documentos» (Ajustes de Ventas
+          y Ventas › Configuración › Permisos de las vendedoras; models/res_users.py). Apagado, el rol la implica y
+          todas ven todo como antes. Si este archivo la nombrara, cada despliegue (-u) movería el interruptor. En la
+          base de antes la quita una vez la migración 19.0.1.8.0 (quitar la línea (4, …) no la borra).
+        * Facturación (account.group_account_invoice): para facturar (y antes para cobrar: ACL de account.payment).
+          Registrar cobros ya no le alcanza: models/cobros.py exige Caja, Gerencia o contabilidad. No da asientos,
+          conciliación ni reportes contables.
+        * Inventario usuario: entregas y existencias (despacha también lo de otra: la nota no lleva precios).
+          CRM y Socios cuelgan de los grupos de Ventas.
+    -->
+    <record id="group_vendedora" model="res.groups">
+        <field name="name">Vendedora</field>
+        <field name="sequence">10</field>
+        <field name="privilege_id" ref="res_groups_privilege_dcasa"/>
+        <field name="comment">Vende, factura y despacha; el cobro lo registra Caja. Con «Cada vendedora ve solo sus documentos» encendido (Ajustes de Ventas), ve solo sus cotizaciones, pedidos, facturas, notas y cobros (y los que no tienen vendedora). Descuentos hasta el tope configurado en Ajustes de Ventas.</field>
+        <field name="implied_ids" eval="[
+            (4, ref('sales_team.group_sale_salesman')),
+            (4, ref('account.group_account_invoice')),
+            (4, ref('stock.group_stock_user')),
+        ]"/>
+    </record>
+
+    <!--
+        Caja: todo lo de Vendedora y además ve, factura y cobra los documentos de clientes de TODA la tienda
+        (las cotizaciones de las vendedoras se facturan y se cobran en caja: el cobro solo en Caja, decisión de la
+        gerencia A5). Anular o pasar a borrador una factura publicada, notas de crédito, devolver dinero y dejar saldo a
+        favor son de Gerencia (A6, A7; models/cobros.py). Es «Ventas: todos los documentos»
+        (sales_team.group_sale_salesman_all_leads, el mismo grupo con el que Odoo abre todos los pedidos); las
+        reglas «toda la tienda, solo de clientes» cuelgan de ese grupo. Sin contabilidad, sin costos ni ganancia y
+        con el tope de descuento de la vendedora. No se le asigna a nadie al instalar: lo da un administrador.
+    -->
+    <record id="group_caja" model="res.groups">
+        <field name="name">Caja</field>
+        <field name="sequence">15</field>
+        <field name="privilege_id" ref="res_groups_privilege_dcasa"/>
+        <field name="comment">Todo lo de Vendedora y además ve, factura y cobra todas las cotizaciones, pedidos, facturas, notas y cobros de clientes. Sin contabilidad ni costos; descuento con tope. Anular, notas de crédito y devoluciones: Gerencia.</field>
+        <field name="implied_ids" eval="[
+            (4, ref('group_vendedora')),
+            (4, ref('sales_team.group_sale_salesman_all_leads')),
+        ]"/>
+    </record>
+
+    <!--
+        Gerencia: todo lo de Caja (y por lo tanto de Vendedora) más el control de la tienda: Ventas administrador
+        (reportes antifraude, descuentos sin tope, ajustes de puntos), contabilidad completa
+        (sin la configuración avanzada de account.group_account_manager), Inventario y Compras
+        administrador, y crear productos (product.group_product_manager: el catálogo y la
+        importación de Excel de proveedores con Brian). El sitio web (diseñador/editor) lo añade website_dcasa.
+        No incluye Ajustes técnicos ni gestión de usuarios (base.group_system / group_erp_manager).
+        Exportar a Excel (base.group_allow_export, «Acción › Exportar» de las listas): solo Gerencia y los
+        administradores, que ya lo tienen. Pedido del jefe (2026-11-19): bajar las facturas con su forma de pago. Ni
+        Caja ni la Vendedora lo traen. El permiso de Odoo es de toda lista, así que quien lo trae sin ser administrador
+        (Gerencia) solo baja facturas, apuntes, pagos y ventas: la lista está en models/exportar.py y las demás listas
+        (clientes, empleados, chatter, adjuntos…) son de los administradores (tests/test_exportar.py).
+    -->
+    <record id="group_gerencia" model="res.groups">
+        <field name="name">Gerencia</field>
+        <field name="sequence">20</field>
+        <field name="privilege_id" ref="res_groups_privilege_dcasa"/>
+        <field name="comment">Controla la tienda: reportes antifraude, descuentos sin tope, contabilidad, compras e inventario. Anula o pasa a borrador facturas publicadas, hace notas de crédito, devuelve dinero y autoriza un primer abono menor a la mitad. Baja a Excel («Acción › Exportar») facturas, pagos y ventas; las demás listas, solo los administradores.</field>
+        <field name="implied_ids" eval="[
+            (4, ref('group_vendedora')),
+            (4, ref('group_caja')),
+            (4, ref('sales_team.group_sale_manager')),
+            (4, ref('account.group_account_user')),
+            (4, ref('stock.group_stock_manager')),
+            (4, ref('purchase.group_purchase_manager')),
+            (4, ref('product.group_product_manager')),
+            (4, ref('base.group_allow_export')),
+        ]"/>
+        <field name="user_ids" eval="[(4, ref('base.user_admin'))]"/>
+    </record>
+</odoo>

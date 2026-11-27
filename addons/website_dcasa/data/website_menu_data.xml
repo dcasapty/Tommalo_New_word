@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- El menú principal (models/website.py, MENU_PRINCIPAL). Se arma una vez al instalar; después se edita desde Sitio web > Menú, sin programador. -->
+    <data noupdate="1">
+        <function model="website" name="_dcasa_armar_menu_principal"/>
+    </data>
+</odoo>

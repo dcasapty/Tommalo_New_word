@@ -1,0 +1,460 @@
+/**
+ * Reglas del borde (sin dependencias de Cloudflare: se testean en Node).
+ */
+import { CABECERA_MODO, CABECERA_PUERTA, sinCookieDePuerta } from "./puerta";
+
+export type Route =
+  | { kind: "health" }
+  | { kind: "respaldo" }
+  | { kind: "tienda_regenerar" }
+  | { kind: "blocked" }
+  | { kind: "redirect"; location: string; status: 301 | 308 }
+  | { kind: "origin"; cacheable: boolean };
+
+/**
+ * Rutas que nunca se exponen a internet (se comparan contra la ruta normalizada,
+ * ver `normalizePath`):
+ *
+ * - `/web/database/*`: gestor de bases de datos (borrar, respaldar, restaurar).
+ * - `/jsonrpc`: además de los modelos, despacha el servicio `db` (`drop`, `dump`,
+ *   `restore`, `change_admin_password`…), protegido solo por la contraseña maestra.
+ *   El cuerpo no se inspecciona en el borde, así que se bloquea completo.
+ * - `/xmlrpc/*` (incluye `/xmlrpc/db` y `/xmlrpc/2/db`): la misma API en XML-RPC.
+ * - `/json/2/*` y `/doc-bearer/*`: API externa de Odoo 19 con clave de API. Nada de
+ *   D'CASA la usa hoy; cuando Brian en el borde la necesite (fase posterior) se
+ *   abrirá con su propia protección, no desde internet abierto.
+ *
+ * - `/dcasa/juan/*`: la API que el Worker `juan` (el asistente de clientes) usa para registrar mensajes, pedir
+ *   herramientas y confirmar seguimientos (addons/dcasa_conversaciones). Solo entra por el service binding
+ *   (clase `JuanEntrada`, src/juan.ts): desde internet, 404 como el resto de las rutas internas.
+ *
+ * Ningún módulo de `addons/` ni el Worker usan las otras rutas (Brian habla por
+ * `/brian/mcp` y el sitio por `/web/dataset/*` y rutas `http`).
+ */
+const BLOCKED_PREFIXES = ["/web/database", "/jsonrpc", "/xmlrpc", "/json/2", "/doc-bearer", "/dcasa/juan"];
+
+/**
+ * Odoo (http_routing) quita un prefijo de idioma (`/es/…`, `/es_419/…`) y vuelve a
+ * enrutar, incluso en un POST: `/es/jsonrpc` llega a `/jsonrpc`. Por eso las
+ * rutas bloqueadas se comprueban también sin un primer segmento con forma de idioma.
+ */
+const LANG_SEGMENT = /^\/[a-z]{2,3}(?:[_-][a-z0-9]{2,4})?(?:@[a-z]+)?(?=\/|$)/;
+
+/** Decodifica %XX byte a byte (sin lanzar con secuencias inválidas). */
+function percentDecode(path: string): string {
+  return path.replace(/%([0-9a-f]{2})/gi, (_m, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+/**
+ * Ruta canónica para decidir bloqueos: decodifica %XX hasta que no cambie (doble
+ * codificación incluida), pasa `\` a `/`, colapsa barras repetidas, resuelve `.` y
+ * `..` y pasa a minúsculas. Es más agresiva que Odoo a propósito (Odoo distingue
+ * mayúsculas y decodifica una sola vez): ante la duda, se bloquea de más.
+ */
+export function normalizePath(pathname: string): string {
+  let path = pathname;
+  for (let i = 0; i < 5; i++) {
+    const decoded = percentDecode(path);
+    if (decoded === path) break;
+    path = decoded;
+  }
+  path = path.toLowerCase().replace(/\\/g, "/");
+  const segments: string[] = [];
+  for (const segment of path.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  return "/" + segments.join("/");
+}
+
+/** La ruta normalizada y la misma sin un primer segmento con forma de idioma: lo que Odoo puede terminar sirviendo. */
+function rutasDeOdoo(pathname: string): string[] {
+  const path = normalizePath(pathname);
+  return [path, path.replace(LANG_SEGMENT, "") || "/"];
+}
+
+/** ¿La ruta (o la ruta sin prefijo de idioma) cae en una ruta bloqueada? */
+export function isBlockedPath(pathname: string): boolean {
+  return rutasDeOdoo(pathname).some((candidate) => BLOCKED_PREFIXES.some((prefix) => candidate.startsWith(prefix)));
+}
+
+/**
+ * Rutas que nunca se guardan en caché:
+ *
+ * - `/brian/`: el servidor MCP y el webhook de Telegram de Brian llevan credenciales
+ *   (Authorization / secreto) y respuestas por usuario.
+ * - `/envios/choferes/`: el enlace secreto de la calculadora para choferes (addons/dcasa_envios,
+ *   controllers/choferes.py). El secreto va en la ruta y Gerencia puede apagarlo o cambiarlo en
+ *   cualquier momento: una copia en el borde seguiría abriéndolo. Odoo además responde `no-store`.
+ * - `/dcasa/brian/`: lo que la página de la tienda le pide a Odoo para el chat «Brian de la tienda» (el pase firmado,
+ *   el carrito y la cotización en PDF de la sesión del visitante; addons/dcasa_brian_tienda). Es de cada visitante:
+ *   nunca se guarda, aunque Odoo dijera «public». Odoo además responde `no-store`.
+ * - `/payment/tilopay/`: el retorno del cliente y el aviso del servidor de Tilopay (addons/dcasa_pago_tilopay). Llevan el
+ *   resultado de un pago: jamás se guardan. Son públicas a propósito (las manda Tilopay, sin cookies, y el navegador del
+ *   cliente al volver), no están en las rutas bloqueadas ni en los frenos de ritmo, y Odoo no se fía de lo que traen: le
+ *   pregunta a Tilopay (docs/TILOPAY.md).
+ * - `/u/` y `/entrega/`: el enlace de un solo uso para que la clienta marque su punto de entrega y la página del
+ *   motorizado (el QR del comprobante; addons/dcasa_ubicacion, docs/UBICACION.md). El secreto va en la ruta, la página
+ *   cambia al usarse o al vencer y lleva datos de la clienta: jamás se guardan. Odoo además responde `no-store`.
+ * - `/payment/yappy/`: el arranque del pago (`/iniciar`, JSON-RPC del navegador) y el aviso del servidor de Yappy
+ *   (`/ipn`, un GET abierto con la orden, el estado y la firma; addons/dcasa_pago_yappy). Llevan el resultado de un pago:
+ *   jamás se guardan, ni el GET del aviso ni la respuesta del arranque (que trae un token de un solo pago). Son públicas a
+ *   propósito (las manda Yappy, sin cookies), no están en las rutas bloqueadas ni en los frenos de ritmo, y Odoo no se fía
+ *   del navegador: solo la firma HMAC del aviso marca un pago (docs/YAPPY.md).
+ */
+const NEVER_CACHE_PREFIXES = [
+  "/brian/",
+  "/envios/choferes/",
+  "/dcasa/brian/",
+  "/payment/tilopay/",
+  "/payment/yappy/",
+  "/u/",
+  "/entrega/",
+];
+
+/**
+ * Recursos estáticos o versionados que se pueden guardar en la caché del borde. Que la
+ * ruta esté aquí no basta: además Odoo tiene que responder "public" (isCacheableResponse),
+ * y Odoo solo marca "public" lo servido a un visitante anónimo (`Stream.public`, http.py).
+ *
+ * No entran (a propósito):
+ * - El HTML (`/`, `/shop`, fichas): lo guarda otra pieza, la caché de páginas
+ *   (`src/tienda/paginas.ts`, con `rutaEstatica`), que lo pide a Odoo sin cookies y solo lo sirve
+ *   a anónimos; aquí Odoo lo manda sin "public" y con `Set-Cookie`, así que nunca se guardaría.
+ * - `/web/webclient/translations`: Odoo responde `public, max-age=1 año` pero el JS lo pide
+ *   con `cache: "no-store"` y compara el hash para enterarse de traducciones nuevas.
+ */
+const CACHEABLE_PATTERNS = [
+  /^\/web\/assets\//, // bundles JS/CSS con hash en la URL
+  /^\/[a-z0-9_]+\/static\//, // archivos estáticos de los módulos (fuentes, fotos del tema)
+  /^\/web\/image\//, // imágenes de productos (solo si Odoo responde "public")
+  /^\/web\/content\/[^?]*\?(?:.*&)?unique=/, // adjuntos versionados (/web/content/12-abc/x.css?unique=…)
+  /^\/dcasa\/img\/[^?]*\?(?:.*&)?v=/, // fotos WebP/JPEG al ancho justo, versionadas (website_dcasa/models/imagen.py)
+];
+
+/** ¿Esta ruta (con query) es un asset que el borde puede guardar? (Además Odoo debe responder "public".) */
+export function esAssetCacheable(rutaYQuery: string): boolean {
+  return CACHEABLE_PATTERNS.some((re) => re.test(rutaYQuery));
+}
+
+/**
+ * Assets cuya URL lleva la versión del contenido: si cambia el archivo, cambia la URL. Son
+ * inmutables (Odoo los manda `max-age=1 año, immutable`): el borde los guarda sin mirar la marca de
+ * invalidación. Los estáticos de los módulos (`/<módulo>/static/…`: fuentes, logo, foto del hero)
+ * NO llevan versión: se guardan igual, pero caducan con cada invalidación.
+ *
+ * - `/web/assets/[<website_id>/]<versión>/<bundle>` (Odoo 19; el módulo website antepone el id del
+ *   sitio; `debug`, `any` y `%` no son versiones).
+ * - `/web/image/<id>-<versión>/…` o `/web/image/…?unique=…`, `/web/content/…?unique=…`.
+ * - `/dcasa/img/…?v=<checksum>` (website_dcasa/models/imagen.py).
+ */
+export function esAssetVersionado(rutaYQuery: string): boolean {
+  const bundle = /^\/web\/assets\/(?:\d+\/)?([^/?]+)\/[^/?]+/.exec(rutaYQuery);
+  if (bundle) return !["debug", "any", "%", "%25"].includes(bundle[1]);
+  if (/^\/web\/image\/\d+-[^/?]+(?:\/|$|\?)/.test(rutaYQuery)) return true;
+  if (/^\/web\/(?:image|content)\/[^?]*\?(?:.*&)?unique=[^&]+/.test(rutaYQuery)) return true;
+  return /^\/dcasa\/img\/[^?]*\?(?:.*&)?v=[^&]+/.test(rutaYQuery);
+}
+
+export function route(url: URL, method: string, canonicalHost?: string): Route {
+  if (url.pathname === "/__edge/health") {
+    return { kind: "health" };
+  }
+  if (url.pathname === "/__edge/respaldo") {
+    return { kind: "respaldo" };
+  }
+  if (url.pathname === "/__edge/tienda/regenerar") {
+    return { kind: "tienda_regenerar" };
+  }
+  // `/__edge/*` es del borde: lo que no existe aquí no se reenvía a Odoo.
+  if (isBlockedPath(url.pathname) || normalizePath(url.pathname).startsWith("/__edge/")) {
+    return { kind: "blocked" };
+  }
+  if (canonicalHost && url.hostname !== canonicalHost && url.hostname === `www.${canonicalHost}`) {
+    const target = new URL(url.toString());
+    target.hostname = canonicalHost;
+    target.protocol = "https:";
+    // 308 conserva el método y el cuerpo (un POST a /brian/mcp sigue siendo POST).
+    const status = method === "GET" || method === "HEAD" ? 301 : 308;
+    return { kind: "redirect", location: target.toString(), status };
+  }
+  // Normalizada y sin idioma, como los bloqueos: `/es/envios/choferes/…` o `/envios/%63hoferes/…` llegan a la misma ruta.
+  const rutas = rutasDeOdoo(url.pathname);
+  if (NEVER_CACHE_PREFIXES.some((prefix) => rutas.some((ruta) => ruta.startsWith(prefix)))) {
+    return { kind: "origin", cacheable: false };
+  }
+  const isRead = method === "GET" || method === "HEAD";
+  const pathAndQuery = url.pathname + url.search;
+  return { kind: "origin", cacheable: isRead && esAssetCacheable(pathAndQuery) };
+}
+
+/**
+ * Solo se guarda en caché lo que Odoo marca como público y no trae cookie:
+ * así nunca se comparte entre visitantes una respuesta ligada a una sesión.
+ */
+export function isCacheableResponse(response: Response): boolean {
+  if (response.status !== 200) return false;
+  if (response.headers.has("Set-Cookie")) return false;
+  // Una respuesta que varía según la cookie o según todo depende de quién la pide.
+  const vary = (response.headers.get("Vary") || "").toLowerCase();
+  if (/(^|,)\s*(\*|cookie|authorization)\s*(,|$)/.test(vary)) return false;
+  const cacheControl = (response.headers.get("Cache-Control") || "").toLowerCase();
+  if (!cacheControl.includes("public")) return false;
+  return !/(private|no-store|no-cache)/.test(cacheControl);
+}
+
+/**
+ * ¿Esta petición puede leer o llenar la caché del borde? Solo lecturas y nunca con
+ * credenciales explícitas (`Authorization`): esas respuestas son de quien las pide.
+ * La cookie de sesión no cuenta: Odoo se la pone a todo anónimo, y lo que sirve a un
+ * usuario con sesión lo marca "private", que isCacheableResponse ya rechaza.
+ */
+export function isCacheableRequest(request: Request): boolean {
+  if (request.method !== "GET" && request.method !== "HEAD") return false;
+  return !request.headers.has("Authorization");
+}
+
+/** Cabeceras de validación condicional que el borde quita al llenar su caché. */
+export const CONDITIONAL_HEADERS = ["If-None-Match", "If-Modified-Since", "If-Match", "If-Unmodified-Since", "If-Range"];
+
+function etagsIguales(a: string, b: string): boolean {
+  const limpia = (etag: string) => etag.trim().replace(/^W\//, "");
+  return limpia(a) === limpia(b);
+}
+
+/**
+ * ¿El navegador ya tiene esta versión? (If-None-Match manda sobre If-Modified-Since,
+ * RFC 9110 §13.1.3). Permite responder 304 desde el borde aunque la copia en caché sea
+ * un 200 completo.
+ */
+export function notModified(request: Request, response: Response): boolean {
+  if (response.status !== 200) return false;
+  const ifNoneMatch = request.headers.get("If-None-Match");
+  const etag = response.headers.get("ETag");
+  if (ifNoneMatch !== null) {
+    if (!etag) return false;
+    return ifNoneMatch.trim() === "*" || ifNoneMatch.split(",").some((candidato) => etagsIguales(candidato, etag));
+  }
+  const ifModifiedSince = Date.parse(request.headers.get("If-Modified-Since") ?? "");
+  const lastModified = Date.parse(response.headers.get("Last-Modified") ?? "");
+  return !Number.isNaN(ifModifiedSince) && !Number.isNaN(lastModified) && lastModified <= ifModifiedSince;
+}
+
+/** 304 con las cabeceras que el navegador necesita para refrescar su copia (RFC 9110 §15.4.5). */
+export function notModifiedResponse(response: Response): Response {
+  const headers = new Headers();
+  for (const name of ["Cache-Control", "ETag", "Expires", "Last-Modified", "Vary", "Content-Location", "Date"]) {
+    const value = response.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  return new Response(null, { status: 304, headers });
+}
+
+/** Cabecera de diagnóstico: permite medir si la caché del borde de verdad acierta. */
+export const CACHE_STATUS_HEADER = "X-Dcasa-Cache";
+/** STALE: página guardada de hace más de una hora, servida mientras se pide otra a Odoo. */
+export type CacheStatus = "HIT" | "MISS" | "STALE" | "BYPASS";
+
+export function withCacheStatus(response: Response, status: CacheStatus): Response {
+  if (response.status === 101 || (response as Response & { webSocket?: unknown }).webSocket) return response;
+  const marked = new Response(response.body, response);
+  marked.headers.set(CACHE_STATUS_HEADER, status);
+  return marked;
+}
+
+/** Cabeceras para que Odoo (proxy_mode) conozca el host, el esquema y la IP reales. */
+export function forwardedHeaders(request: Request, puerta?: { acceso?: string; modo?: string }): Headers {
+  const url = new URL(request.url);
+  const headers = new Headers(request.headers);
+  // Solo el borde habla con Odoo por esta cabecera (caché de páginas, con el secreto).
+  headers.delete("X-Dcasa-Borde");
+  // Igual la de la puerta del equipo: nunca la que mande el visitante; solo la que el borde firma tras
+  // verificar la cookie de la puerta (src/puerta.ts). La cookie misma tampoco viaja a Odoo.
+  headers.delete(CABECERA_PUERTA);
+  headers.delete(CABECERA_MODO);
+  if (puerta?.acceso) headers.set(CABECERA_PUERTA, puerta.acceso);
+  if (puerta?.modo) headers.set(CABECERA_MODO, puerta.modo);
+  const cookie = sinCookieDePuerta(headers.get("Cookie"));
+  if (cookie === null) headers.delete("Cookie");
+  else headers.set("Cookie", cookie);
+  const clientIp = request.headers.get("CF-Connecting-IP");
+  headers.set("X-Forwarded-Host", url.host);
+  headers.set("X-Forwarded-Proto", url.protocol.replace(":", ""));
+  if (clientIp) {
+    headers.set("X-Forwarded-For", clientIp);
+    headers.set("X-Real-IP", clientIp);
+  }
+  return headers;
+}
+
+const SECURITY_HEADERS: Record<string, string> = {
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  // El constructor de sitios de Odoo carga la página en un iframe del mismo origen.
+  "X-Frame-Options": "SAMEORIGIN",
+  // Lo mismo en CSP (los navegadores nuevos priorizan frame-ancestors). Solo si Odoo no mandó
+  // su propia CSP: /web/login ya la trae igual.
+  "Content-Security-Policy": "frame-ancestors 'self'",
+  "X-Permitted-Cross-Domain-Policies": "none",
+};
+
+export function withSecurityHeaders(response: Response): Response {
+  // Las respuestas de WebSocket (101) no se pueden reconstruir.
+  if (response.status === 101 || (response as Response & { webSocket?: unknown }).webSocket) {
+    return response;
+  }
+  const secured = new Response(response.body, response);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    if (!secured.headers.has(name)) secured.headers.set(name, value);
+  }
+  return secured;
+}
+
+// ------------------------------------------------------------------ caché de páginas
+
+/**
+ * Páginas públicas cuyo HTML de Odoo puede guardarse en el borde para visitantes anónimos. Todo
+ * lo demás (carrito, checkout, pago, /my, /odoo, /web, /socios, /brian, /dcasa/*, buscador,
+ * filtros) va siempre a Odoo. Las fichas y categorías llevan el `-<id>` final del slug de Odoo:
+ * así `/shop/cart`, `/shop/checkout`, `/shop/payment`… nunca se confunden con un producto.
+ */
+const RUTAS_ESTATICAS = [
+  /^\/$/,
+  /^\/shop(?:\/page\/[1-9]\d{0,4})?$/,
+  /^\/shop\/category\/[a-z0-9-]+-\d{1,10}(?:\/page\/[1-9]\d{0,4})?$/,
+  /^\/shop\/[a-z0-9-]+-\d{1,10}$/,
+  /^\/(?:visitanos|privacidad|terminos|black-weekend|beneficios|historia|tips|como-comprar|faq)$/,
+];
+
+/** Parámetros que no cambian la página (campañas): con ellos se sigue sirviendo la estática. */
+const PARAMETROS_IGNORABLES = /^(?:utm_[a-z_]+|gclid|fbclid|msclkid|gbraid|wbraid)$/;
+
+/**
+ * Ruta guardable que corresponde a esta petición, o `null` si va a Odoo: solo GET/HEAD, sin
+ * parámetros de búsqueda/filtro/orden (los de campaña se ignoran) y con una ruta de la lista.
+ */
+export function rutaEstatica(url: URL, method: string): string | null {
+  if (method !== "GET" && method !== "HEAD") return null;
+  for (const nombre of url.searchParams.keys()) {
+    if (!PARAMETROS_IGNORABLES.test(nombre)) return null;
+  }
+  return RUTAS_ESTATICAS.some((re) => re.test(url.pathname)) ? url.pathname : null;
+}
+
+/** Staging no se indexa: `X-Robots-Tag` en TODA respuesta (también redirecciones y 503). */
+export function conNoindex(response: Response): Response {
+  if (response.status === 101 || (response as Response & { webSocket?: unknown }).webSocket) return response;
+  const marcada = new Response(response.body, response);
+  marcada.headers.set("X-Robots-Tag", "noindex, nofollow");
+  return marcada;
+}
+
+/**
+ * Lecturas de Odoo (`/web/dataset/call_kw/<modelo>/<método>`) que el borde puede repetir si el enlace con el contenedor
+ * se corta: repetirlas no cambia nada. Lo que guarda, confirma, cobra o envía NUNCA se repite (podría hacerse dos veces).
+ */
+const LECTURAS_ODOO = new Set([
+  "web_read",
+  "web_search_read",
+  "read",
+  "search_read",
+  "search_count",
+  "search",
+  "name_search",
+  "web_name_search",
+  "get_views",
+  "fields_get",
+  "read_group",
+  "web_read_group",
+  "formatted_read_group",
+  "read_progress_bar",
+  "onchange",
+]);
+
+/** Lecturas propias de D'CASA (modelo/método), revisadas una por una: no escriben nada que no se pueda repetir. */
+const LECTURAS_DCASA = new Set([
+  "dcasa.tablero/obtener_datos",
+  "dcasa.facturas.panel/obtener_datos",
+  "dcasa.conversacion/iniciar_panel",
+  "dcasa.conversacion/lista",
+  "dcasa.conversacion/presencia",
+]);
+
+/** Rutas POST de Odoo que solo leen. */
+const RUTAS_DE_LECTURA = new Set(["/web/action/load"]);
+
+/** GET de Odoo que cambian algo: un código de un solo uso (correo de Google o Microsoft, entrar con OAuth) o la respuesta
+ * a una invitación del calendario (escribe en el historial). */
+const GET_QUE_CAMBIAN = /^\/(?:google_gmail\/confirm|microsoft_outlook\/confirm|auth_oauth\/|calendar\/meeting\/)/;
+
+/**
+ * ¿Se puede repetir esta petición si el enlace con el contenedor se cae a mitad («Network connection lost.»)?
+ * GET/HEAD casi siempre (páginas, fotos, estilos; no los de `GET_QUE_CAMBIAN`); POST solo si es una lectura conocida
+ * (y además el cuerpo tiene que decir lo mismo que la ruta: `cuerpoDiceLoMismo`).
+ */
+export function esRepetible(method: string, pathname: string): boolean {
+  if (method === "GET" || method === "HEAD") return !GET_QUE_CAMBIAN.test(pathname);
+  if (method !== "POST") return false;
+  if (RUTAS_DE_LECTURA.has(pathname)) return true;
+  const llamada = /^\/web\/dataset\/call_kw\/([^/]+)\/([^/]+)$/.exec(pathname);
+  if (!llamada) return false;
+  const [, modelo, metodo] = llamada;
+  return LECTURAS_ODOO.has(metodo) || LECTURAS_DCASA.has(`${modelo}/${metodo}`);
+}
+
+/**
+ * Odoo despacha `/web/dataset/call_kw/…` por el modelo y el método del cuerpo, no por la URL (su cliente siempre arma
+ * las dos iguales). Antes de repetir un POST se comprueba que el cuerpo pida lo mismo que la ruta revisada.
+ */
+export function cuerpoDiceLoMismo(pathname: string, cuerpo: string): boolean {
+  const llamada = /^\/web\/dataset\/call_kw\/([^/]+)\/([^/]+)$/.exec(pathname);
+  if (!llamada) return RUTAS_DE_LECTURA.has(pathname);
+  try {
+    const params = (JSON.parse(cuerpo) as { params?: { model?: unknown; method?: unknown } } | null)?.params;
+    return params?.model === llamada[1] && params?.method === llamada[2];
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * ¿El error es un corte del enlace con el Durable Object o el contenedor, que conviene reintentar? Cloudflare marca así
+ * los suyos (`retryable`) y recomienda repetir ante «Network connection lost.»; si dice que está sobrecargado
+ * (`overloaded`), repetir solo lo empeora.
+ */
+export function esCorteDeConexion(error: unknown): boolean {
+  if (typeof error === "object" && error !== null) {
+    const marcas = error as { retryable?: unknown; overloaded?: unknown };
+    if (marcas.overloaded === true) return false;
+    if (marcas.retryable === true) return true;
+  }
+  return /Network connection lost|Durable Object reset/i.test(String(error));
+}
+
+/** Un tramo de ruta con pinta de token (`/rate/<token>/5`, `/calendar/join_videocall/<token>`): largo y con números. */
+const TRAMO_TOKEN = /^(?=[^/]*\d)[A-Za-z0-9_-]{16,}$/;
+
+/** El enlace de los choferes (`/envios/choferes/<secreto>[/buscar|/cerca]`): el secreto nunca va al registro. */
+const ENLACE_CHOFERES = /^\/envios\/choferes\/[^/]+/;
+/** La ubicación de entrega (`/u/<secreto>[/zona|/buscar|/guardar]`, `/entrega/<secreto>`): tampoco. */
+const ENLACE_UBICACION = /^\/u\/[^/]+/;
+const ENLACE_ENTREGA = /^\/entrega\/[^/]+/;
+
+/** La ruta para el registro: entera si es una llamada a Odoo (modelo/método), si no solo el principio, sin tokens. */
+export function rutaParaRegistro(pathname: string): string {
+  if (pathname.startsWith("/web/dataset/call_kw/")) return pathname;
+  // (Normalizada y sin idioma: `/es/envios/choferes/…` y `/envios/%63hoferes/…` también son el enlace.)
+  if (rutasDeOdoo(pathname).some((ruta) => ENLACE_CHOFERES.test(ruta))) return "/envios/choferes/:token";
+  if (rutasDeOdoo(pathname).some((ruta) => ENLACE_UBICACION.test(ruta))) return "/u/:token";
+  if (rutasDeOdoo(pathname).some((ruta) => ENLACE_ENTREGA.test(ruta))) return "/entrega/:token";
+  return pathname
+    .split("/")
+    .slice(0, 4)
+    .map((tramo) => (TRAMO_TOKEN.test(tramo) ? ":token" : tramo))
+    .join("/");
+}

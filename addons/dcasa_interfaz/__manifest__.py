@@ -1,0 +1,91 @@
+{
+    'name': "Tommalo — Interfaz",
+    'summary': "Odoo con la cara de Tommalo: tablero de inicio, íconos propios y sin avisos de pago",
+    'description': """
+La interfaz de trabajo de Tommalo, hecha a medida:
+
+* «Inicio»: tablero del día (ventas, cobros por forma de pago, pedidos web,
+  entregas, por cobrar, socios), accesos rápidos y las apps con íconos propios.
+* Íconos Tommalo para cada aplicación del menú.
+* Barra lateral de navegación (apps y secciones, colapsable, accesible) y un
+  sistema de diseño propio: escala de azules, blancos fríos, bordes finos.
+* Sin avisos de «Enterprise» ni ventanas de compra: lo que Odoo reserva para su
+  versión de pago aparece como «En desarrollo» (lo construimos nosotros).
+* Sin el recorrido guiado ni los mensajes de OdooBot; listas vacías sin datos de
+  ejemplo ni videos promocionales.
+* Sin enlaces a odoo.com (menú de usuario, inicio de sesión) y con la marca en
+  los títulos y ventanas.
+* Panel al grano: Cotizaciones abre las abiertas de toda la tienda, listas sin
+  columnas que no se usan, menús de contabilidad, sitio web y variantes solo para
+  quien los usa, y la lista de entregas sin el cálculo de transportistas que la
+  hacía lenta.
+* Inventario › Valor del inventario (Gerencia y administradores): la mercancía
+  de hoy al costo y a precio de venta sin ITBMS, por tipo y lo que falta cargar.
+* Compras › Reponer (Gerencia y administradores): ritmo de venta de los últimos
+  meses, para cuánto alcanza lo que hay, el tiempo de llegada del proveedor,
+  cuánto pedir y «Pedir ya»; buscador de proveedores y Excel hecho en el servidor.
+* El sitio se edita por código: nadie tiene el constructor de páginas de Odoo
+  (grupos de editor/diseñador retirados en cada actualización), las plantillas de
+  Tommalo no admiten copias por sitio ni ediciones desde el panel, y «Sitio web»
+  queda con lo que sí se usa más una «Vista previa móvil» (390×844, tableta,
+  escritorio) del sitio público.
+* Ajustes › Marca del panel (administradores): cada empresa sube su logo y su ícono y elige sus colores; el panel
+  (barra lateral, menú del celular, favicon, app instalable y colores) los toma en caliente, sin recompilar los estilos.
+  La página web pública no cambia. Ver docs/MARCA_DEL_PANEL.md.
+""",
+    'version': '19.0.1.4.0',
+    'category': 'Hidden',
+    'author': "Tommalo",
+    'website': 'https://tommalo.example',
+    'license': 'LGPL-3',
+    'depends': [
+        'dcasa_base', 'dcasa_catalogo', 'website', 'sale_management', 'stock', 'stock_delivery', 'account', 'web_tour',
+        'mail_bot', 'purchase_stock',
+    ],
+    'data': [
+        'security/ir.model.access.csv',
+        'views/inicio_views.xml',
+        'views/panel_views.xml',
+        'views/sitio_views.xml',
+        'views/estadisticas_views.xml',
+        'views/por_dia_views.xml',
+        'views/inventario_valor_views.xml',
+        'views/sale_order_views.xml',
+        'views/origen_views.xml',
+        'views/forma_pago_views.xml',
+        'views/reponer_views.xml',
+        'views/login_templates.xml',
+        'views/layout_templates.xml',
+        'views/marca_views.xml',
+        'data/iconos_data.xml',
+        'data/avisos_data.xml',
+        'data/exportaciones_data.xml',
+    ],
+    'assets': {
+        'web.assets_backend': [
+            'dcasa_interfaz/static/src/scss/*.scss',
+            'dcasa_interfaz/static/src/js/*.js',
+            'dcasa_interfaz/static/src/xml/*.xml',
+        ],
+        # Modo oscuro (lo enciende cada persona; `ir.http.color_scheme` lee la cookie). Todo lo oscuro vive en
+        # `static/src/oscuro/`, carpeta que los comodines de arriba no alcanzan: la hoja clara no cambia ni un byte.
+        # La paleta va después de la de dcasa_base (para pisarla) y antes de la de Odoo (que es `!default`).
+        'web.assets_web_dark': [
+            ('after', 'web/static/lib/bootstrap/scss/_functions.scss',
+             'dcasa_interfaz/static/src/oscuro/bs_functions.dark.scss'),
+            ('after', 'dcasa_base/static/src/scss/primary_variables.scss',
+             'dcasa_interfaz/static/src/oscuro/primary_variables.dark.scss'),
+            'dcasa_interfaz/static/src/oscuro/tokens.dark.scss',
+            'dcasa_interfaz/static/src/oscuro/*.dark.scss',
+        ],
+        # Las gráficas y las tablas dinámicas cargan su hoja aparte, al abrirlas: necesitan la misma paleta.
+        'web.assets_backend_lazy_dark': [
+            ('after', 'web/static/lib/bootstrap/scss/_functions.scss',
+             'dcasa_interfaz/static/src/oscuro/bs_functions.dark.scss'),
+            ('after', 'dcasa_base/static/src/scss/primary_variables.scss',
+             'dcasa_interfaz/static/src/oscuro/primary_variables.dark.scss'),
+        ],
+    },
+    'post_init_hook': '_dcasa_interfaz_post_init',
+    'installable': True,
+}

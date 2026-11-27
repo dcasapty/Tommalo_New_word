@@ -1,0 +1,1232 @@
+# Juan — el bot multicanal de D'CASA («el equipo de D'CASA»)
+
+Contrato de construcción de la **Fase 1** (decisiones de la dueña en
+`docs/auditoria/ronda7/crm-whatsapp.md`, sección «Decisiones»; opción **C**, sección 3.4).
+Quien construya una pieza cumple este contrato; si algo no encaja, lo dice en su informe y **no**
+cambia las otras piezas.
+
+Puesto al día el 2026-11-06. Este documento tiene dos partes: **el contrato** (esta) y **cómo funciona el Worker por
+dentro** ([Parte 2](#parte-2--cómo-funciona-el-worker-por-dentro), antes `JUAN_WORKER.md`). Los canales y cómo se
+conecta cada uno: [JUAN_CANALES.md](JUAN_CANALES.md). Lo que ve el equipo en Odoo: [JUAN_ODOO.md](JUAN_ODOO.md).
+
+## Qué es
+
+Un asistente que atiende a los **clientes** por mensajería (hacia afuera; Brian atiende al equipo,
+hacia adentro). Contesta 24/7, consulta el catálogo real, explica Socios con las cifras reales,
+crea la oportunidad en Odoo y pasa la conversación a una vendedora cuando hace falta.
+
+- **Nombre público:** «Juan de D'CASA» (decisión de la dueña, 2026-10-10): se presenta como una persona
+  de la tienda, **sin anunciarse como asistente ni como bot** («Hola, soy Juan de D'CASA.»). El límite
+  que NO cambia: **nunca afirma ser humano** ni dice «no soy un bot»; si alguien pregunta de verdad si
+  habla con una persona o con un robot, dice la verdad («Soy Juan, el asistente virtual de D'CASA…») y
+  ofrece pasarlo a una vendedora. Escribir *persona* / *vendedora* sigue pasando a una vendedora siempre.
+- **Canales (multicanal):** WhatsApp por la **API oficial de Meta** (el canal principal desde el 2026-11-02, con el
+  número de la tienda), Telegram (canal de **pruebas** y avisos a vendedoras) y Messenger e Instagram (código listo,
+  sin conectar). El contrato original elegía WhatsApp por **QR** (el puente `puente-wa/`): está construido y probado,
+  pero nunca se desplegó. Estado de cada canal: [JUAN_CANALES.md](JUAN_CANALES.md). El motor es agnóstico del canal:
+  agregar uno es escribir un adaptador (Parte 2, §3).
+- **Voz:** la de `CLAUDE.md` (reglas de marca): tuteo, «el pana que sabe de casas», nada de
+  «remate» ni «¡¡CORRE!!», sin emojis ni signos exagerados, precio siempre «+ ITBMS».
+
+## Piezas y dueños (rutas que cada agente puede tocar)
+
+| Pieza | Ruta | Qué es |
+|---|---|---|
+| **Worker `juan`** | `juan/` | Motor: recibe mensajes de los canales, junta ráfagas, corre el bucle de IA con herramientas, contesta, hace seguimiento. TypeScript, Cloudflare Worker + Durable Objects (**almacenamiento SQLite del propio Durable Object**, sin D1, sin Vectorize, sin Workers AI obligatorios). |
+| **Bandeja y API en Odoo** | `addons/dcasa_conversaciones/`, y en `edge/` solo el punto de entrada para el service binding | La verdad: conversaciones, mensajes, ficha del cliente, oportunidades, ajustes, herramientas del bot, seguimiento (quién y cuándo). |
+| **Puente QR** | `puente-wa/` | Worker + Container (Baileys) que sostiene la sesión de WhatsApp 24/7, recibe y envía texto, imágenes y documentos. **No desplegado** (ver [JUAN_CANALES.md](JUAN_CANALES.md)). |
+
+Cada pieza trae su workflow propio y **manual** (`workflow_dispatch`) para desplegarse. `dcasa-juan` está desplegado
+en staging y producción (en producción desde octubre de 2026; el último, Desplegar Juan 4 del 2026-11-03); el puente
+nunca se desplegó.
+
+## Quién sabe qué (una sola verdad)
+
+- **Odoo** guarda el historial permanente, la ficha del cliente (celular = llave), las oportunidades,
+  el catálogo y las reglas de Socios, **y decide** quién necesita seguimiento y cuándo.
+- **El Worker `juan`** guarda solo memoria de trabajo (últimos mensajes, ráfaga de 15 s, anti-spam,
+  gasto de IA del mes). Decide **qué decir** y lo envía.
+- Cifras de Socios: solo de `addons/dcasa_socios/data/puntos.json`, vía herramienta. Precios y
+  existencias: solo del catálogo (herramienta). **Nunca** de la memoria del modelo.
+
+## Contrato Worker `juan` ↔ Odoo
+
+Transporte: el Worker `juan` llama al Worker `dcasa` por **service binding** (`DCASA`); el
+Worker `dcasa` reenvía a Odoo. Las rutas `/dcasa/juan/**` quedan **bloqueadas desde internet**
+(igual que el feed: `edge/src/routing.ts`) y solo entran por ese punto de entrada. Todas llevan
+`Authorization: Bearer <JUAN_ODOO_TOKEN>` (comparación en tiempo constante; sin token configurado
+en Odoo, todas responden 503). Cuerpos y respuestas JSON UTF-8. Errores: `{ok:false, error:"texto"}`
+con el código HTTP correcto. Todas son **idempotentes** donde se indica.
+
+Identidad de una conversación: `canal` ∈ `whatsapp_qr | whatsapp_cloud | telegram | messenger |
+instagram` y `id_externo` (celular E.164 sin `+` en WhatsApp, `chat_id` en Telegram, PSID/IGSID en
+Meta). El par es único.
+
+### Worker → Odoo
+
+1. `POST /dcasa/juan/v1/mensaje` — **registrar un mensaje** (idempotente por `id_mensaje`).
+   ```json
+   {"canal":"whatsapp_qr","id_externo":"50760000001","nombre":"Karen","celular":"50760000001",
+    "id_mensaje":"wamid...","direccion":"entrante","autor":"cliente",
+    "texto":"Hola, ¿tienen camas queen?","adjuntos":[{"tipo":"imagen","url":"https://...","nombre":"x.jpg","mime":"image/jpeg"}],
+    "ts":"2026-10-09T14:03:00Z"}
+   ```
+   `direccion` ∈ `entrante|saliente`; `autor` ∈ `cliente|bot|vendedora`; `adjuntos` opcional
+   (`tipo` ∈ `imagen|audio|documento|video`). Respuesta:
+   `{"ok":true,"conversacion_id":12,"partner_id":55,"estado":"bot","bot_activo":true,"pausada_hasta":null,"dentro_de_horario":true}`.
+   Crea la conversación y la ficha del cliente si no existen (celular como llave; nunca duplica).
+   Un comprobante de pago o documento de identidad entra como adjunto con `sensible:true` en la
+   respuesta de la herramienta de adjuntos, **no se le muestra a la IA** (ver «Reglas»).
+2. `GET /dcasa/juan/v1/estado?canal=&id_externo=` — `{bot_activo, estado, pausada_hasta, dentro_de_horario}`.
+   El Worker lo consulta **justo antes de enviar** cada respuesta del bot: si una vendedora tomó la
+   conversación, no envía.
+3. `GET /dcasa/juan/v1/config` — configuración editable por la dueña en Odoo:
+   (La forma exacta y verificada está en «Contrato verificado», al final; `dias`: 0 = domingo.)
+   `{nombre_publico, bot_activo_global, canales_activos:{...}, horario:{inicio:"08:00",fin:"17:00",dias:[0..6],zona:"America/Panama",fin_domingo?:"17:00"},
+    seguimiento:{primero_horas:5,segundo_dias:5,solo_horario_laboral:true,maximo:2},
+    presupuesto_ia_mensual_usd:30, modelo_rapido:"claude-haiku-4-5", modelo_inteligente:"claude-sonnet-5-5",
+    mensaje_bienvenida, texto_privacidad_corto, palabras_prohibidas:[...], pausa_por_defecto_minutos:120}`.
+   El Worker lo guarda en caché 60 s.
+4. `GET /dcasa/juan/v1/herramientas` — **definición de las herramientas** (nombre, descripción,
+   esquema JSON de parámetros). Fuente única en Odoo; el Worker las pasa al modelo tal cual.
+5. `POST /dcasa/juan/v1/herramienta` — **ejecutar una herramienta**:
+   `{"nombre":"buscar_productos","argumentos":{...},"conversacion_id":12}` →
+   `{"ok":true,"resultado":{...}}`. Se ejecuta como el usuario técnico `juan` (grupo propio, sin
+   los grupos internos), registrado en `brian.accion`. Herramientas (todas de **vista pública**):
+   - `buscar_productos(consulta, categoria?, limite?)` → nombre, código, precio, `mas_itbms:true`,
+     disponibilidad en etiqueta (`disponible|pocas|agotado`, **nunca** el número; la misma regla y el mismo cálculo
+     que la ficha de la tienda: `dcasa_base/disponibilidad.py` y `product.template._dcasa_disponibilidad`), medidas,
+     combo, URL, foto, solo **publicados**.
+   - `ver_producto(codigo)` → lo anterior más descripción, variantes, galería.
+   - `listar_categorias()`.
+   - `reglas_socios()` → cifras de `puntos.json` ya redactadas en lenguaje de cliente.
+   - `horario_y_tienda()` → dirección real, horario de atención, WhatsApp, cómo llegar, fecha y
+     hora de Panamá.
+   - `saldo_puntos(celular, pin)` → solo si el celular es el de la conversación y el PIN es válido
+     (candado del programa: 5 fallos → 15 min). Sin movimientos con motivos.
+   - `crear_oportunidad(resumen, interes, presupuesto?, zona?, cuando?)` → `crm.lead` ligado al cliente y a la
+     conversación (no duplica uno abierto reciente). `zona` (distrito o corregimiento, nunca la dirección exacta) y
+     `cuando` («para cuándo lo quiere», con sus palabras) **solo si el cliente los dijo**: llenan lo que esté vacío y
+     nunca pisan lo que ya escribió una persona (si difiere, queda una nota). Texto plano de una línea, hasta 80
+     letras. Es **idempotente**: se puede volver a llamar cuando el cliente da un dato nuevo. `cotizar` también
+     crea o reutiliza la oportunidad y la liga a la cotización ([JUAN_ODOO.md › El CRM se ajusta solo](JUAN_ODOO.md#el-crm-se-ajusta-solo)).
+   - `anotar_conversacion(nota)` → nota interna en el chatter del cliente.
+   - `pasar_a_vendedora(motivo, urgencia?)` → pausa al bot, actividad para la vendedora, aviso
+     por Telegram/Odoo. Devuelve el texto que el bot debe decir según el horario.
+   **No existen** herramientas que escriban puntos, precios, stock, facturas, pagos ni lean datos
+   de otros clientes (lista negra en `docs/auditoria/ronda7/crm-whatsapp.md` §3.1).
+6. `POST /dcasa/juan/v1/seguimiento/hecho` — el Worker confirma que envió (o descartó) un
+   seguimiento: `{conversacion_id, numero:1|2, resultado:"enviado|descartado", motivo?}`.
+7. `POST /dcasa/juan/v1/escribiendo` — el asistente empezó (`activo:true`) o terminó (`activo:false`) de preparar una
+   respuesta: `{canal, id_externo, activo}`. Odoo solo lo reparte por el bus a las pantallas abiertas (ids, nunca texto) y no
+   escribe nada. El Worker manda una señal al empezar el turno y otra al terminar, sin reintentos y sin que su fallo frene
+   la respuesta; si el «terminó» no llega, la pantalla lo olvida sola al minuto o cuando llega la respuesta.
+8. `POST /dcasa/juan/v1/foto-perfil` — la foto de perfil de quien escribe (base64, hasta 300 KB, JPEG/PNG/WebP): `{canal,
+   id_externo, mime, base64}` → `{ok, guardada}`. El Worker la pide al canal a lo más una vez por semana por conversación, solo si
+   `guardar_foto_perfil` (en `GET /config`) es `true`, y NUNCA la manda a la IA. Odoo la reduce y la guarda en la conversación.
+
+### Odoo → Worker `juan`
+
+`Authorization: Bearer <JUAN_WORKER_TOKEN>`; URL base en el ajuste `dcasa_conversaciones.juan_url`.
+
+1. `POST /odoo/enviar` — **una vendedora escribe desde Odoo** y sale por el canal:
+   `{canal,id_externo,texto?,adjuntos?:[{tipo,url,nombre,mime}],autor:"vendedora",id_envio?}` → `{ok, id_mensaje, repetido?}`.
+   Lo envía sin pasar por la IA ni por la ráfaga; respeta el ritmo del canal. **`id_envio` evita los mensajes duplicados**
+   (ver «Envío sin duplicados»). Con `autor:"bot"` (2026-11-25, `docs/UBICACION.md`) es Odoo **a nombre del asistente** (la
+   zona y el precio del envío cuando la clienta confirma su punto con el enlace de un solo uso): no calla al bot y queda en
+   la historia como del asistente. Cualquier otro valor, o ninguno, es una vendedora.
+2. `POST /odoo/estado` — **tomar o devolver** la conversación:
+   `{canal,id_externo,estado:"humano|bot",pausada_hasta?}`. El Worker cancela cualquier respuesta
+   del bot en curso al pasar a `humano`.
+3. `POST /odoo/seguimiento` — Odoo pide enviar el seguimiento n.º 1 o 2 a una conversación:
+   `{conversacion_id,canal,id_externo,numero,contexto:{interes,ultimo_mensaje_ts}}`. El Worker
+   redacta (con el motor, en la voz de la marca, corto, sin presión) y envía; luego llama a
+   `seguimiento/hecho`.
+4. `GET /odoo/salud` — `{ok, version, canales:{...}, gasto_ia_mes_usd, tope_usd}`.
+5. Para la pantalla de Odoo (`dcasa_conversaciones`; ver `docs/JUAN_ODOO.md`), todas con el mismo token y `Cache-Control: no-store`:
+   * `POST /odoo/sugerir` — `{conversacion_id,canal,mensajes:[{autor:"cliente|asistente|vendedora",texto}],nombre?,interes?,etiquetas?}`
+     → `{ok, texto, avisos, modelo}`: un **borrador** de respuesta. Solo herramientas de lectura; **no envía nada**. Contesta siempre
+     antes de 42 s (Odoo espera 55); si no puede, `{ok: false, causa, error}` con `causa` = `tardo` · `no_disponible` · `vacio` ·
+     `revision` · `sin_clave` (y `respaldo_sin_clave` si la IA de respaldo no tiene clave). Ver `docs/JUAN_ODOO.md`.
+   * `POST /odoo/resumir` — `{conversacion_id,canal,mensajes:[{autor:"cliente|asistente|vendedora",texto}],nombre?,etiquetas?}`
+     → `{ok, texto, avisos, modelo}`: de 3 a 6 viñetas de lo que pasó, para quien recibe la conversación. Solo mensajes que viajaron por el
+     canal (**nunca notas internas**), tarjetas y cédulas tapadas, modelo económico, sin herramientas; una cifra de dinero que no esté en
+     la conversación se quita. **No envía ni escribe nada.** El gasto cuenta para el tope del mes.
+   * `POST /odoo/embeber` — `{textos:[string]}` (1 a 8, ≤ 2000 letras) → `{ok, vectores:[[1024 números a 4 decimales]], dimensiones, modelo}`: la «huella de
+     significado» que usa la búsqueda opcional en el conocimiento (`@cf/baai/bge-m3`). Sin binding `AI`: 503 `{ok:false, faltan:["AI"]}`. No envía ni escribe nada.
+   * `GET /odoo/costos` — `{ok, mes, gasto_usd, turnos, tope_usd, por_modelo:[{modelo,usd,turnos,estimado}], modelos_sin_precio,
+     cloudflare:[{concepto,usd,lecturas,estimado}]}`. `cloudflare` es lo que cobra Cloudflare (hoy, `cloudflare:lector-de-fotos`
+     de «Busca con una foto»): **no** entra en `gasto_usd`, `turnos` ni `por_modelo` (ni en `gasto_ia_mes_usd` de `/odoo/salud`).
+   * `POST /odoo/buscar-foto` — «Busca con una foto» de la tienda web (`addons/dcasa_buscar_foto`, `juan/src/odoo-panel-buscar-foto.ts`):
+     `{mime: "image/jpeg"|"image/png"|"image/webp", base64, tope_mes_usd?}` (hasta 1,5 MB; los bytes tienen que ser de ese
+     tipo; `tope_mes_usd` de 0 a 1000, 5 si no viene) → `{ok: true, lectura: {tipo, codigos, categoria, medida, parece_pago,
+     parece_identidad} | null}`: **solo** el registro cerrado del lector de imágenes de §12b (el mismo, importado), nunca texto
+     libre. Errores: 400/413 (formato o tamaño), 429 `causa: "tope_foto"` (lo de la foto en el mes llegó a `tope_mes_usd`: ni
+     se lee), 429 `causa: "reserva"` (el gasto de Juan pasó del 80 % de su tope: lo que queda es para las conversaciones),
+     503 `no_disponible` (sin `RECONOCER_IMAGENES=1` o sin el binding `AI`), 502 `no_disponible` (Workers AI falló), 504
+     `tardo` (contesta siempre antes de 12 s; Odoo espera 15). La foto **no se guarda** (ni en un Durable Object, ni en un
+     registro); solo se anota el gasto (tokens y dólares) en `Global` como `cloudflare:lector-de-fotos`, **aparte** del de
+     Juan (ver «Gasto de IA»).
+   * `GET /odoo/qr` — `{ok, estado, qr?, edad_s?}`; `qr` es un data URL PNG. Nunca se imprime en logs.
+   * `POST /odoo/reiniciar` y `POST /odoo/desvincular` — acciones sobre el puente de WhatsApp (Odoo siempre pide confirmación).
+
+### Lo que se reforzó con la auditoría de la ronda 8 (`docs/auditoria/ronda8/crm-juan-brian.md`)
+
+- **El historial del modelo termina con el cliente.** Si el cliente escribe mientras el bot piensa, la respuesta del bot a la primera
+  pregunta se guarda después de la segunda; al armar el siguiente turno esa respuesta se coloca antes de lo que se contesta ahora.
+- **La respuesta lista nunca se pierde en silencio.** Si el canal no la deja salir: se reintenta el turno (1 min, 5 min) y, si ya salió una
+  parte o se acaban los reintentos, `pasar_a_vendedora` con el motivo (la parte enviada no se repite).
+- **Un mensaje del cliente llega al modelo con un tope de 2 000 letras** (el original queda entero en Odoo).
+- **PIN de Socios** (`pin`, `clave`, `contraseña` + 4 a 8 cifras): se tapa en lo que viaja a Odoo y se borra del historial local después del turno.
+- **`crear_oportunidad`**: la `zona` y el `cuando` solo se anotan si el cliente los dijo (todas sus palabras con peso están en lo que escribió).
+- **La guardia de fugas** no confunde la palabra «cotizar» con la herramienta: los nombres de una sola palabra cuentan solo escritos como
+  llamada `cotizar(` o entre comillas; los que llevan guion bajo (`buscar_productos`) siempre.
+- **Telegram no es un canal abierto** (canal de pruebas del equipo): Juan solo atiende a los chats de la lista de *Ajustes de Juan ›
+  Chats de Telegram con permiso* y a quienes vincularon su Telegram con Brian (`/config` → `telegram_chats`). Cualquier otro chat se
+  ignora **antes** de descargar nada, transcribir, leer una imagen o llamar a la IA. Para agregar a alguien: que le escriba `/miid` al
+  bot de Juan (responde con su número) y pegarlo en la lista. Si la lista no se pudo leer (Odoo dormido y sin copia reciente) el
+  webhook contesta 503 y Telegram reintenta: no se pierde el mensaje de un chat que quizá sí está permitido. WhatsApp y los demás
+  canales no se tocan. La migración `19.0.1.2.0` arranca la lista con los chats que ya habían hablado con Juan.
+  **Interruptor de la dueña:** *Ajustes de Juan › Telegram abierto a cualquiera* (apagado de fábrica; `telegram_abierto` en `/config`,
+  solo un `true` de verdad lo enciende). Encendido, la lista no se mira. Cuidado: si alguien abusa, el límite del proveedor de IA se
+  agota y Juan deja de contestar a los clientes reales.
+- Lo que escribe el cliente no puede imitar las marcas de confianza del historial (`[Vendedora]`, `[El cliente …]`).
+
+**Lo que quedaba del issue #24** (aprobado por la dueña el 2026-11-07):
+
+- **El eco de Messenger e Instagram no calla al bot.** Meta devuelve por el webhook lo que manda la Página (`is_echo`), a veces
+  antes de que la Send API conteste o entre una burbuja y otra. `emitir` anota lo que va a salir (textos y cuántas fotos o
+  documentos, en `kv` `vuelo:*`) **antes** de enviar y lo suelta al terminar (vence solo a los 5 min si el objeto se reinicia).
+  Un eco con texto se reconoce por el texto (sin la negrita de WhatsApp, que Meta devuelve sin asteriscos); uno sin texto gasta
+  el lugar de una foto o un documento de su tipo. Una vendedora que escribe de verdad desde la bandeja de Meta sí calla al bot.
+- **Una nota de voz que pide una persona vale como escrita**: «quiero hablar con alguien» o «ya no me escriban» dichos en audio
+  activan `pideUnaPersona` / `sin_seguimiento` (se mira lo escrito y cada transcripción).
+- **Transcribir y leer imágenes, después del anti-spam y del tope diario**: no se gasta IA con la conversación en descanso, con
+  un mensaje repetido ni pasado el tope diario (el archivo igual se guarda y se anota para una vendedora). Las notas de voz **no
+  tienen tope propio** (la dueña, 2026-11-07: «le agrada que pueda responder notas de voz»; el tope de 20 al día que entró
+  con el issue #24 se quitó): las frena solo lo mismo que a cualquier mensaje. Las imágenes sí: 10 por persona al día. Las
+  fotos que manda una vendedora desde su teléfono (`propio`) no gastan el tope del cliente. Con la
+  conversación en descanso por spam, una nota de voz que pide una persona no se entiende: hay que escribir *persona* (el texto
+  del tope diario ya lo dice).
+- **La segunda pasada del turno conserva la primera.** Si el modelo gastó sus pasos sin escribir, la pasada sin herramientas
+  recibe lo que consultó como datos (`<lo_que_ya_consultaste>`); si la guardia rechazó el borrador, la pasada de corrección
+  recibe su ronda de herramientas (llamadas y resultados, sin el borrador). Dentro de un turno, la misma escritura con los mismos
+  argumentos va a Odoo una sola vez (la segunda recibe la misma respuesta), `pasar_a_vendedora` una sola vez sea cual sea el
+  motivo, y a lo más 8 escrituras (`MAX_ESCRITURAS_POR_TURNO`). Un fallo pasajero no se recuerda: se puede intentar otra vez.
+  De `pasar_a_vendedora` solo se recuerda **la que salió bien**: si Odoo la rechazó («Faltan datos: motivo»), la corregida
+  llega (también si las dos vienen en el mismo paso). Una escritura rechazada con unos argumentos no frena la misma con otros.
+- **El seguimiento no le gana al cliente.** Se reclama (`seg_curso:<clave>`) antes de redactar: un segundo pedido igual a la vez
+  contesta `pospuesto` sin redactar ni enviar; el reclamo se suelta al terminar (vence a los 3 min si el objeto se reinicia). Y
+  «el cliente ya volvió a escribir» / «no me escriban» se vuelven a mirar **justo antes de enviar**, junto con la tabla
+  `seguimientos` (si la redacción tardó más que el reclamo, otro pedido pudo enviarlo). El reclamo lleva «hora:n»: un pedido
+  viejo que termina tarde solo suelta el suyo, nunca el del pedido que lo reemplazó.
+- Los registros del Worker no repiten claves ni tokens (`limpiarError` en `alFallarLaIA`, `motivoDeEnvio` en el envío fallido) y
+  `{{LECCIONES}}` se reemplaza con una función (un `$&` o `$'` en una lección ya no mete pedazos del prompt).
+
+## Contrato Worker `juan` ↔ puente QR (`puente-wa/`)
+
+Heredado del CRM de Tommalo y **ampliado con medios**. Service binding `PUENTE` y viceversa
+`JUAN`; token compartido `WA_TOKEN` (nombre de secreto; el valor lo carga la dueña).
+
+- Puente → Worker: `POST /webhooks/whatsapp-qr` con
+  `{id_mensaje, de, nombre, tipo:"texto|imagen|audio|documento|video", texto?, medio?:{url_temporal|base64,mime,nombre}, ts, propio:false}`.
+  Los mensajes **que la vendedora escribe desde el teléfono** llegan con `propio:true` (el Worker
+  los registra como `autor:"vendedora"` y pausa al bot).
+  La ubicación que comparte la clienta (2026-11-25, `docs/UBICACION.md`) llega con `tipo:"texto"`, un texto **sin coordenadas**
+  y el punto aparte en `ubicacion?:{lat,lon,nombre?,direccion?}`; la cola de pendientes del puente la cambia por
+  `ubicacion_omitida:true` (ahí nunca se guarda un punto). La que comparte la tienda desde el teléfono no viaja.
+- Worker → Puente: `POST /api/enviar` con `{para, chunks:[texto...], medios?:[{tipo:"imagen|documento",url,nombre?,mime?,pie?}]}`;
+  1 s entre burbujas; imágenes con `sendMessage(jid,{image:{url},caption})`.
+- `GET /api/estado` (conectado / necesita QR), `GET /api/qr` (solo con token; la dueña lo escanea
+  desde Odoo, **sin imprimir el QR en logs**).
+- La sesión (credenciales de Baileys) vive cifrada; copia diaria; **nunca** en Git ni en logs.
+
+## Reglas de comportamiento del bot (pruebas obligatorias en `juan/`)
+
+1. Se presenta como «Juan de D'CASA» en el primer mensaje, sin decir que es un asistente (ver el
+   límite de honestidad arriba: nunca afirma ser humano, y si le preguntan de verdad, lo dice).
+   Escribir *persona* / *vendedora* / *humano* pasa a una vendedora **siempre**.
+2. **Nunca inventa**: precio, existencia, medida, color, plazo, descuento ni promesa. Todo lo
+   dice una herramienta. **«No lo manejamos» solo cuando la herramienta lo dice** (`no_lo_manejamos`: no existe nada,
+   ni publicado ni sin publicar). Si existe en el sistema pero no está publicado en la tienda en línea
+   (`hay_sin_publicar`, 2026-11-13: un cliente pidió un colchón, los colchones no estaban publicados y Juan dijo «solo
+   manejamos la cama»), dice que sí lo trabajamos, que una vendedora le confirma modelos y precios, y pasa a una
+   vendedora; la herramienta no le da nombres, precios ni existencias de lo no publicado, y la guardia (`niega_producto`)
+   quita un «no lo manejamos» en ese turno. Si no está claro, «te lo confirma una vendedora».
+   Precios con «+ ITBMS». Existencias solo como etiqueta.
+3. Entregas, flete, financiamiento, apartados y descuentos (decisión de la dueña, 2026-10-16): explica **solo lo que
+   diga `buscar_conocimiento`**, con sus mismas cifras y condiciones; lo que no esté ahí, y el caso concreto del
+   cliente (costo y fecha de su entrega, si le aprueban el crédito), «te lo confirma una vendedora». El bot no hace
+   apartados, no aprueba créditos, no da descuentos ni fija entregas (se crea la oportunidad). Las salvaguardas siguen
+   quitando toda promesa («te lo apartamos», «llega mañana», «envío gratis») y toda cifra que no traiga una herramienta.
+   Mientras una entrada de conocimiento esté inactiva (hoy, «Apartados», hasta que lo revise el abogado), el bot no la ve.
+   **Costo del envío (la dueña, 2026-11-12: «tienes mi sí»):** con la tarifa de envíos **aprobada** por Gerencia y el
+   interruptor «Cotizar envíos» encendido (Ajustes de Juan), Juan da el precio con `cotizar_envio` (la misma calculadora de
+   `dcasa_envios`) y pregunta «¿Quieres que te lo sume a la cotización?»; con el sí, `agregar_envio` lo suma a la cotización
+   de esa conversación y manda el PDF nuevo. Si hay promoción de envío vigente, la frase dice el precio normal, lo que D'CASA
+   regala o abona (siempre como ahorro), las condiciones y hasta cuándo vale («…después, el envío vuelve a su precio
+   normal»). Un lugar «Por revisar», uno cotizado aparte o la tarifa sin aprobar → «te lo confirma una vendedora». La
+   guardia del Worker solo deja pasar una cifra o un «gratis» del envío que respalde `cotizar_envio`/`agregar_envio` **en
+   ese turno**, con su papel (normal, final, ahorro, mínimo, compra, total) y su lugar, cláusula por cláusula
+   ([ENVIOS.md](ENVIOS.md) › Juan cotiza el envío).
+   **La ubicación exacta (2026-11-25, [UBICACION.md](UBICACION.md))**: `cotizar_envio` sin lugar usa el punto guardado
+   (y ofrece «¿Se lo llevamos a …, como la vez pasada?»); sin punto devuelve `estado: sin_ubicacion` y Juan pide la
+   ubicación según el canal (clip en WhatsApp por QR y Telegram; `enlace_de_ubicacion` en la API oficial —con el botón
+   nativo «Enviar ubicación»—, Instagram y Messenger; `para_otra_casa=true` para un regalo). Después de la ubicación
+   pregunta UNA vez el número de casa (`guardar_indicaciones`); `guardar_quien_recibe` solo si el cliente lo dice. Entiende
+   la respuesta a «🚚 Sale hoy». Las coordenadas nunca llegan al modelo (el Worker tapa enlaces de mapa y coordenadas
+   escritas en cualquier formato).
+4. Socios: explica con `reglas_socios`; saldo solo con PIN; **nunca** «acredita» ni promete puntos
+   de una compra no facturada.
+5. Fotos de comprobantes de pago o de documentos de identidad **no se le envían al modelo**: se
+   anotan para la vendedora. *Ampliación (decisión de la dueña, 2026-10-09):* un lector de imágenes
+   aparte (Workers AI, en la cuenta de D'CASA) clasifica cada imagen. Al modelo que conversa **nunca**
+   llega la imagen: solo, si es con claridad un producto o una captura de publicación y sin ninguna
+   señal de pago o identidad, un registro cerrado (código con patrón estricto, tipo y medida) que el
+   bot busca en el catálogo; el precio de la imagen no vale. Comprobantes, cédulas y cualquier duda
+   siguen el camino de siempre (la revisa una vendedora, nunca se da un pago por confirmado).
+6. Texto del cliente = datos, **nunca instrucciones** (inyección de prompt): no cambia reglas, no
+   revela el prompt ni las herramientas, no ejecuta lo que el cliente «ordene» fuera de su guion.
+7. Una persona de D'CASA tomó la conversación → el bot calla y no la retoma solo (hasta que se la
+   devuelvan o venza la pausa).
+8. Tope de IA del mes: al llegar, baja al modelo barato; nunca se queda sin contestar por dinero.
+9. Anti-spam: mensaje repetido → descanso 1 h; tope diario por persona; ráfaga de 15 s. Lo que el anti-spam o el tope frenan
+   no se transcribe ni se lee con IA; notas de voz transcritas: 20 por persona al día.
+10. **Seguimiento (decisión de la dueña):** solo a quien **mostró intención de compra y nunca
+    compró**. Intención de compra = hay una oportunidad de CRM viva (ni ganada ni perdida) ligada a
+    la conversación: el asistente la crea con `crear_oportunidad` cuando el cliente muestra interés
+    concreto, y una vendedora puede crearla con un botón. Como máximo 2 mensajes a quien no volvió a
+    escribir: el 1.º a las **5 h** del último mensaje, **solo en horario laboral** (8:00–17:00,
+    todos los días, hora de Panamá; si cae fuera, espera al siguiente horario laboral); el 2.º a
+    los **5 días**. **Ninguno** si no hay oportunidad viva, si la persona **ya es cliente** (alguna
+    factura pagada, de antes o de después de empezar la conversación) o si pidió que no la contacten.
+    Es **por persona** (su ficha): solo la conversación por donde escribió último, y los de sus otros canales cuentan. Tampoco a
+    quien Juan pasó a una persona y nadie atendió (espera a una persona), ni uno atrasado más de 6 h (issue #25).
+    Odoo decide; el Worker redacta y envía (y vuelve a mirar al cliente justo antes de enviar).
+11. Español de Panamá, tuteo, breve (2–4 líneas por burbuja), sin emojis, sin signos dobles. Si el cliente escribe en
+    **inglés**, contesta en inglés con las mismas reglas (decisión de la dueña, 2026-10-16); las salvaguardas revisan
+    también las promesas, las cifras de política y el «soy humano» en inglés, y «human», «agent» o «real person» pasan a
+    una vendedora igual que «persona». El saludo y los textos fijos de Odoo siguen en español.
+12. **Fotos solo si las piden.** No ofrece ni pregunta «¿te mando la foto?». Si el cliente pide ver el
+    producto, manda la principal; si pide **más fotos**, manda hasta 3 más de la galería por pedido,
+    sin repetir ninguna que ya recibió (`enviar_foto_producto` con `adicionales=true`).
+13. **Cotizaciones automáticas (decisión de la dueña, 2026-10-10).** Si el cliente pide una cotización o
+    el total de varios productos, Juan la arma con `cotizar` y se la manda en PDF **sin esperar a una
+    vendedora**. Encendido de fábrica; el administrador lo apaga en *Ajustes de Juan › Juan envía las
+    cotizaciones solo* (`cotizacion_automatica`). Apagado, Juan dice que una vendedora se la prepara y
+    le pasa la conversación; el botón **Cotización** de la pantalla de Conversaciones funciona igual
+    con la opción encendida o apagada. Reglas fijas: solo productos publicados a **precio de lista +
+    ITBMS** (sin argumento de precio ni de descuento: el modelo no puede poner uno), las cifras
+    (subtotal, ITBMS, total) las calcula Odoo y son las únicas que Juan puede decir, queda un
+    **borrador en Ventas** (enviado, **nunca confirmado**, sin reservar existencias) y un aviso en el
+    hilo con el PDF para las vendedoras, entrega/flete/financiamiento/apartado/descuento siguen siendo
+    de una vendedora, hasta 10 líneas, una cotización por respuesta, la misma cotización pedida otra
+    vez se reutiliza (2 h) y como máximo 5 nuevas por cliente por día.
+
+## Secretos (solo nombres; los valores los pega la dueña en Cloudflare, nunca en el chat)
+
+`JUAN_ODOO_TOKEN`, `JUAN_WORKER_TOKEN`, la clave de la IA elegida (`META_AI_API_KEY`, `ANTHROPIC_API_KEY` u
+`OPENAI_API_KEY`), `WHATSAPP_CLOUD_TOKEN`, `META_APP_SECRET`, `META_VERIFY_TOKEN`, `TELEGRAM_BOT_TOKEN_JUAN`,
+`TELEGRAM_WEBHOOK_SECRET_JUAN`, y `META_PAGE_TOKEN` (Messenger/Instagram) y `WA_TOKEN` (puente QR) cuando se usen.
+Para qué sirve cada uno y en qué Worker va: Parte 2, §5.
+
+## Qué no se hace
+
+La Fase 1 se construyó sin desplegar nada; desde octubre de 2026 Juan está en producción y desde el 2026-11-02
+atiende el número real por la API oficial. Siguen fuera a propósito las campañas masivas y la voz. El chat web, que
+también estaba fuera, lo aprobó la dueña el 2026-11-13 como **Brian de la tienda** (sección siguiente); los botones
+«Escríbenos por WhatsApp» de la página se quedan.
+
+## Brian de la tienda (el chat de ventas de tommalo.example; desde el 2026-11-16, «Andrés»)
+
+Lo aprobó la dueña el 2026-11-13 (prototipo v2). Es un chat de ventas en la página: ayuda a encontrar muebles, ver precios
+y disponibilidad, calcular el envío y dejar el carrito listo. **No es Juan en otro canal**: no tiene conversación en Odoo,
+no crea contactos ni oportunidades y no pasa a una vendedora (para atención personal ofrece WhatsApp). Lo construyen dos
+piezas: el módulo `dcasa_brian_tienda` (el pase, el carrito, los ajustes y la página) y este Worker (el modelo, los topes y
+la guardia). Código: `juan/src/tienda/`; pruebas: `juan/test/tienda/`.
+
+### El punto de entrada
+
+`POST /tienda/v1/mensaje` (y su `OPTIONS`). El navegador habla **directo** con este Worker, no a través de Odoo: una
+respuesta de IA tarda de 3 a 20 s y ocuparía un hilo y una conexión de Odoo todo ese tiempo.
+
+- **CORS:** solo `https://tommalo.example`, `https://www.tommalo.example` y `https://tommalo-staging.SUBDOMINIO-PENDIENTE.workers.dev`
+  (Odoo puede mandar otros en `brian_tienda.origenes`). Otro origen, o sin `Origin`, recibe 403 sin cabeceras CORS. El
+  preflight no espera a que Odoo despierte (usa los de fábrica si Odoo tarda más de 1,5 s).
+- **Cabeceras:** `Authorization: Pase <pase>` y `Content-Type: application/json`.
+- **Cuerpo:** `{texto, accion, pagina, carrito, ubicacion}`. `texto` hasta **500 letras**; `accion` va en lugar del texto:
+  `chip` (cuenta como escrito), `confirmar_carrito` (lo que pasó al aplicar en Odoo) o `calificar`; desde el 2026-11-16
+  (Andrés vendedor, A2 a A4) también `confirmar_envio` `{lugar_id, resultado: ok|error, motivo?}` (`motivo` de una lista
+  fija: `sin_carrito`, `sin_tarifa`, `aparte`, `lugar`, `ajeno`, `tope`, `apagado`; otro cualquiera es `fallo`),
+  `confirmar_cambio` `{producto_id, cantidad 0 a 20, resultado}` y `carrito_bajo` `{producto_id, nombre, antes, ahora}`
+  (`ahora` menor que `antes`; 0 = lo quitó). `carrito` puede traer `envio: {lugar_id, lugar}`, el envío que Odoo dice que
+  ya está sumado. `ubicacion` solo el turno en que el visitante tocó «Usar mi ubicación» (puede ir sola). La página y el
+  carrito son datos de la página: se recortan, se limpian y le llegan al modelo como datos, nunca como órdenes.
+  `confirmar_*` y `carrito_bajo` no cuentan para el tope por sesión.
+- **Respuesta 200:** `{ok, pose, bloques, chips}`. Bloques: `texto`, `productos` (tarjetas, con `titulo` para el grupo
+  de la vitrina), `proponer_carrito`, `proponer_cambio_carrito` `{producto_id, cantidad, nombre}`, `sugerencias`,
+  `ubicacion`, `envio` (con `lugar_id`), `sumar_envio` `{lugar_id, lugar}`, `carrito` (la página pinta su tarjeta con lo
+  de Odoo), `whatsapp`, `calificar`. Una respuesta sin bloques quiere decir «nada que decir» (la segunda reacción de A3). **Errores:** `{ok:false, motivo}` con `pase` (401),
+  `apagado` (503), `tope_sesion` / `tope_red` / `tope_dia` (429, con `Retry-After`), `presupuesto` (429) y `fallo` (502;
+  400 si el cuerpo está mal). La página traduce cada uno a un texto amable con WhatsApp.
+
+### El pase (sin secretos nuevos)
+
+Odoo lo da en `POST /dcasa/brian/v1/pase` (con CSRF y Turnstile si el sitio lo tiene). Vive 30 minutos.
+
+- `pase = base64url(payload) "." base64url(firma)`, sin `=` al final.
+- `llave = HMAC-SHA256(JUAN_WORKER_TOKEN, "brian-tienda-pase-v1")`: los **32 bytes crudos**, no el hexadecimal. Sale del
+  token que Odoo y el Worker ya comparten: no hay que pegar ningún secreto nuevo en Cloudflare.
+- `firma = HMAC-SHA256(llave, <el texto base64url del payload>)`.
+- `payload = {v: 1, sid, exp, red, sitio}`. `sid`: la sesión del visitante, que Odoo recuerda. `red`: la del visitante
+  vista por Odoo (informativa).
+- El Worker comprueba la firma **en tiempo constante**, que no esté vencido (y que no dure más de una hora) y el `sid`.
+  **La `red` del pase no se compara con la conexión** (coordinador, 2026-11-13): el navegador puede llegar a tommalo.example
+  por IPv6 y al Worker por IPv4, y entonces todo pase daría 401. El abuso lo frenan los 30 minutos del pase, el tope de
+  pases por red que cuenta Odoo y los topes del Worker. Cualquier falla: 401 `pase`, y la página pide uno nuevo una vez.
+  Sin `JUAN_WORKER_TOKEN` en el Worker no pasa ninguno.
+
+### Los topes y el presupuesto
+
+Los ajustes los edita Gerencia en *Sitio web › Brian de la tienda* y viajan en `GET /config` → `brian_tienda`:
+`{activo, presupuesto_mes_usd, tope_sesion_hora, tope_red_hora, tope_dia}` y, si algún día Odoo los manda (hoy no: son
+opcionales), `tope_red_dia`, `tope_red48_hora`, `tope_red48_dia`, `tope_en_vuelo` y `tope_en_vuelo_red`. **Sin esa clave (un Odoo sin el módulo, o Odoo dormido
+sin una copia reciente) está apagado.** Además, opcional, `avisar_cerrado` (ver «De noche» abajo).
+
+| Tope | De fábrica | Dónde se cuenta (sin carreras) |
+|---|---|---|
+| Mensajes por hora por sesión (`sid`) | 20 | En el Durable Object de la sesión, que atiende de a un mensaje (un tercero encimado mientras otros dos esperan recibe `tope_sesion` al instante). `confirmar_carrito` no cuenta. |
+| Mensajes por hora por red | 60 | En el Durable Object `Global`. La red es la de la **conexión** (`CF-Connecting-IP`): la IPv4 entera o la /64 de una IPv6, igual que el borde y la búsqueda por foto (nunca la /24 de una IPv4: el mismo operador la comparte entre muchos clientes, y está el CGNAT). Se guarda **ofuscada** (HMAC con el token del Worker) y se borra a las 26 horas. |
+| Mensajes por día por red | 50 (el 5 % del tope del día) | En `Global`. Sin él, una sola conexión (60 por hora son 1440 al día) se llevaba el tope del día de todos y apagaba a Brian hasta el día siguiente (revisión adversarial, 2026-11-14). Pasado, `tope_red`. |
+| Mensajes por hora por /48 de IPv6 | 180 (3 × el de por red) | En `Global`, también ofuscada. Una /48 tiene 65 536 redes /64: cambiar de /64 no salta el tope por red. Pasado, `tope_red`. Con IPv4 no aplica. |
+| Mensajes por día por /48 de IPv6 | 150 (3 × el de por red y por día) | En `Global`. Sin él, cambiando de /64 cada 45 mensajes una sola /48 juntaba los 1000 del día en unas 5 horas y media. Pasado, `tope_red`. |
+| Mensajes por día, entre todos | 1000 | En `Global` (el día es el de Panamá). |
+| Turnos con IA a la vez, entre todos | 8 | En `Global`, contando lo apartado que sigue en curso. El de más recibe una respuesta amable (200: «Hay mucha gente escribiendo en este momento…», con WhatsApp), que no se guarda ni cuenta para los topes. Lo que no usa IA pasa igual. |
+| Parte justa de cada red en esos turnos | 2 | Al contar los 8, cada red suma como mucho 2: una sola conexión puede usar los lugares libres, pero lo que pase de su parte nunca deja fuera a otra red, y con el total lleno no agrega más (la misma respuesta amable). |
+| Presupuesto propio del mes | 30 USD | En `Global`, **aparte** del de Juan y del de la foto. 0 = no se gasta nada. |
+
+- **El presupuesto no tiene margen extra.** Antes de llamar a la IA, el turno **aparta** lo que puede costar (con el precio
+  del modelo más caro del plan, para dos pasadas) y solo pasa si lo gastado más lo apartado por los turnos en curso más eso
+  cabe. Al terminar suelta lo apartado y anota lo real; si el Worker se cae a la mitad, lo apartado vence solo a los 3
+  minutos. Agotado: `presupuesto`, y la IA no se llama. Lo que no usa IA sigue contestando (pedir una persona, calificar,
+  el carrito que falló y el «listo» de lo que Odoo ya puso en el carrito, también con mucha gente a la vez).
+- **Lo real se anota paso a paso** (revisión adversarial, 2026-11-14): cada vuelta al modelo que termina queda en la cuenta del
+  turno en ese momento (`onStepEnd` del SDK), aunque después el plazo corte el turno o la IA falle (el proveedor ya la cobró).
+  Si una vuelta se cortó o falló **con la petición ya enviada**, lo que costó no se sabe: el turno anota al menos lo que
+  había apartado, en el renglón «turnos cortados (estimado)». Un rechazo del proveedor sin procesar (un 4xx, sin clave) no
+  cobra y no se estima. Antes, un turno que el plazo cortaba no anotaba nada y el tope de 30 USD no frenaba a quien lo
+  provocara a propósito.
+- **Lo apartado nunca se suelta sin cuenta.** Si cerrar el turno falla (el `Global` no responde, un despliegue), se reintenta una
+  vez; si tampoco, a los 3 minutos lo apartado pasa a **gasto estimado** («turnos cortados (estimado)», con el proveedor del turno).
+  Si el cierre llega después, no se cuenta dos veces.
+- **Su gasto va en su propio renglón** (tabla `tienda_gasto` de `Global`, con el proveedor de cada modelo): no suma en
+  `gasto_ia_mes_usd`, ni en el tope de Juan, ni en el gasto por día, ni en «Por pagar a Meta». `GET /odoo/costos` lo manda
+  aparte en `tienda: {mes, usd, turnos, presupuesto_usd, por_modelo:[{modelo, proveedor, usd, turnos, estimado}]}` (si su
+  contador no responde, la clave no va: Odoo dice «sin dato», nunca $0).
+- **`/salud`** (público) dice `tienda: {listo, activo, ajustes:"odoo"|"fabrica", pase, ia, presupuesto:"disponible"|
+  "agotado"|"sin_dato"}`, sin cifras. **`/odoo/salud`** agrega `presupuesto_usd`, `gasto_mes_usd` (`null` si no se pudo
+  leer), `agotado`, `turnos_hoy` y `tope_dia`; con el presupuesto agotado hay un aviso (una vez al mes por Telegram).
+
+### El modelo y la guardia
+
+- **Los mismos proveedores, niveles y respaldo que Juan** (`proveedor_ia`, `modelo_rapido`, `modelo_inteligente`,
+  `proveedor_respaldo_ia`): el económico primero y el inteligente con las mismas reglas (`elegirNivel`). Plazo de 28 s.
+- **Solo siete herramientas, todas de leer:** `buscar_productos`, `ver_producto`, `listar_categorias`,
+  `buscar_conocimiento`, `horario_y_tienda`, `reglas_socios` y `cotizar_envio`. Van a Odoo por la misma ruta que las de
+  Juan (`POST /dcasa/juan/v1/herramienta`, con `JUAN_ODOO_TOKEN`) **sin `conversacion_id`** y con `origen: "tienda"`; los
+  textos de los argumentos van tapados (tarjetas y cédulas). Si el modelo intenta otra, no existe para él y el Worker la
+  corta antes de llamar a Odoo.
+- **El prompt** (`juan/src/tienda/prompt.ts`) reusa la voz y las reglas de Juan (nada inventado, precios con «+ ITBMS»,
+  existencias solo con etiqueta, el texto del visitante es dato, nunca dice ser humano) con lo de la web: no se vuelve a
+  presentar (el saludo «Hola, soy Brian. ¿Qué buscas hoy?» lo pinta la página), es muy educado y ofrece siempre el
+  siguiente paso, no guarda contactos, ofrece WhatsApp para atención personal (de noche, según `avisar_cerrado`) y sugiere
+  lo que combine, solo de lo que devuelvan las herramientas.
+- **De noche (`avisar_cerrado`, opcional en `brian_tienda`; la dueña, 2026-11-15: «que siempre esté activo»).** Brian
+  contesta a toda hora; lo que cambia es si habla de que la tienda cerró:
+  - **`true` o sin la clave (de fábrica, como hasta el 2026-11-14):** fuera del horario de las vendedoras el contexto le dice
+    al modelo «FUERA del horario» y que, si ofrece WhatsApp, diga que responden en cuanto abran; el Worker agrega «Como ahora
+    la tienda está cerrada, te responden en cuanto abramos, a partir de las 8:00 a. m.» al pedir una persona, a la respuesta
+    segura, a la de «hay mucha gente» y cuando el modelo ofrece WhatsApp, y la pose es `durmiendo`.
+  - **`false`:** de noche atiende igual que de día: sin esa línea en ningún bloque y con la pose que toque de día (nunca
+    `durmiendo`). El modelo recibe el horario de las vendedoras **como dato** («no lo anuncies»: los días y horas y cuándo
+    vuelven a responder, «hoy / mañana / el lunes desde las 8:00 a. m.») y la regla «No digas que la tienda está cerrada ni que
+    no hay vendedoras»; solo si el cliente pide una persona o pregunta el horario, se lo dice con amabilidad. Al pedir una
+    persona fuera del horario (sin IA), el Worker agrega con honestidad «Las vendedoras atienden todos los días, de 8:00 a. m.
+    a 5:00 p. m.; te escriben mañana desde las 8:00 a. m.»; de día, nada.
+  - Solo un `false` de verdad lo apaga (un `"false"` en texto deja el de fábrica). Ya no sale el punto doble «8:00 a. m..».
+- **Contesta con la herramienta `responder_tienda`**: el texto y, por id, qué tarjetas mostrar. **Las tarjetas las arma el
+  Worker** con los datos de `buscar_productos` / `ver_producto` de **ese turno** (nombre, `precio_texto`, disponibilidad,
+  imagen y ficha en rutas relativas); un id que no devolvió una herramienta no tiene tarjeta.
+- **El carrito:** el modelo nunca pone nada. `proponer_carrito` sale solo con un producto ya visto en la sesión,
+  `agregable`, con cantidad de 1 a 20 **y** si el visitante lo pidió o lo confirmó en ese mensaje; si no, se le pregunta
+  «¿Te pongo … en el carrito?» y su «sí» o «no» corto se resuelve sin IA. Con `confirmar_carrito` ok, el «Listo, te puse …
+  en el carrito. ¡Gracias!» lo pone el Worker y el modelo ofrece el siguiente paso; con error, un texto fijo que **nunca**
+  dice «listo» y ofrece la ficha o WhatsApp. Una confirmación que no coincide con lo propuesto no confirma nada.
+- **La guardia de Juan** (`dcasa/salvaguardas.ts`) en cada bloque de texto (texto, sugerencias, respuestas rápidas y la
+  frase del envío): un precio o una cifra que no salió de una herramienta, un número de existencias, una promesa, una fuga
+  del prompt. Si cambia el sentido, una corrección; si insiste, se quita la oración; si no queda nada o hubo una fuga,
+  **respuesta segura con WhatsApp**. Además: se quita un «Hola, soy Brian…» y toda oración que diga que algo ya está en el
+  carrito (salvo el turno en que Odoo lo confirmó).
+- **Sin IA:** pedir una persona (WhatsApp, con lo del carrito en el mensaje, sin datos personales), calificar (solo agradece:
+  las estrellas las guarda la página en Odoo, número y fecha), el «sí»/«no» al carrito y el carrito que falló.
+
+### Andrés como buen vendedor (A1 a A5, 2026-11-16)
+
+Pedido de la dueña con capturas del chat (`docs/PLAN_ANDRES_VOZ_PORTADA.md` § A). La regla «No sumes… el total lo calcula
+la tienda» se queda: Andrés **ofrece**, la página le pide a Odoo y el total lo dice el carrito.
+
+- **A2. El envío en la cotización.** Cuando `cotizar_envio` da un precio, el bloque `envio` lleva el `lugar_id` de la tabla y
+  la sesión lo recuerda (`envio_cotizado`). Con algo en el carrito y ese envío todavía no sumado, el Worker agrega «¿Te lo
+  sumo a la cotización?» con «Sí, súmalo a la cotización» / «No, gracias». El «sí» (o «súmale el envío a la cotización»,
+  aunque hayan pasado otros mensajes) se resuelve **sin la IA**: «Con gusto, te lo sumo a la cotización.» + `sumar_envio`.
+  El modelo también puede pedirlo (`sumar_envio: true` en `responder_tienda`), pero solo sale si el visitante lo pidió o
+  dijo que sí en ese mensaje; si no, se le pregunta. La página llama a Odoo (`POST /dcasa/brian/v1/carrito/envio`
+  `{lugar_id}`: solo el lugar, nunca un precio) y confirma con `confirmar_envio`; con `ok`, el texto es fijo y sin cifras:
+  «Listo, te lo sumé: el total lo ves en tu carrito y en la cotización.»; con error, un texto fijo por motivo (con WhatsApp
+  salvo que falte el carrito; con `ajeno`, que una vendedora se lo confirma, sin «inténtalo otra vez»). Con el carrito
+  vacío: «primero pon en el carrito lo que te gustó». Ya sumado: lo dice y
+  muestra el carrito. El contexto le dice al modelo «El envío a X ya está sumado…» y la guardia quita del modelo toda
+  confirmación de algo que no hizo Odoo («te lo sumé», «ya agregué / incluí el envío», «el envío ya está en tu
+  cotización», «cambié la cantidad», «te lo quité», «retiré…»); lo que va en una pregunta («¿Quieres que te lo quite
+  del carrito?») o en subjuntivo no se toca, ni lo que se dice del ITBMS.
+- **A3. La reacción al quitar o vaciar.** `carrito_bajo` (lo manda la página con el chat abierto) se contesta **una vez por
+  sesión** (`reaccion_carrito`), sin la IA, con el nombre de la herramienta si el producto se vio (si no, el de la página,
+  limpio y sin corchetes): «Vi que quitaste X. ¿Te busco una opción más económica o una con más prestaciones?» (o «vaciaste
+  el carrito», o «bajaste la cantidad de X»), con «Una más económica», «Con más prestaciones» y «No, gracias» (que se respeta
+  sin la IA). La segunda vez: 200 sin bloques, sin tocar topes, contexto ni IA. Al modelo le llega como nota del sistema
+  («[El cliente quitó del carrito: X]»).
+- **A4. Cambiar el carrito conversando.** `cambiar_carrito {producto, cantidad}` en `responder_tienda` (0 = quitar), solo de
+  un producto que **ya está en el carrito** que manda la página (por `producto_id`, que el contexto le da, o por su nombre
+  exacto), con cantidad de 0 a 20 distinta de la que tiene. Con el pedido del visitante en ese mensaje («quita», «déjame
+  solo uno», «mejor dos»…) sale `proponer_cambio_carrito`; si no, «¿Quito X del carrito?» / «¿Cambio la cantidad de X a
+  N?» con «Sí, cámbialo» (sin la IA). Con `confirmar_cambio` ok, lo que se dice sale del carrito que la página manda con la
+  confirmación (el de Odoo): «Listo, quité X del carrito.» o «Listo, ahora tienes N × X en el carrito.» y el modelo ofrece,
+  una vez y sin insistir, una alternativa (con `buscar_productos`); si el carrito no cambió o hubo error, un texto fijo con
+  WhatsApp. Al quitar o bajar así, la reacción de A3 ya no sale en esa sesión. Con el presupuesto agotado, confirma igual
+  (texto fijo).
+- **A5. El título del grupo de la vitrina.** El bloque `productos` lleva `titulo`: lo último que el modelo buscó con
+  `buscar_productos` en ese turno (con mayúscula, hasta 40 letras, sin cifras ni nada que la guardia pare) o, si no, la
+  categoría de Odoo que más se repite entre esas tarjetas.
+- **«Dame la cotización»:** con algo en el carrito, el turno lleva el bloque `carrito` (la página pinta la tarjeta con el
+  PDF).
+
+### Lo que no guarda
+
+- **La conversación** vive solo en el Durable Object de la sesión (`TiendaSesion`, `tienda:<sid>`): como mucho **30 mensajes**
+  (15 turnos, lo que dice /privacidad; el modelo ve los últimos 10 turnos) y **se borra sola a las 2 horas sin actividad**
+  (alarma con `deleteAll`; si un mensaje llega después de las 2 horas, primero se borra). Lo del visitante se guarda con
+  tarjetas y cédulas tapadas y con su origen explícito: **siempre** vuelve al modelo neutralizado (sin etiquetas, sin marcas de
+  confianza y sin ningún corchete, tampoco los de ancho completo como «［］» o «【】»), también en los turnos siguientes; solo las notas que arma el Worker («[Se puso en el carrito: …]»)
+  van como del sistema (revisión adversarial, 2026-11-14: un texto que empezaba con «[» se colaba como nota del sistema).
+- **La ubicación** se usa solo en su turno: el Worker llama a `cotizar_envio` con `lat` y `lon` y al modelo le pasa el
+  resultado **sin coordenadas**. No queda en el contexto, ni en `Global`, ni en los registros. Lo que sí queda es lo que
+  dijo Brian (el nombre del lugar, como si lo hubiera escrito el visitante).
+- **En Odoo** no queda nada de la conversación: las herramientas solo leen (la auditoría de herramientas, `brian.accion`,
+  sí anota la consulta, como con Juan, sin las coordenadas).
+- **Los registros** del Worker llevan una línea por mensaje con el resultado, los tiempos, el modelo y los tipos de bloque:
+  nunca el texto, la IP, la red, el `sid` ni la ubicación.
+
+---
+
+## Contrato verificado
+
+Las tres piezas se construyeron en paralelo contra el contrato de arriba. Esta sección es la **forma real, comprobada con el
+Odoo de verdad y el Worker de verdad hablándose por HTTP** (`scripts/integracion_juan.sh`, ver el final). Donde difiere de lo
+anterior, **gana esta sección**. Todo lo que no aparece aquí se cumple tal como está escrito arriba.
+
+### Convenciones (las dos mitades)
+
+- **Días del horario:** `0 = domingo … 6 = sábado` (`Date.getDay()`). Antes el Worker leía `0 = lunes`.
+- **Fechas:** texto ISO 8601 en UTC con `Z` (`2026-10-09T14:03:00Z`). El Worker también acepta `YYYY-MM-DD HH:MM:SS` (UTC) y epoch.
+- **Errores:** siempre `{"ok": false, "error": "texto"}` con el código HTTP que corresponde. Odoo → Worker y Worker → Odoo.
+- **Nombres de las herramientas:** los públicos, sin prefijo (`buscar_productos`). Dentro de Odoo (Brian) llevan `juan_`, pero eso
+  no sale de Odoo: `GET /herramientas` publica los públicos y `POST /herramienta` solo acepta los públicos.
+- **Precios de la IA:** en dólares por millón de tokens.
+
+### Worker → Odoo
+
+Entrada: `env.DCASA.fetch("https://dcasa/dcasa/juan/v1/…")` por **service binding con entrypoint**
+(`{"binding":"DCASA","service":"dcasa"|"dcasa-staging","entrypoint":"JuanEntrada"}`, ya en `juan/wrangler.jsonc`; sin el
+`entrypoint` el binding llama al `fetch` público del Worker `dcasa`, donde `/dcasa/juan/**` da 404). `JuanEntrada` es un
+`WorkerEntrypoint` con `fetch` (no RPC): reenvía solo `GET`/`POST` a `/dcasa/juan/**`. Todas con `Authorization: Bearer
+<JUAN_ODOO_TOKEN>`.
+
+| Ruta | Cuerpo | Respuesta 200 |
+|---|---|---|
+| `POST /mensaje` | `canal, id_externo, id_mensaje, direccion, autor, texto?, adjuntos?[{tipo, url \| base64, nombre, mime, sensible?}], ts?, nombre?, celular?` | `{ok, conversacion_id, partner_id, estado, bot_activo, pausada_hasta, dentro_de_horario, nota_para_el_bot, campana_correo?, permiso_correo?, adjuntos?[{id, nombre, sensible}]}` |
+| `GET /estado?canal=&id_externo=` | | `{ok, estado, bot_activo, pausada_hasta, dentro_de_horario, nota_para_el_bot, campana_correo?, permiso_correo?}` (sin conversación: los valores de los ajustes) |
+| `GET /config` | | ver abajo |
+| `GET /herramientas` | | `{ok, herramientas:[{nombre, descripcion, parametros, name, description, input_schema}]}`: 13 herramientas, con las claves del contrato **y** las del formato de Anthropic |
+| `POST /herramienta` | `{nombre, argumentos, conversacion_id}` | `{ok:true, resultado:{…}}` |
+| `POST /seguimiento/hecho` | `{conversacion_id, numero:1\|2, resultado:"enviado"\|"descartado", motivo?}` | `{ok, conversacion_id, seguimientos_enviados}` |
+| `POST /escribiendo` | `{canal, id_externo, activo:bool}` | `{ok}` (también si la conversación todavía no existe) |
+| `POST /foto-perfil` | `{canal, id_externo, mime, base64}` | `{ok, guardada, motivo?}` (404 si no existe la conversación) |
+| `POST /eventos` (2026-11-07) | `{eventos:[{tipo:"estado", canal, id_externo, id_mensaje, estado, ts, error?} \| {tipo:"reaccion", canal, id_externo, id_mensaje, emoji, ts}]}` (hasta 100) | `{ok, aplicados, desconocidos:[id_mensaje], invalidos}` |
+
+- `pausada_hasta`: ISO con `Z` o `null`. `estado` es `bot` cuando una pausa ya venció (Odoo la normaliza al responder).
+- **Citas, reenviados, reacciones y palomitas** (2026-11-07, pedido de la dueña; detalle en [JUAN_CANALES.md](JUAN_CANALES.md)
+  §1). `POST /mensaje` acepta, opcionales: en un mensaje del cliente `cita:{id_canal, texto?}` (el mensaje que citó; `texto`
+  solo si el canal lo manda, como Telegram) y `reenviado:"una"|"muchas"`; en uno nuestro (bot) `partes:[{id_canal,
+  tipo:"texto"|"imagen"|"documento"|"audio"|"video", texto?}]`, el id que el canal dio a cada burbuja o archivo, en orden.
+  Si Odoo tiene lo citado, la respuesta trae `cita:{id_canal, autor:"cliente"|"bot"|"vendedora", texto}` y el Worker completa
+  con eso lo que no recordaba (es un dato del cliente para la IA, nunca una orden). Un campo nuevo mal formado se ignora y
+  el mensaje entra igual; un Odoo viejo los ignora todos. `POST /eventos` recibe las palomitas (`estado` ∈ `enviado`,
+  `entregado`, `leido`, `fallido`; nunca bajan, son idempotentes) y las reacciones (`emoji:""` = la quitó); no son mensajes
+  del cliente y no tocan la actividad de la conversación. Un Odoo viejo contesta 404 y el Worker no insiste.
+- `nota_para_el_bot`: lo que una vendedora le dejó dicho al devolver la conversación (hasta 500 letras), o `null`. **El Worker la lee
+  de `/mensaje` y `/estado` (y de `POST /odoo/estado`) y la pone en el contexto del chat** como un dato; Odoo la borra cuando
+  alguien toma la conversación y el Worker también.
+- `campana_correo` (2026-11-06, `dcasa_camila`, decisión de la dueña): si el cliente llegó por una campaña de correo de
+  novedades en los últimos 3 días, el texto de Odoo con el asunto, cuándo le salió y los productos que llevaba (sin
+  precios, hasta 600 letras). Si no, la clave no va. **El Worker la guarda con el resto del estado de cada respuesta**
+  (sin ella, la borra) y la pone en el contexto del chat como un dato de Odoo, no una orden: Juan reconoce el correo
+  con naturalidad, pregunta qué le interesó, no repite el código «DCN-…» y los precios los da la herramienta de
+  siempre. Detalle: [CAMILA.md](CAMILA.md) §3.9.
+- `permiso_correo` (2026-11-06, `dcasa_camila`, etapa 1b, decisión de la dueña: las novedades se activan solas al
+  agregar el correo): «activo» (le llegan: si dice que no, claro o con dudas, Juan llama a `no_quiere_novedades`),
+  «sin_correo» (si da su correo, Juan lo guarda con `guardar_correo` y le dice que le llegarán las novedades y que
+  puede decir que no cuando quiera) o «sin_permiso» (tiene correo pero no le llegan: no se las ofrece y un «no» igual
+  se anota). Si no viene, nada. Juan nunca las activa por su cuenta ni pregunta si las quiere.
+  Las dos herramientas las publica Odoo solo con Camila instalada; `guardar_correo` solo guarda un correo que el
+  cliente escribió en el chat, si la ficha no tiene uno. Detalle: [CAMILA.md](CAMILA.md) §3.11.
+- `adjuntos[].url`: si es `null` (el Worker no tiene `URL_PUBLICA`), el mensaje **se guarda igual** y el adjunto cuenta como
+  «no se pudo traer» (`adjuntos_fallidos`); antes se rechazaba todo el mensaje con 400.
+- `POST /herramienta` con `pasar_a_vendedora` devuelve `{texto_para_el_cliente, dentro_de_horario, urgente}`: **el texto que el bot
+  dice es ese** (el Worker solo usa el suyo si Odoo no contesta). Códigos: `404` no existe la herramienta o la conversación,
+  `422` error de uso (el texto sirve para corregir), `409` pide confirmación humana.
+- **Idempotencia:** por `(conversacion, id_mensaje)`; repetir una petición devuelve la misma conversación sin duplicar. Los
+  mensajes del Worker llevan `id_mensaje` propio (`bot-<uuid>`); el eco que el puente devuelve de lo que escribió una vendedora
+  desde Odoo se funde con el mensaje original.
+
+`GET /config`:
+
+```json
+{"ok": true, "nombre_publico": "el equipo de D'CASA", "bot_activo_global": true,
+ "canales_activos": {"whatsapp_qr": true, "whatsapp_cloud": false, "telegram": true, "messenger": false, "instagram": false},
+ "horario": {"inicio": "08:00", "fin": "17:00", "dias": [0,1,2,3,4,5,6], "zona": "America/Panama"},
+ "seguimiento": {"primero_horas": 5, "segundo_dias": 5, "solo_horario_laboral": true, "maximo": 2},
+ "presupuesto_ia_mensual_usd": 30, "pausa_por_defecto_minutos": 120,
+ "proveedor_ia": "anthropic", "proveedor_respaldo_ia": null,
+ "modelo_rapido": "claude-haiku-4-5", "modelo_inteligente": "claude-sonnet-5-5",
+ "modelos_por_defecto": {"anthropic": {"rapido": "…", "inteligente": "…"}, "meta": {…}, "openai": {…}},
+ "precios": {"rapido": {"entrada": null, "salida": null, "cache": null}, "inteligente": {…}},
+ "precios_ia": {"claude-haiku-4-5": {"entrada": 1.0, "salida": 5.0, "entrada_cache": 0.1}},
+ "lecciones": ["una frase por elemento"], "mensaje_bienvenida": "…", "texto_privacidad_corto": "…",
+ "palabras_prohibidas": ["remate", "corre", "¡¡", "!!"]}
+```
+
+`horario.fin_domingo` («HH:MM») solo viene si en Ajustes de Juan el domingo cierra a otra hora («El domingo cierran a
+las», 0:00 = igual que los demás días). Sin él, el domingo cierra a la hora de `fin`.
+
+`precios_ia` es **por nombre de modelo** (lo que lee el Worker) y solo trae los modelos con precio de entrada **y** de salida; `precios` es
+lo mismo por nivel (con `null` donde no hay precio). Odoo **no** publica los modelos del proveedor de respaldo
+(`modelo_rapido_respaldo`/`modelo_inteligente_respaldo` que el Worker sí sabe leer): se usan los de siempre de ese proveedor, y para
+OpenAI (que no tiene) el respaldo no funciona hasta que se agreguen esos campos en Odoo.
+
+### Odoo → Worker
+
+Base: ajuste `dcasa_conversaciones.juan_url` o variable `JUAN_URL` (https; `http://localhost` solo para pruebas). Todas con
+`Authorization: Bearer <JUAN_WORKER_TOKEN>`.
+
+| Ruta | Cuerpo | Respuesta |
+|---|---|---|
+| `POST /odoo/enviar` | `{canal, id_externo, autor:"vendedora"\|"bot", texto?, adjuntos?[{tipo, url, nombre, mime}], id_envio?, responde_a?}` (`"bot"`: Odoo a nombre del asistente, no lo calla) | `200 {ok, id_mensaje, repetido?:true, partes?:[{id_canal, tipo, texto?}]}` |
+| `POST /odoo/estado` | `{canal, id_externo, estado:"humano"\|"bot", pausada_hasta?, nota_para_el_bot?}` | `200 {ok}` |
+| `POST /odoo/seguimiento` | `{conversacion_id, canal, id_externo, numero:1\|2, contexto:{interes, ultimo_mensaje_ts}}` | `200 {ok:true, resultado:"enviado"\|"descartado"\|"pospuesto", motivo?}` · `502 {ok:false, error}` |
+| `GET /odoo/salud` | | `200 {ok, mensaje, version, entorno, secretos_faltantes, ia, canales:{<canal>:{activo, configurado, faltan, conectado, detalle?}}, gasto_ia_mes_usd, mes, tope_usd, tope_alcanzado, problemas, avisos}`. `mes` = «AAAA-MM» (hora de Panamá) del acumulado; `gasto_ia_mes_usd` es `null` (con un aviso) si el Worker no pudo leer su contador, nunca un 0 inventado (2026-11-12) |
+
+- `/odoo/salud` responde **200 aunque `ok` sea `false`** (le falta un secreto, un canal sin conectar): Odoo lo lee y lo muestra en
+  «Probar conexión» («whatsapp_qr: conectado, telegram: sin configurar (…)»).
+- `/odoo/enviar`: los adjuntos son URLs **`https`** del dominio público de la tienda (`web.base.url`, que el despliegue congela en
+  `https://CANONICAL_HOST`), firmadas y de **15 minutos**: `/dcasa/adjunto/<id>/<vence>/<firma>/<nombre>`, con
+  `firma = HMAC-SHA256(database.secret, "dcasa_adjunto:<id>:<vence>:<checksum>")`. El puente solo baja de `tommalo.example` y
+  `*.SUBDOMINIO-PENDIENTE.workers.dev` (`MEDIOS_HOSTS_PERMITIDOS`), por https y sin IPs: si `web.base.url` no es de esos dominios el puente
+  contesta 422, el Worker responde 502 a Odoo y el mensaje queda «por enviar». Un adjunto con `http://` lo rechaza el Worker (400).
+  Audio y video salen como enlace dentro del texto.
+- **Envío sin duplicados (`id_envio`).** Odoo reintenta un envío cuando no oyó la respuesta (red caída, el Worker tardó más de
+  25 s). Sin protección, el cliente recibiría el mismo mensaje dos veces. Odoo manda como `id_envio` el `id_mensaje` de su propio
+  mensaje (`odoo-<uuid>`, 1 a 120 letras, cifras, `.`, `:`, `_` o `-`; otra cosa es `400`) y **no cambia entre reintentos**. El
+  Worker lo recuerda 3 días: si ya salió contesta `200 {ok, id_mensaje, repetido:true}` con el mismo id y **no vuelve a escribirle al
+  cliente**; si ese mismo envío todavía está saliendo (hasta 3 minutos), contesta `502 «ya se está enviando»` y Odoo reintenta
+  después. Si un canal se corta a la mitad (salió la burbuja 1 de 3), el Worker reintenta solo lo que faltaba y, si no puede, Odoo
+  sigue donde quedó. Sin `id_envio` (un Odoo viejo) todo funciona como antes, sin esa protección. Solo si el Worker mismo se cae
+  justo mientras manda puede repetirse algo (lo que se mandaba en ese instante).
+- `/odoo/enviar` con `responde_a` (2026-11-07, «Responder» en la pantalla): el id en el canal del mensaje del cliente que se cita.
+  WhatsApp oficial lo manda como `context.message_id` y Telegram como `reply_parameters`, solo en el primer mensaje que sale; si
+  WhatsApp rechaza la cita (4xx), sale sin ella. `partes` en la respuesta: el id del canal de cada burbuja o archivo, para las
+  palomitas y las citas (un Odoo viejo lo ignora; uno nuevo con un Juan viejo usa `id_mensaje`, el del primero).
+- `/odoo/estado` al **devolver**: trae `nota_para_el_bot` si la vendedora dejó una. Al **tomar** no. Si el aviso falla, Odoo lo
+  reintenta cada 5 minutos y mientras tanto el Worker se entera igual: pregunta `GET /estado` justo antes de enviar.
+- **Seguimiento:** el cron de Odoo (cada 15 min) anota el pedido y **confirma en la base antes** de llamar al Worker, porque el Worker
+  responde después de llamar a `/seguimiento/hecho` y a `/mensaje`. `pospuesto` (fuera de horario, asistente apagado) no lleva
+  `hecho`: Odoo lo reprograma. El 2.º se cuenta **5 días desde el 1.º** (no desde el último mensaje), en horario laboral.
+- **Archivos del cliente:** el Worker los guarda 2 días y los publica en `GET /media/<conversación>/<id>?exp=&sig=` (firma
+  HMAC-SHA256 con `JUAN_WORKER_TOKEN`; sin firma, 403; vencida, 410; de otra conversación, 404). Odoo los baja y los guarda como
+  `ir.attachment` (privado, del mensaje). La dirección del propio Worker (`juan_url`) es de confianza para la defensa anti-SSRF; las
+  demás URLs deben ser públicas.
+
+### Códigos y reintentos
+
+| Caso | Odoo | Worker |
+|---|---|---|
+| Sin `JUAN_ODOO_TOKEN` (o de menos de 32 caracteres) | `503 {ok:false, error}` en **todas** las rutas | `OdooError` reintentable (1 reintento, luego la cola del Worker: ver abajo) |
+| Token malo o ausente | `401` + `WWW-Authenticate` | sin reintento |
+| 30 intentos fallidos en un minuto (por IP) | `429` + `Retry-After: 60`, incluso con el token bueno | reintentable |
+| Odoo dormido o arrancando (lo contesta el borde) | `503 {ok:false, error:"Odoo está arrancando.", reintentar_en:15}` + `Retry-After` | reintenta; los mensajes esperan en la cola, **no se pierden** |
+| Choque entre dos transacciones de Postgres | Odoo repite la petición (hasta 5 veces); no llega al Worker | — |
+| Sin `JUAN_WORKER_TOKEN` en el Worker | — | `503` en `/odoo/*` (falla cerrado); con token malo, `401` |
+| Odoo no puede llamar al Worker | el mensaje de la vendedora queda «por enviar» y el cron lo reintenta cada 5 min durante 1 h | — |
+
+- **La cola del Worker nunca descarta lo que Odoo no pudo recibir.** Lo que el Worker debe escribir en Odoo (los mensajes de la
+  conversación y las notas/etiquetas) espera en su cola: primero reintenta rápido (30 s, 1, 2, 4, 8 y luego cada 15 min, 12 veces) y,
+  si Odoo sigue sin contestar, **cada 6 horas**, sin límite de intentos. Los mensajes se conservan 30 días; las escrituras sueltas,
+  3. `GET /odoo/salud` avisa en `problemas` («Odoo no está recibiendo los mensajes de los clientes…») y lo retira cuando se entrega.
+  Lo único que se deja es una escritura suelta que Odoo **rechaza** (4xx: etiqueta que no existe) tras 6 intentos, porque
+  reintentar no la arregla; un mensaje, nunca.
+- **Arranque cerrado.** Si Odoo no entrega la lista de herramientas (y no hay una anterior en memoria), el asistente **no contesta
+  de memoria** (sin catálogo, precios ni existencias inventaría): reintenta a los 60 s y 5 min y, si Odoo no vuelve, le avisa al
+  cliente con honestidad y pasa la conversación a una vendedora, igual que si fallara la IA. Una lista vacía nunca se recuerda.
+- **Tope de la ráfaga.** Cada mensaje nuevo reinicia la espera de 15 s, pero pasadas 3 esperas (45 s) desde el primer mensaje de la
+  ráfaga se contesta con lo que haya: quien escribe una frase cada 10 s ya no se queda sin respuesta.
+- Las herramientas **no se reintentan solas** (podrían duplicar una nota u oportunidad). Las que **escriben** en Odoo se ejecutan de a
+  una por turno del bot (las consultas siguen corriendo juntas): dos escrituras a la vez sobre la misma conversación chocan en Postgres.
+- `POST /odoo/seguimiento` y `/odoo/enviar` son síncronos: el Worker contesta cuando terminó. Odoo espera hasta 25 s.
+
+### Puente QR ↔ Worker (verificado con el código del puente)
+
+- Puente → Worker: el cuerpo lo arma `construirWebhook` del puente: `{id_mensaje, de, nombre, tipo, texto?, medio?, medio_omitido?, ts, propio, jid?}`.
+  **`de` es el celular en E.164 sin «+»** (no el JID); `jid` va aparte. El token puede ir en `x-wa-token-b64` (el que usa el Worker) o en `x-wa-token`.
+- `medio_omitido: {motivo, mime?, bytes?}` (archivo demasiado pesado o descarga fallida): el Worker registra el mensaje con un adjunto
+  «no se pudo traer» y el bot contesta; antes el mensaje se descartaba en silencio.
+- Worker → puente: `POST /api/enviar {para, chunks, medios?}` pasa la validación `validarEnviar` del puente (destino, burbujas, medios
+  `https` de los dominios permitidos).
+
+### Cómo se comprueba
+
+`scripts/integracion_juan.sh` crea una base propia (`dcasa_integra_<pid>`), instala `dcasa_conversaciones`, carga productos de prueba y
+arranca Odoo en un puerto libre con `JUAN_ODOO_TOKEN`/`JUAN_WORKER_TOKEN` **generados en ese momento** (solo viven en el entorno de los
+procesos de la corrida; nunca en archivos ni en pantalla), más un segundo Odoo **sin** tokens para el 503. Después corre
+`juan/test/integracion` (vitest; se omite sin `ODOO_INTEGRACION_URL`): el Worker real (su `fetch`, las clases de Durable Object, el
+cliente de Odoo y las rutas `/odoo/*` y `/media/*`) escucha en otro puerto; el binding `DCASA` es el código real de `edge/src/juan.ts`;
+solo la IA (un modelo guionado con la forma de la API de Anthropic) y el puente de WhatsApp (que valida con el contrato del puente real)
+son de mentira. Al terminar apaga Odoo y borra la base. Variables: `ODOO_DIR`, `DB_*`, `CONSERVAR=1`, `REUSAR_BASE=1` (solo para
+desarrollar la prueba: no borra la base entre corridas).
+
+---
+
+# Parte 2 — Cómo funciona el Worker por dentro
+
+Esta parte explica **cómo está hecho Juan por dentro** (`juan/`), cómo se le agrega un canal y qué secretos usa. Era
+`docs/JUAN_WORKER.md` (archivado en historico/); los números de sección se conservan porque el
+código los cita («§12», «§12b»). El contrato con Odoo y el puente está en la Parte 1.
+
+No hay ningún secreto en esta parte: solo **nombres**. Los valores los pega la dueña en el panel
+de Cloudflare.
+
+## 1. Qué es Juan, en tres líneas
+
+- Un Worker de Cloudflare llamado **`dcasa-juan`** (y **`dcasa-juan-staging`** para ensayar).
+- Recibe los mensajes de los clientes por varios canales, espera 15 segundos a que terminen de
+  escribir, le pregunta a la IA qué contestar (la IA usa las herramientas de Odoo para no inventar
+  nada) y manda la respuesta por el mismo canal.
+- **Odoo guarda todo** (conversaciones, clientes, oportunidades). Juan solo guarda lo mínimo para
+  contestar bien, en la memoria propia de cada conversación. No usa D1, ni Vectorize, ni R2.
+
+El nombre público (`nombre_publico` en Odoo) es «el equipo de D'CASA»; Juan se presenta «Hola, soy Juan de D'CASA.»,
+sin anunciarse como asistente, y nunca dice ser humano (Parte 1, «Qué es»).
+
+## 2. Cómo está armado
+
+```
+                      cliente
+   WhatsApp QR*    Telegram   Messenger/Instagram   WhatsApp oficial (Meta)
+        |              |               |                     |
+        v              v               v                     v
+   ┌────────────────────────── Worker dcasa-juan ──────────────────────────┐
+   │  rutas.ts  ->  canales/*  (un adaptador por canal, todos iguales)      │
+   │                    |                                                   │
+   │                    v                                                   │
+   │   Durable Object «Conversacion»  (uno por canal:id_externo)            │
+   │     ráfaga de 15 s -> IA con herramientas -> guardia de salida         │
+   │     -> burbujas cortas -> el canal                                     │
+   │   Durable Object «Global»  (uno solo: gasto de IA del mes, salud)      │
+   └───────────────────────┬──────────────────────────┬─────────────────────┘
+                           │ service binding DCASA     │ service binding PUENTE
+                           v                           v
+                  Worker dcasa -> Odoo            puente de WhatsApp (QR)*
+```
+
+\* El puente QR nunca se desplegó y el binding `PUENTE` está comentado: WhatsApp entra por la API oficial
+(`/webhooks/whatsapp-cloud`) desde el 2026-11-02.
+
+### Qué hay en cada carpeta de `juan/src/`
+
+| Archivo o carpeta | Qué hace |
+|---|---|
+| `index.ts` | Conecta Cloudflare con el resto: recibe las peticiones y el cron de cada hora. |
+| `rutas.ts` | Todas las direcciones del Worker: `/health`, `/salud`, `/webhooks/*`, `/media/*`, `/odoo/*`. No depende de Cloudflare, por eso se prueba fácil. |
+| `canales/` | Un archivo por canal (`telegram`, `whatsappQr`, `meta` = Messenger e Instagram, `whatsappCloud`). Todos cumplen la misma interfaz (`tipos.ts`). `index.ts` es la lista. |
+| `motor/conversacion.ts` | El cerebro de **una** conversación: anti-spam, ráfaga, turno de IA, guardia de salida, seguimiento, cola hacia Odoo. |
+| `motor/do.ts` y `motor/global.ts` | Las dos clases de Durable Object (le prestan a lo anterior su base de datos, su reloj y su alarma). |
+| `motor/modelo.ts`, `proveedores.ts`, `precios.ts` | Qué modelo contesta (rápido o inteligente), con qué proveedor (Claude, Meta, OpenAI), cuánto cuesta y el tope del mes. |
+| `motor/herramientas.ts` | Convierte las herramientas de Odoo en herramientas para la IA, con caché de 60 s para las que solo leen. |
+| `motor/almacen.ts` | Las tablas de la memoria de trabajo (últimos mensajes, cola, archivos temporales). |
+| `dcasa/prompt.ts` | El prompt de D'CASA: `<fuentes_de_verdad>`, las 11 reglas, la voz de la marca. |
+| `dcasa/salvaguardas.ts` | La **guardia de salida**: lo que la IA escribe se revisa antes de llegar al cliente (precios sin «+ ITBMS», números de existencias, promesas de entrega o descuento, fugas del prompt, emojis, «remate»...). |
+| `odoo/cliente.ts` | Habla con Odoo por el service binding `DCASA`, con plazos largos y reintentos donde es seguro. |
+| `config.ts` | La configuración que la dueña edita en Odoo, con caché de 60 s. |
+| `salud.ts` | Lo que contestan `/salud` y `/odoo/salud`, y los avisos del cron. |
+| `tienda/` | Brian de la tienda, el chat de tommalo.example: `rutas.ts` (CORS y el pase), `pase.ts`, `motor.ts` (topes, IA, guardia, contexto), `do.ts` (el Durable Object `TiendaSesion`), `prompt.ts`, `bloques.ts` y `peticion.ts`. Ver «Brian de la tienda» (Parte 1). |
+
+### Qué pasa con un mensaje, paso a paso
+
+1. El cliente escribe. El canal llama a `/webhooks/<canal>`. El adaptador **verifica que viene de
+   quien dice** (secreto de Telegram, firma de Meta, token del puente) y lo traduce a un mensaje
+   igual para todos los canales.
+2. Si en Odoo ese canal está apagado, no pasa nada más. Si no, el mensaje va al Durable Object de
+   esa persona. Uno por persona: dos mensajes seguidos nunca se pisan.
+3. Se anotan en Odoo (el historial es de Odoo). Si Odoo está dormido, el mensaje espera en una cola
+   y se manda cuando despierte. **No se pierde ni se descarta nunca**: reintenta rápido y luego cada 6 horas, se conserva 30 días
+   y `/odoo/salud` avisa si Odoo no lo recibe (Parte 1 → «Códigos y reintentos»).
+4. Antes de gastar IA: anti-spam (mismo mensaje 3 veces, o más de 50 turnos al día), «¿está pausada
+   por una persona?», y «persona / vendedora / humano» (eso pasa a una vendedora **siempre**, sin
+   preguntarle a la IA).
+5. Se espera 15 segundos por si el cliente sigue escribiendo. Todo lo que dijo en ese rato se
+   contesta junto.
+6. La IA contesta usando las herramientas de Odoo (hasta 6 pasos). Los archivos del cliente
+   (comprobantes, cédulas) **no se le muestran a la IA**: se anotan para una vendedora.
+7. La guardia de salida revisa el texto. Si algo está mal, la IA lo reescribe una vez; si insiste,
+   esa oración no sale.
+8. **Justo antes de enviar** se le pregunta otra vez a Odoo «¿alguien tomó la conversación?». Si sí,
+   no se envía.
+9. Sale en burbujas cortas, con una pausa de 1 segundo entre ellas. Todo se registra en Odoo.
+
+Si la IA falla, reintenta a los 60 segundos y a los 5 minutos. Si sigue fallando, le dice al cliente
+con honestidad que una vendedora lo atiende y avisa a la vendedora. **El cliente nunca se queda sin
+respuesta.**
+
+### Gasto de IA
+
+El tope mensual (`presupuesto_ia_mensual_usd`, en Odoo) **no apaga** el bot: al llegar, baja al
+modelo barato y sigue contestando. El gasto se calcula con una tabla de precios (sección 8). «Busca con una foto» de la
+tienda **no** suma a ese gasto: lo cobra Cloudflare (Workers AI) y se anota aparte (`cloudflare:lector-de-fotos`; `Global`
+deja fuera del gasto, los turnos y el gasto por día todo lo que empieza por `cloudflare:` o `@cf/`). Tiene su propio techo
+del mes (5 USD de fábrica, lo manda Odoo) y no lee fotos con el gasto de Juan por encima del 80 % de su tope (§12b).
+
+## 3. Cómo agregar un canal nuevo
+
+Un canal es un archivo que cumple la interfaz `AdaptadorCanal` (`juan/src/canales/tipos.ts`). Nada
+más del Worker cambia: las rutas, el envío y la salud salen de la lista.
+
+1. **Nombre del canal.** Agrégalo a `CanalId` y a `TODOS_LOS_CANALES` en `canales/tipos.ts`, con el
+   mismo nombre que usa Odoo (Parte 1). Decide si arranca encendido o apagado en
+   `ENCENDIDOS_POR_DEFECTO` (`config.ts`). Los nuevos deben arrancar **apagados**.
+2. **Escribe `canales/<canal>.ts`** con una función `crear<Canal>()` que devuelva:
+   - `canales` y `ruta` (por ejemplo `/webhooks/signal`).
+   - `capacidades(canal)`: si admite imágenes, documentos, si exige la ventana de 24 h y el largo
+     máximo de un mensaje.
+   - `faltantes(env, canal)`: los **nombres** de los secretos o bindings que le faltan. Esto es lo que
+     lee `/salud`. Nunca valores.
+   - `recibir(req, env)`: **verifica el origen primero** (firma, secreto o token, en tiempo
+     constante, y falla cerrado si el secreto no está cargado) y devuelve los mensajes ya traducidos
+     (`Entrante`). Para un archivo que hay que pedir con credenciales, usa `obtener()`: así el token
+     nunca sale del adaptador.
+   - `enviar(canal, salida, env)`: manda las burbujas y luego las imágenes y documentos.
+   - Opcionales: `escribiendo()` (el «escribiendo...») y `salud()` (si hay una conexión que vigilar).
+   - Recibe `fetch` y `dormir` como parámetros para que las pruebas no usen la red.
+3. **Regístralo** en la lista de `canales/index.ts` (`crearAdaptadores`).
+4. **Pruebas** en `juan/test/canales/<canal>.test.ts`: verificación del origen (buena, mala y
+   ausente), traducción de texto, imagen, audio y documento, envío, error sin filtrar el token y
+   `faltantes`. Copia la forma de `test/canales/meta.test.ts`.
+5. Agrega los secretos nuevos a `Env` (`src/env.ts`) y a la tabla de la sección 5 de este documento.
+6. En Odoo, agrega el canal a la lista de `canal` (módulo de la bandeja) y a `canales_activos`.
+
+## 4. El primer despliegue (sin ningún secreto)
+
+Juan **arranca sin secretos** y no se cae: por eso el primer despliegue puede hacerse antes de
+pegar nada.
+
+1. Se despliega (sección 10). Cloudflare crea el Worker y sus dos Durable Objects.
+2. Abre `https://tommalo-chatbot-staging.SUBDOMINIO-PENDIENTE.workers.dev/salud` (o la de producción). Sin secretos
+   dirá algo así:
+   ```json
+   {"ok": false,
+    "mensaje": "Falta ANTHROPIC_API_KEY: el asistente todavía no puede contestar con IA ...",
+    "secretos_faltantes": ["JUAN_ODOO_TOKEN", "JUAN_WORKER_TOKEN", "ANTHROPIC_API_KEY"],
+    "canales": {"telegram": {"activo": true, "configurado": false,
+                             "faltan": ["TELEGRAM_BOT_TOKEN_JUAN", "TELEGRAM_WEBHOOK_SECRET_JUAN"]}, "...": "..."}}
+   ```
+   Es **público** pero solo muestra nombres y estados: nunca valores, gasto ni motivos de fallo.
+3. Pega los secretos que falten en **Cloudflare → Workers → `dcasa-juan` → Settings → Variables and
+   Secrets** (tipo *Secret*). Vuelve a abrir `/salud` hasta que `secretos_faltantes` quede vacío.
+4. Mientras faltan secretos: los webhooks responden «no autorizado», `/odoo/*` responde 503 diciendo
+   qué nombre falta, y si un cliente llegara a escribir sin la clave de la IA, el bot le dice que una
+   vendedora lo atiende (y se lo avisa a la vendedora).
+
+Un despliegue nuevo **nunca borra** lo que pegaste en el panel (secretos ni variables).
+
+La versión con más detalle (con staging, tope, estado de la IA y avisos) está en
+`GET /odoo/salud`, que pide `Authorization: Bearer <JUAN_WORKER_TOKEN>`.
+
+La pantalla de Odoo usa además `POST /odoo/sugerir`, `POST /odoo/resumir`, `POST /odoo/embeber` (huellas de significado, con Workers AI; sin el binding `AI` contesta 503), `POST /odoo/buscar-foto` («Busca con una foto» de la tienda), `GET /odoo/costos`, `GET /odoo/qr`, `POST /odoo/reiniciar` y
+`POST /odoo/desvincular` (`juan/src/odoo-panel*.ts`), con el mismo token. Ninguna imprime el QR ni una clave en los logs, y los errores
+llegan a Odoo con un texto genérico (sin detalles internos).
+
+## 5. Qué secreto, en qué Worker, para qué
+
+| Secreto | En qué Worker | Para qué | Cuándo hace falta |
+|---|---|---|---|
+| `JUAN_ODOO_TOKEN` | `dcasa-juan` y `dcasa` (mismo valor) | Juan se identifica ante Odoo en cada llamada. | Siempre. |
+| `JUAN_WORKER_TOKEN` | `dcasa-juan` y `dcasa` (mismo valor) | Odoo se identifica ante Juan (`/odoo/*`). También firma los enlaces temporales de archivos. | Siempre. |
+| `WA_TOKEN` | `dcasa-juan` y el puente de WhatsApp (mismo valor) | Clave compartida entre Juan y el puente. | Solo si algún día se usa el puente QR (hoy no). |
+| `ANTHROPIC_API_KEY` | `dcasa-juan` | La IA (Claude). | Si `proveedor_ia` o el respaldo es `anthropic`. En producción todavía no está: se recomienda como respaldo ([PRIORIDADES.md](PRIORIDADES.md)). |
+| `META_AI_API_KEY` | `dcasa-juan` | La IA de Meta (Muse Spark). | Si en Odoo eliges `meta`, como producción (§8). |
+| `OPENAI_API_KEY` | `dcasa-juan` | La IA de OpenAI. | Opcional: solo si en Odoo eliges `openai`. |
+| `TELEGRAM_BOT_TOKEN_JUAN` | `dcasa-juan` | Enviar mensajes por Telegram. | Para probar con Telegram. |
+| `TELEGRAM_WEBHOOK_SECRET_JUAN` | `dcasa-juan` | Comprobar que lo que llega a `/webhooks/telegram` viene de Telegram. | Para probar con Telegram. |
+| `META_APP_SECRET` | `dcasa-juan` | Comprobar la firma de WhatsApp oficial, Messenger e Instagram (uno solo para los tres: la misma app de Meta). | Puesto desde el 2026-11-02 (WhatsApp oficial). |
+| `META_VERIFY_TOKEN` | `dcasa-juan` | Que Meta pueda verificar el webhook (el mismo para los tres canales). | Ídem. |
+| `META_PAGE_TOKEN` | `dcasa-juan` | Enviar por Messenger e Instagram. | Cuando se conecten Messenger o Instagram. |
+| `INSTAGRAM_TOKEN` | `dcasa-juan` | La llave de Instagram de la «segunda puerta» (inicio de sesión de Instagram): 60 días; Juan la renueva sola y guarda la vigente en su Durable Object `Global`. Con ella (o con `INSTAGRAM_APP_SECRET`) Instagram deja de ir por la página. | Cuando el jefe conecte @<cuenta-de-instagram-de-Tommalo> por esa puerta ([JUAN_CANALES.md](JUAN_CANALES.md) §3b). |
+| `INSTAGRAM_APP_SECRET` | `dcasa-juan` | Firma de los avisos de `/webhooks/instagram` (la clave secreta de la **app de Instagram**, no la de Facebook). | Igual que la anterior. |
+| `META_PAGE_ID` (variable, no secreto) | `dcasa-juan` | Opcional: el id de la página de D'CASA, de respaldo si `GET /me` no contesta, para saber qué comentarios son de D'CASA ([JUAN_CANALES.md](JUAN_CANALES.md) §3c). | Solo si `/salud` dice «no sé cuál es tu página». |
+| `WHATSAPP_CLOUD_TOKEN` | `dcasa-juan` | Enviar por WhatsApp (API oficial). | Puesto desde el 2026-11-02: la llave permanente del usuario del sistema de Meta ([JUAN_CANALES.md](JUAN_CANALES.md)). Además hace falta la variable `WHATSAPP_PHONE_NUMBER_ID`. |
+
+**Solo hace falta la clave de la IA que elijas en Odoo** (y la del respaldo, si pones uno). `/salud`
+pide únicamente esas.
+
+### Los tres valores que se comparten entre dos Workers
+
+`JUAN_ODOO_TOKEN`, `JUAN_WORKER_TOKEN` y `WA_TOKEN` son **contraseñas inventadas por ti** que dos
+Workers deben conocer igual. No las da ninguna empresa. Cómo hacerlas:
+
+1. Abre tu administrador de contraseñas y pídele una contraseña **al azar de 32 caracteres** (solo
+   letras y números está bien, y es lo más seguro para evitar problemas al copiarla).
+2. Guárdala con un nombre claro («JUAN_ODOO_TOKEN»).
+3. Pégala **tal cual, el mismo valor**, en los dos Workers que dice la tabla. Si pegas valores
+   distintos, los dos Workers no se van a entender y `/salud` o Odoo mostrarán «no autorizado».
+4. Haz lo mismo, con una contraseña distinta cada vez, para las otras dos.
+
+No las escribas en chats, en correos, en GitHub ni en este repositorio. **Nunca** uses el mismo valor
+para dos secretos distintos.
+
+### Variables (no secretas) que se cambian en el panel
+
+Se pegan en el mismo lugar que los secretos pero como tipo *Text*. No están en el repositorio a
+propósito: así un despliegue no las pisa.
+
+| Variable | Para qué |
+|---|---|
+| `URL_PUBLICA` | La dirección de este mismo Worker (sin barra al final), por ejemplo `https://tommalo-chatbot.SUBDOMINIO-PENDIENTE.workers.dev`. Sin ella, los archivos que manda el cliente se guardan pero Odoo no recibe un enlace para bajarlos. |
+| `ALERTA_TELEGRAM_CHAT_ID` | El chat de Telegram al que el cron avisa si algo se cae. Vacío = sin avisos. Se averigua escribiéndole `/miid` al bot. |
+| `WHATSAPP_PHONE_NUMBER_ID` | El identificador del número de WhatsApp de la tienda en la API oficial (no es el celular). |
+| `GRAPH_API_VERSION` | Versión de la API de Meta (por ejemplo `v26.0`). Meta retira versiones viejas cada ~2 años; esto permite cambiarla sin tocar el código. |
+| `META_AI_BASE_URL`, `OPENAI_BASE_URL` | Solo si hay que apuntar a otra dirección de esas APIs. Vacío = la oficial. |
+
+Las que sí están en `wrangler.jsonc` (y se cambian con un despliegue): `ENTORNO`, `URL_SITIO`,
+`BUFFER_SEGUNDOS` (15), `TOPE_DIARIO` (50), `TRANSCRIBIR_AUDIO` (1) y `RECONOCER_IMAGENES` (1).
+
+## 6. Probar con Telegram
+
+Los pasos están en [JUAN_CANALES.md › Telegram](JUAN_CANALES.md#2-telegram-pruebas-y-avisos).
+
+## 7. Conectar el puente de WhatsApp (QR)
+
+No se usa en producción. Si un día hace falta: [JUAN_CANALES.md › El puente de WhatsApp por
+QR](JUAN_CANALES.md#4-el-puente-de-whatsapp-por-qr-no-se-usa-en-producción) y [JUAN_PUENTE.md](JUAN_PUENTE.md).
+
+## 8. Cambiar de IA desde Odoo (sin tocar código)
+
+Todo se decide en los Ajustes de Odoo, y Juan lo lee con una demora de hasta 60 segundos.
+
+| Campo en Odoo | Qué hace | Por defecto |
+|---|---|---|
+| `proveedor_ia` | Quién contesta: `anthropic`, `meta` u `openai`. | `anthropic` |
+| `modelo_rapido` | El modelo barato, para casi todo. | `claude-haiku-4-5` |
+| `modelo_inteligente` | El modelo fuerte: cliente molesto, consulta larga o enredada, búsqueda sin resultado. | `claude-sonnet-5-5` |
+| `proveedor_respaldo_ia` | Quién contesta si el principal falla o no tiene clave. Vacío = sin respaldo. | vacío |
+| `modelo_rapido_respaldo`, `modelo_inteligente_respaldo` | Los modelos del respaldo. Vacío = los de siempre de ese proveedor. | vacío |
+| `precios_ia` | Cuánto cuesta cada modelo, en dólares por millón de tokens (ver abajo). | vacío |
+| `presupuesto_ia_mensual_usd` | El tope del mes. Al llegar, baja al modelo barato; no apaga el bot. | 30 |
+
+### Pasar de Claude a Meta (Muse Spark)
+
+1. Pega `META_AI_API_KEY` en Juan.
+2. En Odoo: `proveedor_ia = meta`. Si no escribes modelos, usa `muse-spark-1.3` (el estándar).
+3. **Carga el precio** en `precios_ia`, por ejemplo:
+   ```json
+   {"muse-spark-1.3": {"entrada": 1.25, "entrada_cache": 0.15, "salida": 4.25}}
+   ```
+   Ese precio era un ejemplo **sin verificar** (la página oficial no se pudo leer); el que usa producción está abajo. Si un modelo no tiene precio, Juan **no lo cuenta como gratis**: usa
+   una tarifa de reserva alta y `/salud` avisa «el modelo ... no tiene precio cargado».
+4. Recomendado: `proveedor_respaldo_ia = anthropic`. Si Meta falla, contesta Claude y queda anotado.
+   Sin respaldo y sin clave, el cliente recibe «una vendedora te atiende» y la vendedora recibe el aviso.
+
+**Los modelos `-contributor` de Meta** pueden usar los mensajes de los clientes para entrenar. Juan **nunca lo elige
+solo**: solo se usa si alguien escribe ese nombre en Odoo a propósito, y entonces `/odoo/salud` muestra un aviso. La
+auditoría (ronda 3) recomendaba no usarlo; **la dueña lo eligió el 2026-11-02** y la política de privacidad del sitio
+lo dice (Ley 81 de 2019). Lo que hay que saber de esa decisión:
+
+- **Producción:** `proveedor_ia = meta` con `muse-spark-1.3-contributor` escrito en *Ajustes de Juan* › modelos. Es el
+  mismo modelo, entre 92 y 98 % más barato, con un límite de **150 consultas por minuto para toda la cuenta de Meta**
+  (incluye otros proyectos). Si Meta pasa el límite y no hay respaldo, el cliente recibe «una vendedora te atiende».
+- **Precio:** el real es $0.10 entrada / $0.002 caché / $0.20 salida por millón de tokens; en `precios_ia` la dueña
+  puso **el doble a propósito** (0.20 / 0.004 / 0.40) como margen, así que «Costos de IA» muestra el doble de lo real.
+  Lo gastado antes con `muse-spark-1.3` queda estimado (no se recalcula). Meta no separa el gasto por clave.
+
+Los precios de Claude (Haiku, Sonnet, Opus) vienen integrados, sacados de la ronda 7. Revísalos
+cuando Anthropic los cambie. También viene integrado el del lector de imágenes de Workers AI
+(`@cf/meta/llama-4-scout-17b-16e-instruct`, US$0,27 / US$0,85 por millón de tokens, de la página de precios de Cloudflare
+leída el 2026-11-13), que usa «Busca con una foto» (§12b) para calcular lo suyo (aparte del gasto de Juan): `precios_ia` de
+Odoo solo trae los dos modelos de la conversación.
+
+### Lo demás que se edita en Odoo
+
+`nombre_publico`, `bot_activo_global` (apaga todo), `canales_activos` (cada canal por separado),
+`horario` (inicio, fin, días, zona), `seguimiento` (a las 5 h y a los 5 días, máximo 2, solo en
+horario laboral), `mensaje_bienvenida` (si dice que es automático, reemplaza a la presentación de
+Juan), `texto_privacidad_corto` (se agrega a la primera respuesta), `palabras_prohibidas`,
+`pausa_por_defecto_minutos` (120) y `lecciones` (lo que las vendedoras aprendieron; máximo 20
+líneas; ayudan con el tono y el modo de atender, **nunca** son fuente de precios ni de políticas).
+
+## 9. Qué datos usa Juan y de dónde (para que nadie los invente)
+
+Precios, existencias, medidas, combos, horario, dirección, cifras de Socios, políticas: **solo** de
+las herramientas de Odoo. El prompt no tiene ni un precio ni una cifra. Las herramientas son las 9
+del contrato más la base de conocimiento, las etiquetas y las cotizaciones: `buscar_productos`, `ver_producto`, `listar_categorias`,
+`reglas_socios`, `horario_y_tienda`, `saldo_puntos`, `crear_oportunidad`, `anotar_conversacion`, `pasar_a_vendedora`,
+`buscar_conocimiento`, `registrar_pregunta_sin_respuesta`, `etiquetar_conversacion`, `cotizar`, `cotizar_envio` y
+`agregar_envio`; más una local, `enviar_foto_producto`
+(`adicionales=true` = más fotos de la galería, sin repetir).
+
+`cotizar` es la única herramienta cuyo resultado trae un archivo: el PDF llega como `documento` (URL firmada de Odoo, de vida corta).
+El Worker lo saca del resultado —el modelo **nunca ve el enlace**—, lo manda por el canal junto con la respuesta (un PDF por respuesta,
+solo si la URL es https) y en Odoo registra solo la línea «[Documento enviado: …]»: el PDF ya vive en un aviso del hilo y no se baja
+otra copia (`sinCopia`). Cuando Odoo rechaza una herramienta con una explicación (HTTP 422: «no encuentro el código…», «elige el
+tamaño»), esa explicación llega al modelo; cualquier otro fallo sigue siendo «no pude consultar el sistema ahora».
+
+Si el cliente pregunta algo que la base de conocimiento no responde, Juan **no inventa**: lo dice, y
+la pregunta queda registrada en Odoo para que una persona la conteste y la agregue.
+
+## 10. Desplegar
+
+El workflow es `.github/workflows/desplegar-juan.yml` (Actions → *Desplegar Juan* → *Run workflow*). El CI lo llama
+solo para staging (después de desplegar Odoo a staging, o con `desplegar_en = solo-juan-staging`). A producción se
+lanza **a mano y solo cuando cambió `juan/`** (el último: Desplegar Juan 4, 2026-11-03, desde `14be013`).
+
+- Elige `staging` o `production` y deja marcado **dry_run** para solo validar el paquete (no toca
+  Cloudflare y no necesita credenciales).
+- Sin dry_run, además de validar, despliega con `--keep-vars` y deja en el resumen lo que contesta
+  `/salud`.
+- Solo usa los dos secretos de GitHub que ya existen para desplegar (`CLOUDFLARE_API_TOKEN` y
+  `CLOUDFLARE_ACCOUNT_ID`). **Ningún secreto de Juan pasa por GitHub.**
+- El binding `DCASA` lleva `"entrypoint": "JuanEntrada"` (la clase del Worker `dcasa` que reenvía a Odoo): sin él, el Worker `juan`
+  llamaría al `fetch` público de `dcasa`, donde `/dcasa/juan/**` da 404 (`test/despliegue.test.ts` lo vigila).
+- Antes del primer despliegue real tienen que existir los Workers a los que apunta `services`:
+  staging apunta a `dcasa-staging` y producción a `dcasa`. Cloudflare rechaza el despliegue si el
+  destino del binding no existe.
+- Los Durable Objects (`Conversacion` y `Global`) se crearon con la migración `v1` del primer despliegue. `TiendaSesion`
+  (Brian de la tienda) lo crea la migración `v2` (2026-11-13) en el primer despliegue que la lleve; la `v1` no se toca.
+
+Comandos locales: `cd juan && npm ci && npm test && npm run typecheck`, y para validar el paquete
+`npx wrangler deploy --dry-run` (producción) o `npx wrangler deploy --dry-run --env=staging`.
+
+## 11. Salud y avisos
+
+- `GET /health` responde `ok` (sin datos).
+- `GET /salud` (público) y `GET /odoo/salud` (con token): ver sección 4. El segundo agrega el gasto
+  del mes, el tope, el estado de la IA (qué proveedor, último fallo, si contestó el respaldo), los
+  modelos sin precio y los avisos.
+- **Cron cada hora** (minuto 23 UTC): revisa lo mismo y, si hay un problema **nuevo**, avisa por
+  Telegram al `ALERTA_TELEGRAM_CHAT_ID`: un secreto que falta en un canal encendido, el puente
+  desconectado, la IA fallando, el tope alcanzado. **Avisa una sola vez** por problema y avisa
+  «Resuelto» cuando se arregla.
+
+## 12. Notas de voz (encendido)
+
+Juan **entiende las notas de voz**: el audio se pasa a texto con Whisper (`@cf/openai/whisper-large-v3-turbo`) de
+Workers AI, dentro de la misma cuenta de Cloudflare, y el texto entra a la conversación como
+`(nota de voz) …`. En Odoo la vendedora ve el audio original **y** lo que se entendió.
+
+* Se enciende con **las dos cosas**: `"TRANSCRIBIR_AUDIO": "1"` y el binding `"ai": { "binding": "AI" }`,
+  ya puestos en `wrangler.jsonc` (producción y staging). Para apagarlo: `"TRANSCRIBIR_AUDIO": "0"` y
+  desplegar; Juan vuelve a pedirle al cliente que escriba, o le dice que una vendedora la escucha.
+* Cuesta por minuto de audio, a la cuenta de Cloudflare: según la página de precios de Workers AI,
+  Whisper large-v3-turbo es US$0.0005 por minuto de audio (46.63 *neurons*), y el plan incluye
+  10.000 *neurons* gratis al día. Esto **no** cuenta en el tope mensual de IA de Juan (que es del
+  proveedor que contesta).
+* Un audio vacío o de más de 8 MB no se procesa. Si Whisper no entiende nada o falla, Juan pide que lo
+  escriban; nunca inventa lo que dijo.
+* **Anti-spam (issue #24):** sin tope propio de notas de voz (decisión de la dueña, 2026-11-07); no se transcribe con la
+  conversación en descanso por spam ni pasado el tope diario general de mensajes por persona. Lo que dice la nota cuenta como escrito: «quiero hablar con
+  una persona» pasa a una vendedora y «no me escriban» apaga los seguimientos.
+* Privacidad: el audio de un cliente es dato personal. Solo viaja del canal a tu Worker y a Workers AI
+  de tu cuenta; el texto sigue las mismas reglas que cualquier mensaje (los comprobantes y cédulas
+  nunca llegan a la IA).
+
+## 12a. Notas de voz de Andrés y de Brian del panel (2026-11-16, en la rama)
+
+Pedido de la dueña: poder hablarle a Andrés (el chat de la tienda) y a Brian del panel, **con protección para que nadie
+use la herramienta para clonar voces**. Dos rutas nuevas transcriben con el mismo Whisper de las notas de WhatsApp
+(`motor/transcribir.ts`, con `TRANSCRIBIR_AUDIO=1` y el binding `ai`) y devuelven **solo el texto**. La lógica común está
+en `juan/src/motor/voz.ts`.
+
+**Lo que protege contra la clonación de voces (no se negocia):**
+
+- **El audio no se guarda en ningún lado**: ni en R2, ni en un Durable Object (la voz de la tienda ni siquiera toca el de
+  la sesión), ni en la conversación, ni en los registros, ni en Odoo (ni adjunto, ni mensaje, ni auditoría). Se lee en
+  memoria, va una vez a Whisper de Workers AI (dentro de la cuenta de Cloudflare de D'CASA) y sus bytes se borran
+  (`fill(0)`) al terminar, pase lo que pase.
+- **No se devuelve ni se reenvía**: la respuesta trae solo `texto` (ni segmentos, ni palabras con sus tiempos, ni VTT).
+- **No se usa para generar voz**: el único modelo que recibe el audio es `@cf/openai/whisper-large-v3-turbo`; en el
+  Worker no existe ningún modelo que hable (una prueba lo exige).
+- **Notas cortas**: hasta **30 s** en el chat de la tienda (Andrés) y **60 s** en el panel (Brian), **1 MB**, solo WebM,
+  Ogg u MP4 (lo que graba un navegador) y con los bytes que corresponden al tipo. La duración es **la que de verdad se
+  decodifica** (`motor/duracion.ts`): se cuenta paquete por paquete, sin decodificar (el TOC de cada paquete Opus en el
+  Ogg y en el WebM; las muestras de AAC en el MP4), así que lo que diga el contenedor de sí mismo no sirve para mentir.
+  Lo que no se puede medir con certeza **no se transcribe**. Si la nota pasa del tope más 5 s de margen, se rechaza
+  **antes de apartar nada y sin llamar a Whisper**: no cuesta nada (revisión adversarial, 2026-11-16).
+- **Topes** para que nadie la use como un transcriptor gratis (abajo). Los registros llevan solo el resultado, los
+  KB y los milisegundos: nunca el audio, el texto, la IP, la red, el `sid` ni el usuario.
+
+**Costo:** US$0.0005 por minuto de audio (tabla de precios de Workers AI, leída el 2026-11-16, sin descontar los neurons
+gratis). Antes de llamar a Whisper se aparta **lo que cuesta la duración medida** (`motor/duracion.ts`), no un peor caso
+inventado; después se anota lo real con la mayor de las dos duraciones: la medida y la que dice Whisper (la mide
+Cloudflare). Nunca se cobra de menos: si Whisper no dice la duración, tarda o falla, se anota la medida, marcada
+«estimado». El gasto va al renglón de **Cloudflare** («notas de voz (Whisper)»), nunca al del modelo de Juan ni a «Por
+pagar a Meta».
+
+### `POST /tienda/v1/voz` (Andrés)
+
+- **La misma puerta que `/tienda/v1/mensaje`**: el mismo CORS (solo los orígenes de la tienda; `OPTIONS` dice
+  `GET, POST, OPTIONS`) y el mismo pase (`Authorization: Pase <pase>`).
+- **Entrada:** `POST /tienda/v1/voz?duracion_ms=<entero>` con `Content-Type: audio/webm | audio/ogg | audio/mp4` (con
+  `;codecs=…` si se quiere) y **el audio crudo en el cuerpo** (no JSON).
+- **Respuesta 200:** `{ok: true, texto, recortado}`. `texto` tiene como mucho **500 letras** (lo que acepta
+  `/tienda/v1/mensaje`); si la nota decía más, va recortado entre palabras y `recortado: true`.
+- **Errores** `{ok: false, motivo}`: `pase` 401 · `apagado` 503 (la tienda apagada) · `no_disponible` 503 (sin
+  `TRANSCRIBIR_AUDIO=1` o sin binding) · `tipo` 415 · `audio` 400 · `muy_pesada` 413 · `muy_larga` 413 · `tope_sesion`,
+  `tope_red`, `tope_dia`, `ocupado` 429 con `Retry-After` · `presupuesto` 429 · `no_se_entendio` 422 · `tardo` 504 ·
+  `fallo` 502.
+- **`GET /tienda/v1/voz`** (sin pase, con CORS): `{ok, disponible, max_segundos, max_bytes, tipos}`. La página muestra el
+  micrófono solo con `disponible: true` (la tienda encendida y la transcripción también).
+- **Cómo la usa la página (contrato para el botón):** graba con MediaRecorder (Opus a 32 kbps, corta sola a los 60 s,
+  muestra el tiempo y deja cancelar), manda el audio aquí y, con el `texto`, **lo manda como un mensaje normal por
+  `/tienda/v1/mensaje`** (`{texto, pagina, carrito}`) y lo pinta en el globo del visitante. Así la lógica del chat no se
+  duplica, el visitante ve lo que se entendió antes de la respuesta y el motor (`tienda/motor.ts`) no cambia. Con
+  `recortado: true` conviene dejar el texto en la caja para que el visitante lo revise antes de mandarlo. **Hecho en la
+  página** (`brian_tienda.js`, rama `local/integra`): docs/BRIAN_TIENDA.md › «Notas de voz (el micrófono del chat)».
+- **Topes y presupuesto:** cuenta como **un mensaje** en los topes de red, /48 y del día y en los turnos con IA a la vez
+  (`tienda_turnos` de `Global`: comparte la cuenta con los mensajes) y tiene **su propio tope por sesión** (el mismo
+  número que `tope_sesion_hora`, contado aparte en `tienda_voz`, con el `sid` ofuscado y solo la hora). Su costo va al
+  **gasto de la tienda** (renglón «notas de voz (Whisper)», proveedor `cloudflare`): suma en su presupuesto, nunca en el
+  de Juan ni en «Por pagar a Meta», y no suma en las «respuestas» del mes. En Costos de IA sale en la tarjeta de Andrés.
+
+### `POST /odoo/voz` (Brian del panel)
+
+- Con `Authorization: Bearer <JUAN_WORKER_TOKEN>` (el token con que Odoo ya le habla al Worker; `/odoo/*`).
+- **Entrada (JSON):** `{mime, base64, usuario, duracion_ms?, tope_mes_usd?}`. `usuario` es el id del usuario de Odoo:
+  el Worker lo guarda ofuscado (HMAC) y solo 26 horas, para su tope.
+- **Respuesta:** `{ok: true, texto, recortado}` (hasta 2000 letras) o `{ok: false, causa, error}` con las causas de
+  arriba más `tope_usuario`, `tope_dia` y `tope_mes` (429).
+- **Topes de fábrica** (`odoo-panel-voz.ts`): 30 notas por hora por persona, 500 al día entre todo el equipo y un techo
+  de US$5 al mes (como «Busca con una foto»; Odoo puede mandar otro en `tope_mes_usd`).
+- **Gasto:** en «Costos de IA», renglón aparte **«Cloudflare: notas de voz del panel»** (`cloudflare:notas-de-voz-del-panel`):
+  no suma en el gasto de Juan, ni en su tope, ni en «Por pagar a Meta».
+- Odoo: el botón del micrófono y `/dcasa/brian/v1/voz` (solo usuarios internos) en `dcasa_brian`; la llamada al Worker en
+  `dcasa_conversaciones/models/brian_voz.py` (docs/BRIAN.md › «Notas de voz»).
+
+**Pruebas:** `juan/test/voz.test.ts`, `test/tienda/voz.test.ts`, `test/odoo-panel-voz.test.ts`,
+`test/motor/global-voz.test.ts` y `test/transcribir.test.ts`. **Por verificar en staging:** que Whisper de Workers AI
+acepte el WebM de Chrome y el MP4 de Safari tal como salen de MediaRecorder (con el Ogg de WhatsApp ya funciona).
+
+## 12b. Imágenes de los clientes (encendido)
+
+Muchos clientes mandan una captura de un producto o de una publicación. Un **lector de imágenes aparte**
+(`juan/src/motor/vision.ts`) la mira con un modelo de visión de Workers AI, dentro de la cuenta de
+Cloudflare de D'CASA (la imagen no sale a un tercero), y clasifica: producto, publicación, comprobante,
+identidad, otra o ilegible.
+
+* **Se enciende** con `"RECONOCER_IMAGENES": "1"` (ya puesto en `wrangler.jsonc`) y el binding `ai` de la sección 12.
+  Para apagarlo: `"0"` y desplegar; el bot vuelve a pedir el código y a dejar toda imagen para una vendedora.
+  El modelo es `@cf/meta/llama-4-scout-17b-16e-instruct`; se cambia con la variable `MODELO_VISION`.
+* **El lector no conversa:** no ve la conversación, no tiene herramientas y su respuesta se convierte en un
+  registro cerrado (tipo, hasta 3 códigos con patrón estricto de letras, números y guiones, categoría y medida de
+  una lista, y dos señales: ¿parece pago?, ¿parece identidad?). Ningún texto libre de la imagen llega al modelo que
+  conversa: «ignora tus reglas» escrito en una foto no pasa.
+* **Producto o captura de publicación** (con código o categoría y sin señal de pago o identidad): el bot recibe lo leído como
+  dato sin verificar, lo busca en el catálogo y contesta con lo que digan las herramientas. El precio que traiga la
+  imagen **no vale**; solo el del catálogo. No se le deja nota a la vendedora (la imagen queda en la conversación).
+* **Comprobantes, cédulas y cualquier duda:** camino de siempre. El bot no la ve ni la describe, se anota para una vendedora y,
+  si parece un pago, la conversación se etiqueta «Comprobante recibido». El bot **nunca** da un pago por confirmado.
+* **Si el lector falla** (sin cupo, formato, más de 4 MB, más de 20 s): todo sigue como antes. El fallo queda en el registro del Worker.
+* **Costo y tope:** cada lectura cuesta un poco de IA de Workers AI (a la cuenta de Cloudflare, aparte del tope mensual de
+  Juan). Se leen hasta 3 imágenes por mensaje y 10 por persona al día; las demás siguen el camino de siempre. Con la
+  conversación en descanso por spam o pasado el tope diario no se lee ninguna (issue #24).
+* **Busca con una foto (tienda web, 2026-11-13):** el mismo lector atiende `POST /odoo/buscar-foto` (Parte 1, «Odoo →
+  Worker»): Odoo le manda la foto que un visitante subió en la tienda y recibe solo el registro cerrado; con eso busca entre
+  lo publicado ([CATALOGO.md › Busca con una foto](CATALOGO.md#busca-con-una-foto)). A diferencia de las imágenes de las
+  conversaciones, **esta lectura se anota** (en `Global`, como `cloudflare:lector-de-fotos`, con el precio de Cloudflare
+  integrado en `motor/precios.ts`: US$0,27 y US$0,85 por millón de tokens, leído el 2026-11-13), pero **aparte** del gasto de
+  Juan: no cuenta para su tope ni para el saldo con Meta, y Costos de IA la muestra en su propio renglón. Tiene su techo del
+  mes (`tope_mes_usd`, 5 USD de fábrica, en *Sitio web › Busca con una foto*) y no se lee con el gasto de Juan por encima
+  del 80 % de su tope; en los dos casos la tienda dice «Ahora no podemos buscar por foto». Hasta 1,5 MB y 12 s.
+  `vision.ts` no cambió: solo se importa.
+* **Lo que falta (Fase 2):** leer el monto, la referencia y la fecha de un comprobante para la vendedora y cruzarlos con el
+  movimiento del banco en la conciliación. La verificación contra el banco, no la IA, es lo que protege de un comprobante falso.
+
+## 13. Pruebas
+
+`cd juan && npm test`. Hay más de 900 pruebas (2026-11-06) y no usan la red ni a ningún proveedor real: la IA es
+un modelo guionado (o un servidor falso que se porta como la API de Meta), Odoo es un doble, y los
+Durable Objects corren sobre SQLite de Node.
+
+| Dónde | Qué prueban |
+|---|---|
+| `test/dcasa/` | El comportamiento del bot visto desde el cliente: las 11 reglas, `<fuentes_de_verdad>`, que no invente precios ni existencias, que no prometa entrega/flete/financiamiento/apartado/descuento, que los comprobantes y cédulas no lleguen a la IA, resistencia a la inyección de prompt, «persona» siempre pasa, anti-spam, seguimiento, Socios, fotos, base de conocimiento, la voz de la marca, proveedores de IA y precios. |
+| `test/canales/` | Cada adaptador: verificación del origen, traducción de mensajes, archivos, envío y errores sin filtrar tokens. |
+| `test/odoo/`, `test/config.test.ts` | El cliente de Odoo (rutas, reintentos, plazos) y la configuración (normalización, caché de 60 s, horario). |
+| `test/rutas.test.ts` | Todas las direcciones: `/odoo/*` con token, `/media` firmado, webhooks, canal apagado, y que no sobreviva ninguna ruta del CRM de Tommalo. |
+| `test/punta-a-punta.test.ts` | Telegram -> ráfaga -> IA -> respuesta -> Odoo, con las clases reales de Durable Object, el cron y el primer despliegue sin secretos. |
+| `test/despliegue.test.ts` | La configuración de Cloudflare: el binding `DCASA` entra por `JuanEntrada` (con `entrypoint`), producción y staging iguales. |
+| `test/tienda/` | Brian de la tienda: el pase (válido, vencido, alterado, y que vale desde otra red; las cuentas comparadas con `node:crypto`), la llave del tope por red, CORS, los topes y el presupuesto, la lista blanca, las tarjetas, el carrito, la ubicación que no se guarda, el borrado a las 2 horas, la guardia, `confirmar_carrito`, la calificación y de punta a punta con las clases reales. |
+| `test/integracion/` | **Con el Odoo de verdad** (no un doble): se omite sin `ODOO_INTEGRACION_URL`; la corre `scripts/integracion_juan.sh`. Ver «Contrato verificado» (Parte 1). |
+
+> Los dobles de Odoo de las demás pruebas **hablan como el Odoo real** desde la integración: `pasar_a_vendedora` devuelve
+> `texto_para_el_cliente`, `/mensaje` y `/estado` traen `nota_para_el_bot` y los días del horario son `0 = domingo`.
+
+## 14. Qué falta (y qué decide la dueña)
+
+**Ya está:** los Workers `dcasa-juan` y `dcasa-juan-staging` con sus Durable Objects, los secretos, el contrato
+con Odoo y WhatsApp por la API oficial (desde el 2026-11-02).
+
+**Falta** (también en [PRIORIDADES.md](PRIORIDADES.md)):
+
+1. `ANTHROPIC_API_KEY` como respaldo por si Meta pasa su límite, y una alerta de gasto en Meta.
+2. Plantillas de WhatsApp aprobadas para escribir después de 24 horas, y que los seguimientos salgan como plantilla.
+3. Confirmar con un mensaje real los «ecos» de lo que el equipo escribe desde la app del teléfono
+   ([JUAN_CANALES.md](JUAN_CANALES.md)).
+4. Messenger e Instagram.
+
+**Ampliaciones al contrato de la Parte 1** (pedidas después; no rompen nada si Odoo no las manda, Juan usa
+valores por defecto):
+
+- `/config` puede traer también `proveedor_ia`, `proveedor_respaldo_ia`, `modelo_rapido_respaldo`,
+  `modelo_inteligente_respaldo`, `precios_ia` y `lecciones`.
+- `/herramientas` incluye `buscar_conocimiento` y `registrar_pregunta_sin_respuesta` (11 en total).
+- `/salud` es público (solo nombres y estados) además del `GET /odoo/salud` del contrato.
+- `GET /media/<conversación>/<id>?exp=&sig=`: enlace temporal y firmado (2 días) para que Odoo baje
+  los archivos que manda el cliente.
+
+**Valores que se pueden cambiar:** el tope diario de 50 turnos por persona y el descanso de 1 hora si repite el
+mismo mensaje 3 veces (`TOPE_DIARIO`, en `wrangler.jsonc`).
+
+## Cuando una foto o un PDF no llega al cliente
+
+El motivo queda en `GET /odoo/salud` (campo `problemas`, que también muestra la pantalla de Conexiones de Odoo): «no se pudo enviar un
+mensaje con foto o archivo por telegram: telegram sendPhoto 400: …». El motivo viene sin claves ni direcciones y se apaga solo cuando un
+envío posterior sale bien. En **Telegram**, si no acepta una imagen como foto (400: formato, tamaño, proporciones o no pudo abrir la
+dirección), se manda como archivo con el mismo pie; si tampoco, el error dice las dos respuestas de Telegram. Un 429 o un corte de red no
+se maquillan: se reintentan como siempre. Si el motivo habla de no poder abrir la dirección, revisa que `web.base.url` de Odoo (la
+variable `CANONICAL_HOST` del despliegue) sea una dirección que Telegram pueda abrir desde internet (en staging con `workers.dev`, la
+de `workers.dev`, no `staging.tommalo.example` mientras ese dominio no exista).

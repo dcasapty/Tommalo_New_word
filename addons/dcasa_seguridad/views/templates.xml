@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Política para rastreadores de IA al final de /robots.txt (controllers/robots.py). -->
+    <template id="robots" inherit_id="website.robots">
+        <xpath expr="//t[@t-out='request.website.sudo().robots_txt']" position="after">
+<t t-out="dcasa_robots_ia or ''"/>
+        </xpath>
+    </template>
+
+    <!-- Sin «No volver a preguntar en este dispositivo» para el personal: usa SIEMPRE el código de la app. -->
+    <template id="totp_sin_dispositivo_de_confianza" inherit_id="auth_totp.auth_totp_form">
+        <xpath expr="//input[@id='switch-remember']/parent::div" position="attributes">
+            <attribute name="t-if">not user._is_internal()</attribute>
+        </xpath>
+    </template>
+
+    <!-- La página de entrada del equipo, /master (controllers/master.py). Correo y clave, o llave de acceso; el código
+         de la app se pide después, siempre. Con la marca Tommalo (docs/MARCA_TOMMALO.md): fondo crema, la tarjeta
+         `surface` con su filo, letra navy, «Entrar» en la pastilla naranja con letra navy (5.56) y la llave de acceso en
+         la pastilla de contorno. El nombre es el de la empresa (Ajustes › Empresa). -->
+    <template id="master_login" name="Acceso del equipo">
+        <t t-call="web.frontend_layout">
+            <t t-set="no_header" t-value="True"/>
+            <t t-set="no_footer" t-value="True"/>
+            <t t-set="title">Acceso del equipo</t>
+            <t t-set="body_classname" t-value="'o_dcasa_master'"/>
+            <style>
+                body.o_dcasa_master { background: #FAFAFA; color: #262626;
+                    font-family: Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+                .o_dcasa_master_tarjeta { max-width: 420px; margin: 8vh auto 4vh; background: #FFFFFF; color: #262626;
+                    border: 1px solid rgba(38, 38, 38, .12); border-radius: 24px; padding: 2rem 1.75rem;
+                    box-shadow: 0 4px 20px -2px rgba(38, 38, 38, .05); }
+                .o_dcasa_master_tarjeta .o_dcasa_master_marca { font-size: .75rem; font-weight: 700; letter-spacing: .14em;
+                    text-transform: uppercase; color: #595959; margin: 0 0 .5rem; }
+                .o_dcasa_master_tarjeta h1 { font-family: inherit; font-weight: 700; letter-spacing: -.03em;
+                    line-height: 1.15; text-transform: none; font-size: 1.75rem; margin: 0 0 .35rem; color: #262626; }
+                .o_dcasa_master_tarjeta .o_dcasa_master_sub { margin: 0 0 1.5rem; color: rgba(38, 38, 38, .7); }
+                .o_dcasa_master_tarjeta label { font-weight: 600; margin-bottom: .25rem; color: #262626; }
+                .o_dcasa_master_tarjeta .form-control { min-height: 48px; font-size: 16px; background: #FAFAFA;
+                    color: #262626; border: 1px solid rgba(38, 38, 38, .55); border-radius: 14px; }
+                .o_dcasa_master_tarjeta .form-control:focus { border-color: #262626; box-shadow: none;
+                    outline: 2px solid #262626; outline-offset: 2px; }
+                .o_dcasa_master_tarjeta .o_dcasa_master_entrar { min-height: 48px; background: #D4D4D4; color: #262626;
+                    border: 0; border-radius: 999px; font-family: inherit; font-weight: 700; font-size: 1rem;
+                    letter-spacing: 0; text-transform: none; padding: .65rem 1rem; margin-top: 1.25rem;
+                    box-shadow: 0 8px 24px -10px rgba(212, 212, 212, .7); }
+                .o_dcasa_master_tarjeta .o_dcasa_master_entrar:hover { background: #DADADA; color: #262626; }
+                .o_dcasa_master_tarjeta .passkey_login_link { display: flex; align-items: center; justify-content: center;
+                    min-height: 48px; color: #595959; border: 1px solid #8A8A8A; border-radius: 999px; font-weight: 700;
+                    padding: .6rem 1rem; text-decoration: none; margin-top: 1rem; }
+                .o_dcasa_master_tarjeta .passkey_login_link:hover { background: #D4D4D4; color: #262626; }
+                .o_dcasa_master_tarjeta a:focus-visible, .o_dcasa_master_tarjeta button:focus-visible {
+                    outline: 2px solid #262626; outline-offset: 2px; box-shadow: none; }
+                .o_dcasa_master_tarjeta .alert-danger { background: #FAFAFA; color: #B42318; border: 1px solid #B42318;
+                    border-radius: 14px; margin-top: 1rem; }
+                .o_dcasa_master_tarjeta .o_dcasa_master_nota { font-size: .875rem; color: rgba(38, 38, 38, .7);
+                    margin: 1.25rem 0 0; }
+            </style>
+            <main class="container px-3">
+                <div class="o_dcasa_master_tarjeta">
+                    <p class="o_dcasa_master_marca" t-out="res_company.name"/>
+                    <h1>Acceso del equipo</h1>
+                    <p class="o_dcasa_master_sub">Solo personal de <t t-out="res_company.name"/></p>
+                    <form class="oe_login_form" role="form" method="post" action="/master" data-captcha="login">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <div class="mb-3">
+                            <label for="login">Correo</label>
+                            <input type="text" name="login" id="login" class="form-control" required="required"
+                                   t-att-value="login" autocapitalize="off" autocomplete="username webauthn"
+                                   placeholder="tucorreo@ejemplo.com"/>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password">Contraseña</label>
+                            <input type="password" name="password" id="password" class="form-control"
+                                   required="required" autocomplete="current-password" maxlength="4096"/>
+                        </div>
+                        <p class="alert alert-danger" t-if="error" role="alert" t-out="error"/>
+                        <div class="d-grid">
+                            <button type="submit" class="btn o_dcasa_master_entrar">Entrar</button>
+                            <a href="#" class="passkey_login_link" role="button">
+                                <i class="fa fa-qrcode me-2" role="presentation"/>Entrar con llave de acceso
+                            </a>
+                        </div>
+                        <input type="hidden" name="type" value="password"/>
+                        <input type="hidden" name="webauthn_response"/>
+                        <input type="hidden" name="redirect" t-att-value="redirect"/>
+                    </form>
+                    <p class="o_dcasa_master_nota">
+                        Después te pedimos el código de la app Google Authenticator. Siempre, también con la llave de acceso.
+                    </p>
+                </div>
+            </main>
+        </t>
+    </template>
+
+    <!-- Enrolar la app de códigos al entrar (controllers/enrolar.py). -->
+    <!-- La pantalla de Odoo para entrar (web.login_layout) la pinta website_dcasa; aquí, el botón principal y el aviso
+         con la marca Tommalo, escritos en la misma plantilla. -->
+    <template id="enrolar_2fa" name="Activar el doble factor">
+        <t t-call="web.login_layout">
+            <t t-set="disable_footer">1</t>
+            <style>
+                .o_dcasa_enrolar_2fa { color: #262626; font-family: Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+                .o_dcasa_enrolar_2fa .card-title { font-family: inherit; font-weight: 700; font-size: 1.375rem;
+                    letter-spacing: -.02em; line-height: 1.2; text-transform: none; color: #262626; }
+                .o_dcasa_enrolar_2fa .text-muted { color: rgba(38, 38, 38, .7) !important; }
+                .o_dcasa_enrolar_2fa img { border-radius: 14px; }
+                .o_dcasa_enrolar_2fa .form-control { min-height: 48px; font-size: 16px; color: #262626;
+                    border: 1px solid rgba(38, 38, 38, .55); border-radius: 14px; }
+                .o_dcasa_enrolar_2fa .form-control:focus { border-color: #262626; box-shadow: none;
+                    outline: 2px solid #262626; outline-offset: 2px; }
+                .o_dcasa_enrolar_2fa .o_dcasa_enrolar_entrar { min-height: 48px; background: #D4D4D4; color: #262626;
+                    border: 0; border-radius: 999px; font-family: inherit; font-weight: 700; letter-spacing: 0;
+                    text-transform: none; box-shadow: 0 8px 24px -10px rgba(212, 212, 212, .7); }
+                .o_dcasa_enrolar_2fa .o_dcasa_enrolar_entrar:hover { background: #DADADA; color: #262626; }
+                .o_dcasa_enrolar_2fa .btn-link { color: #595959; font-family: inherit; font-weight: 700; min-height: 44px;
+                    text-transform: none; letter-spacing: 0; }
+                .o_dcasa_enrolar_2fa summary { color: #595959; font-weight: 600; min-height: 44px; }
+                .o_dcasa_enrolar_2fa .alert-danger { background: #FAFAFA; color: #B42318; border: 1px solid #B42318;
+                    border-radius: 14px; }
+                .o_dcasa_enrolar_2fa a:focus-visible, .o_dcasa_enrolar_2fa button:focus-visible,
+                .o_dcasa_enrolar_2fa summary:focus-visible { outline: 2px solid #262626; outline-offset: 2px; box-shadow: none; }
+            </style>
+            <div class="oe_login_form o_dcasa_enrolar_2fa">
+                <h5 class="card-title">Activa tu doble factor</h5>
+                <p class="text-muted mb-2">
+                    Para entrar al panel de <t t-out="res_company.name"/> necesitas, además de tu clave, un código de 6 números
+                    que cambia cada 30 segundos en tu teléfono.
+                </p>
+                <ol class="ps-3 mb-3">
+                    <li>Instala una app de códigos: <strong>Google Authenticator</strong>,
+                        <strong>Microsoft Authenticator</strong> o la que ya uses.</li>
+                    <li>En la app toca <strong>+</strong> y <strong>escanea este código</strong>:</li>
+                </ol>
+                <div class="text-center mb-2">
+                    <img t-att-src="'data:image/png;base64,%s' % qr" alt="Código QR para tu app de códigos"
+                         width="200" height="200"/>
+                </div>
+                <details class="mb-3">
+                    <summary>¿No puedes escanear? Escribe esta clave en la app</summary>
+                    <code class="d-block text-center fs-5 mt-2" t-out="secreto"/>
+                </details>
+                <form method="POST" t-att-action="'/web/login/dcasa-2fa'">
+                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                    <input type="hidden" name="redirect" t-att-value="redirect"/>
+                    <div class="mb-3">
+                        <label class="fw-bold" for="codigo">3. Escribe el código que muestra la app</label>
+                        <input id="codigo" name="codigo" class="form-control" autocomplete="one-time-code"
+                               inputmode="numeric" autofocus="autofocus" required="required"
+                               placeholder="123456"/>
+                    </div>
+                    <p class="alert alert-danger" t-if="error" role="alert" t-out="error"/>
+                    <div class="d-grid mb-2">
+                        <button type="submit" class="btn btn-primary o_dcasa_enrolar_entrar">Activar y entrar</button>
+                    </div>
+                </form>
+                <p class="small text-muted">
+                    Guarda el teléfono con cuidado: si lo pierdes, otro administrador puede quitarte el doble
+                    factor desde Ajustes › Usuarios para que lo actives de nuevo.
+                </p>
+                <form method="POST" action="/web/session/logout">
+                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                    <div class="w-100 text-center">
+                        <button type="submit" class="btn btn-link btn-sm mb-2">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </t>
+    </template>
+
+</odoo>

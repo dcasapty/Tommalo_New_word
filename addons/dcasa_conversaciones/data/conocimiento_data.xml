@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        El conocimiento del asistente arranca EN CERO (pedido del dueño, 2026-11-18): ninguna entrada de fábrica.
+        Cada negocio escribe el suyo en «Conversaciones › Conocimiento del bot», y lo que el asistente no sabe lo anota
+        él solo en «Preguntas sin respuesta» para que el equipo lo conteste. Así una instalación nueva no trae nada de
+        otra empresa: ni su dirección, ni sus políticas, ni sus preguntas.
+
+        El mecanismo sigue igual. Una entrada puede ser:
+        * «Escrito a mano» (fuente manual): el texto que escriba el equipo.
+        * «Datos de la tienda (automático)» (fuente tienda): no guarda texto; se arma al consultarse con la dirección
+          de la empresa, el WhatsApp del sitio y el horario de «Ajustes de Juan».
+        * «Reglas de Socios (automático)» (fuente socios): no guarda texto; sale de dcasa_socios/data/puntos.json.
+
+        Las bases que ya tenían las entradas de antes las conservan (noupdate): este archivo solo cambia lo que trae
+        una instalación nueva.
+    -->
+</odoo>

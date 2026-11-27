@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Lo que encontró la auditoría de la web (axe-core, WCAG 2.2 AA, a 390, 768, 1024 y 1440 px; 2026-11-24) en las
+         piezas que dibuja la tienda de Odoo. Los estilos (lo táctil de 44 px, las tallas en pastilla) van en
+         static/src/scss/dcasa.scss, «Auditoría». -->
+
+    <!-- Íconos que Odoo marca como imagen (role="img") sin nombre: son adorno junto a un texto («Filtros», el nombre de la
+         categoría). Para el lector de pantalla, nada. -->
+    <template id="a11y_filtros_productos" inherit_id="website_sale.products" name="Tommalo: íconos de adorno en la tienda">
+        <xpath expr="//i[hasclass('oi-settings-adjust')]" position="attributes">
+            <attribute name="role"/>
+            <attribute name="aria-hidden">true</attribute>
+        </xpath>
+    </template>
+
+    <template id="a11y_tira_categorias" inherit_id="website_sale.filmstrip_categories" name="Tommalo: tira de categorías accesible">
+        <!-- La casilla escondida de cada categoría solo guarda el estado para el estilo (tabindex="-1", sin puntero): el
+             enlace es el que se toca y el que nombra la categoría. Fuera del árbol de accesibilidad. -->
+        <xpath expr="//input[@type='radio'][hasclass('btn-check')]" position="attributes">
+            <attribute name="aria-hidden">true</attribute>
+        </xpath>
+    </template>
+
+    <template id="a11y_ficha_migas" inherit_id="website_sale.product" name="Tommalo: flecha de las migas de la ficha">
+        <xpath expr="//i[hasclass('oi-chevron-left')][@role='img']" position="attributes">
+            <attribute name="role"/>
+            <attribute name="aria-hidden">true</attribute>
+        </xpath>
+        <!-- Son dos (la de la categoría y la del producto): el segundo xpath encuentra la que queda con role="img". -->
+        <xpath expr="//i[hasclass('oi-chevron-left')][@role='img']" position="attributes">
+            <attribute name="role"/>
+            <attribute name="aria-hidden">true</attribute>
+        </xpath>
+    </template>
+
+    <!-- El nombre del atributo («Talla») es un h6 justo debajo del h1 del producto: salto de títulos para el lector de
+         pantalla. Se le dice que es de nivel 2 (aria-level) sin cambiar la etiqueta ni su estilo. -->
+    <template id="a11y_variantes_titulo" inherit_id="website_sale.variants" name="Tommalo: título de las variantes">
+        <xpath expr="//h6[hasclass('attribute_name')]" position="attributes">
+            <attribute name="aria-level">2</attribute>
+        </xpath>
+    </template>
+
+    <!-- La tarjeta de producto de la tienda: Odoo le pone role="article" a un <form>, rol que un formulario no admite
+         (axe: aria-allowed-role). Fuera el rol; el nombre (aria-label) se queda: lo usa y lo cambia
+         website_dcasa.tarjeta_nombre_cliente (nombres_cliente_templates.xml). -->
+    <template id="a11y_tarjeta_tienda" inherit_id="website_sale.products_item" name="Tommalo: tarjeta de la tienda sin rol inválido">
+        <xpath expr="//form[@role='article']" position="attributes">
+            <attribute name="role"/>
+        </xpath>
+    </template>
+
+    <!-- El rango de precio (dos deslizadores encima): sin nombre para el lector de pantalla. -->
+    <template id="a11y_rango_precio" inherit_id="website_sale.filter_products_price" name="Tommalo: rango de precio con nombre">
+        <xpath expr="(//input[@type='range'])[1]" position="attributes">
+            <attribute name="aria-label">Rango de precio</attribute>
+        </xpath>
+        <xpath expr="(//input[@type='range'])[2]" position="attributes">
+            <attribute name="aria-label">Rango de precio</attribute>
+        </xpath>
+    </template>
+    <!-- Carrito y pago (website_sale.checkout_layout y lo que llama): auditados con un producto en el carrito. -->
+
+    <!-- Un solo h1 por página, para el lector de pantalla y los buscadores: Odoo no pone ninguno en el carrito ni en los
+         pasos del pago. -->
+    <template id="a11y_pago_titulo" inherit_id="website_sale.checkout_layout" name="Tommalo: título del carrito y del pago">
+        <xpath expr="//div[hasclass('o_website_sale_checkout_container')]" position="before">
+            <h1 class="visually-hidden" t-out="'Tu carrito' if request.httprequest.path.startswith('/shop/cart') else 'Tu pedido'"/>
+        </xpath>
+        <!-- La flecha del botón «Orden» (el resumen en el celular): adorno junto al texto. -->
+        <xpath expr="//i[hasclass('fa-angle-right')]" position="attributes">
+            <attribute name="role"/>
+            <attribute name="aria-hidden">true</attribute>
+        </xpath>
+    </template>
+
+    <!-- Los títulos que siguen al h1 escondido: el del resumen del carrito y el de los datos, de nivel 2; el nombre de cada
+         producto del carrito, de nivel 3. El precio de cada línea es un h6 solo para el tamaño: no es un título. -->
+    <template id="a11y_carrito_titulos" inherit_id="website_sale.cart" name="Tommalo: títulos del carrito">
+        <xpath expr="//div[@id='shop_cart']//h4" position="attributes">
+            <attribute name="aria-level">2</attribute>
+        </xpath>
+    </template>
+
+    <template id="a11y_carrito_lineas" inherit_id="website_sale.cart_lines" name="Tommalo: nombre de cada línea del carrito">
+        <xpath expr="//h6[@t-out='line._get_line_header()']" position="attributes">
+            <attribute name="aria-level">3</attribute>
+        </xpath>
+    </template>
+
+    <template id="a11y_carrito_precio" inherit_id="website_sale.cart_lines_price" name="Tommalo: precio de la línea sin título">
+        <xpath expr="//h6[@name='website_sale_cart_line_price']" position="attributes">
+            <attribute name="role">none</attribute>
+        </xpath>
+    </template>
+
+    <template id="a11y_datos_titulo" inherit_id="website_sale.address" name="Tommalo: título de los datos">
+        <xpath expr="//h4[hasclass('w-md-auto')]" position="attributes">
+            <attribute name="aria-level">2</attribute>
+        </xpath>
+    </template>
+
+    <!-- La cantidad de cada línea del carrito (la del celular y la de la computadora): sin nombre para el lector. -->
+    <template id="a11y_carrito_cantidad" inherit_id="website_sale.cart_lines_quantity" name="Tommalo: cantidad con nombre">
+        <xpath expr="(//input[hasclass('js_quantity')])[1]" position="attributes">
+            <attribute name="aria-label">Cantidad</attribute>
+        </xpath>
+        <xpath expr="(//input[hasclass('js_quantity')])[2]" position="attributes">
+            <attribute name="aria-label">Cantidad</attribute>
+        </xpath>
+    </template>
+</odoo>

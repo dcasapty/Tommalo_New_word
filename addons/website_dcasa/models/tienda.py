@@ -1,0 +1,181 @@
+"""Checkout de la tienda: cómo paga y recibe un cliente de Tommalo.
+
+La tarjeta y Yappy en línea los ofrece Tilopay (módulo ``dcasa_pago_tilopay``, apagado de fábrica: solo sale con las
+claves cargadas en Cloudflare y encendido por Gerencia; docs/TILOPAY.md) y esta configuración nunca lo enciende. Sin él,
+se cobra con Yappy o transferencia (los datos se mandan por WhatsApp; nunca se escriben aquí números de cuenta) o en la
+tienda. No hay pago contra entrega; «Pago en la tienda» aparta el pedido por la página web los días de apartado (models/sale_order.py) para que
+pase a pagarlo.
+La entrega a domicilio se cotiza por WhatsApp, como promete el sitio; no hay «envío gratis».
+"""
+from markupsafe import Markup
+
+from odoo import api, fields, models
+from odoo.addons.dcasa_base import _nombrar
+
+IDIOMA = 'es_419'
+
+# (xmlid o None, nombre, modo, mensaje al terminar el pedido)
+PAGOS = [
+    ('payment.payment_provider_transfer', 'Transferencia bancaria', 'wire_transfer',
+     'Te escribimos por WhatsApp con los datos de la cuenta para que transfieras. '
+     'Apenas veamos el pago, confirmamos tu pedido y coordinamos la entrega.'),
+    (None, 'Yappy', 'wire_transfer',
+     'Te escribimos por WhatsApp con el número de Yappy para que pagues. '
+     'Apenas veamos el pago, confirmamos tu pedido y coordinamos la entrega.'),
+    ('delivery.payment_provider_cod', 'Pago en la tienda', 'cash_on_delivery',
+     'Te lo apartamos por la página web: pasa a pagarlo en la tienda (efectivo o Yappy) antes de que venza '
+     'el apartado; la fecha la ves en Mi cuenta. El envío o el retiro lo coordinas por WhatsApp.'),
+]
+
+ENTREGAS = [
+    # (nombre, por cotizar). Sin dirección de Tommalo todavía (PENDIENTE), el retiro no dice ningún lugar.
+    ('Retiro en tienda', False),
+    ('Entrega a domicilio: te cotizamos por WhatsApp', True),
+]
+# Nombres que tuvieron estas entregas: una base ya instalada los renombra (``_dcasa_entregas``) en vez de crear otra.
+ENTREGAS_ANTES = {}
+
+# Negocio sin tienda física (Tommalo: «Venta 100% online con entrega a domicilio»). Con
+# este parámetro en «1» el pago no ofrece «Pago en la tienda» (que aparta el pedido para pagarlo en el local) ni la
+# entrega «Retiro en tienda»: quedan apagados, no borrados, y al reinstalar o migrar no se vuelven a encender. Lo
+# pone el arranque con DCASA_TIENDA_FISICA=0 (docker/negocio.env, dentro de la imagen). Sin él (las
+# pruebas), todo como siempre.
+PARAMETRO_SIN_TIENDA = 'website_dcasa.sin_tienda_fisica'
+PAGO_EN_TIENDA = 'delivery.payment_provider_cod'
+RETIRO_EN_TIENDA = 'Retiro en tienda'
+
+
+def sin_tienda_fisica(env):
+    """¿El negocio vende sin local (no hay pago ni retiro en la tienda)?"""
+    return env['ir.config_parameter'].sudo().get_param(PARAMETRO_SIN_TIENDA) == '1'
+
+
+class DeliveryCarrier(models.Model):
+    _inherit = 'delivery.carrier'
+
+    dcasa_por_cotizar = fields.Boolean(
+        string='Costo por cotizar',
+        help='El costo se cotiza por WhatsApp: en la tienda sale «Por cotizar» en vez de «Gratis».')
+
+
+class Website(models.Model):
+    _inherit = 'website'
+
+    @api.model
+    def _dcasa_configurar_tienda(self):
+        """Idioma, pagos, entregas y dirección para Panamá. Se corre al instalar o migrar."""
+        self._dcasa_sitio_en_espanol()
+        pa = self.env.ref('base.pa')
+        pa.zip_required = False
+        b2b = self.env.ref('website_sale.address_b2b', raise_if_not_found=False)
+        if b2b:
+            b2b.active = False  # sin «Empresa» ni «VAT» para el cliente final
+        self._dcasa_pagos()
+        self._dcasa_entregas()
+
+    @api.model
+    def _dcasa_sitio_en_espanol(self):
+        lang = self.env['res.lang']._activate_lang(IDIOMA)
+        if not lang:
+            return
+        self.env['ir.module.module'].search([('state', '=', 'installed')])._update_translations([IDIOMA])
+        for website in self.search([]):
+            website.write({'language_ids': [(6, 0, lang.ids)], 'default_lang_id': lang.id})
+
+    @api.model
+    def _dcasa_pagos(self):
+        Provider = self.env['payment.provider'].sudo().with_context(active_test=False)
+        transferencia = self.env.ref('payment.payment_provider_transfer')
+        idiomas = [codigo for codigo, _n in self.env['res.lang'].get_installed()]
+        sin_tienda = sin_tienda_fisica(self.env)
+        for xmlid, nombre, modo, mensaje in PAGOS:
+            proveedor = self.env.ref(xmlid, raise_if_not_found=False) if xmlid else Provider.search(
+                [('code', '=', 'custom'), ('custom_mode', '=', modo), ('name', '=', nombre)], limit=1)
+            if not proveedor:
+                proveedor = transferencia.copy({
+                    'name': nombre, 'payment_method_ids': [(6, 0, transferencia.payment_method_ids.ids)]})
+            if sin_tienda and xmlid == PAGO_EN_TIENDA:
+                proveedor.write({'state': 'disabled', 'is_published': False})
+            else:
+                proveedor.write({'state': 'enabled', 'is_published': True})
+            _nombrar(proveedor, nombre)
+            # La tienda muestra MÉTODOS (no proveedores): Yappy necesita el suyo, si no se
+            # juntaría con la transferencia en una sola opción.
+            metodo = self._dcasa_metodo_de_pago(proveedor, nombre, modo)
+            if metodo:
+                proveedor.payment_method_ids = [(6, 0, metodo.ids)]
+                _nombrar(metodo, nombre)
+            for idioma in idiomas:
+                proveedor.with_context(lang=idioma).pending_msg = Markup('<p>%s</p>') % mensaje
+
+    @api.model
+    def _dcasa_sin_restos_de_dcasa(self):
+        """Lo que una base ya instalada (staging) guardó con textos de una versión anterior y el cliente ve: el menú y el
+        nombre de la entrega. Solo eso: no enciende ni apaga pagos ni entregas (lo que Gerencia haya cambiado se
+        respeta). Se puede volver a correr. La llama la migración 19.0.1.19.0."""
+        self._dcasa_armar_menu_principal()
+        self._dcasa_renombrar_entregas()
+
+    @api.model
+    def _dcasa_renombrar_entregas(self):
+        """Las entregas con un nombre viejo (``ENTREGAS_ANTES``) pasan al de ahora, sin crear otra."""
+        Carrier = self.env['delivery.carrier'].sudo().with_context(active_test=False)
+        for viejo, nuevo in ENTREGAS_ANTES.items():
+            antes = Carrier.search([('name', '=', viejo)])
+            if antes and not Carrier.search_count([('name', '=', nuevo)]):
+                _nombrar(antes[:1], nuevo)
+
+    @api.model
+    def _dcasa_metodo_de_pago(self, proveedor, nombre, modo):
+        Method = self.env['payment.method'].sudo().with_context(active_test=False)
+        if modo == 'cash_on_delivery':
+            return self.env.ref('delivery.payment_method_cash_on_delivery', raise_if_not_found=False)
+        transferencia = self.env.ref('payment_custom.payment_method_wire_transfer')
+        if nombre != 'Yappy':
+            return transferencia
+        yappy = Method.search([('code', '=', 'yappy')], limit=1) or transferencia.copy({
+            'name': 'Yappy', 'code': 'yappy', 'sequence': transferencia.sequence - 1, 'provider_ids': [(5, 0, 0)]})
+        yappy.active = True
+        return yappy
+
+    @api.model
+    def _dcasa_entregas(self):
+        Carrier = self.env['delivery.carrier'].sudo().with_context(active_test=False)
+        estandar = self.env.ref('delivery.free_delivery_carrier', raise_if_not_found=False)
+        if estandar:
+            estandar.write({'active': False, 'is_published': False})
+        producto = self.env['product.product'].sudo().search([('default_code', '=', 'DCASA-ENTREGA')], limit=1) \
+            or self.env['product.product'].sudo().create({
+                'name': 'Entrega', 'default_code': 'DCASA-ENTREGA', 'type': 'service',
+                'list_price': 0, 'sale_ok': False, 'purchase_ok': False, 'taxes_id': [(5, 0, 0)],
+            })
+        self._dcasa_renombrar_entregas()
+        sin_tienda = sin_tienda_fisica(self.env)
+        for orden, (nombre, por_cotizar) in enumerate(ENTREGAS, start=1):
+            carrier = Carrier.search([('name', '=', nombre)], limit=1) or Carrier.create({
+                'name': nombre, 'delivery_type': 'fixed', 'fixed_price': 0, 'product_id': producto.id,
+            })
+            visible = not (sin_tienda and nombre == RETIRO_EN_TIENDA)
+            carrier.write({
+                'active': visible, 'is_published': visible, 'sequence': orden,
+                'allow_cash_on_delivery': True, 'dcasa_por_cotizar': por_cotizar,
+            })
+            _nombrar(carrier, nombre)
+
+    @api.model
+    def _dcasa_aplicar_sin_tienda_fisica(self):
+        """Deja al negocio sin tienda física (``PARAMETRO_SIN_TIENDA``): apaga «Pago en la tienda» y archiva «Retiro en
+        tienda». No borra nada (los pedidos viejos con esa entrega o ese pago siguen como estaban). Se puede repetir.
+        Devuelve lo que quedó apagado, para el registro del arranque."""
+        self.env['ir.config_parameter'].sudo().set_param(PARAMETRO_SIN_TIENDA, '1')
+        apagados = []
+        cod = self.env.ref(PAGO_EN_TIENDA, raise_if_not_found=False)
+        if cod:
+            cod.sudo().write({'state': 'disabled', 'is_published': False})
+            apagados.append(cod.sudo().name)
+        retiro = self.env['delivery.carrier'].sudo().with_context(active_test=False).search(
+            [('name', '=', RETIRO_EN_TIENDA)])
+        if retiro:
+            retiro.write({'active': False, 'is_published': False})
+            apagados += retiro.mapped('name')
+        return apagados

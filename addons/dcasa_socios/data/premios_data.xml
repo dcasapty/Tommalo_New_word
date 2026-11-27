@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- El catálogo de premios arranca VACÍO: cada premio (cuántos puntos pide, cuánto vale, cuánto cuesta) es una cifra
+         del programa y la pone el dueño en Socios > Configuración > Premios, junto con las de puntos.json. Esta copia
+         no trae los de la empresa de la que se copió (2026-11-18). -->
+    <data noupdate="1">
+        <!-- Premio TÉCNICO del modo «todo» de puntos en el carrito web: el socio elige cuántos puntos
+             usa y el descuento sale de puntos.json (canje.puntosPorDolar). No sale en el catálogo
+             (dcasa.premio._catalogo) y la cifra «puntos» es un marcador: la real la pone cada canje. -->
+        <record id="premio_libre_web" model="dcasa.premio">
+            <field name="name">Puntos en la tienda web</field>
+            <field name="descripcion">Descuento libre con puntos en el carrito de la tienda web.</field>
+            <field name="puntos">1</field><field name="valor">0</field><field name="costo">0</field>
+            <field name="sequence">999</field>
+            <field name="libre" eval="True"/>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Favicon del panel: el logo de la empresa (dcasa_base/static/img/icono, scripts/iconos_de_la_marca.py), no el círculo
+        de Odoo. Cuando una página trae su propio ícono (las del sitio web ponen el suyo en x_icon) se respeta; el panel
+        usa este. Si la empresa subió su logo o su ícono (Ajustes › Marca del panel), la página del panel pone el suyo
+        en x_icon (abajo, webclient_icono_dcasa).
+    -->
+    <template id="layout_favicon_dcasa" inherit_id="web.layout" name="Tommalo: favicon del panel">
+        <xpath expr="//link[@rel='shortcut icon']" position="attributes">
+            <attribute name="t-att-href">x_icon or '/dcasa_base/static/img/icono/logo-192.png'</attribute>
+            <attribute name="type">image/png</attribute>
+        </xpath>
+    </template>
+
+    <!-- Al agregar el panel a la pantalla de inicio del celular (2026-10-22: «estrictamente el logo»). En el iPhone, el
+         logo sobre blanco y sin transparencia (lo transparente lo pinta de negro); en Android, el manifiesto
+         (controllers/webmanifest.py). Y el color de la barra del navegador: el crema de la página (la marca de Tommalo;
+         de noche, el oscuro de la página), con cualquier color de la empresa.
+
+         La marca de cada empresa (2026-11-18, models/marca.py): `dcasa_marca` viene vacío si todo es de fábrica, y
+         entonces la página sale exactamente como antes (los mismos enlaces). Si la empresa puso sus colores, en lugar de
+         la hoja de Odoo se enlaza la misma hoja pintada con ellos (controllers/marca.py); si subió logo o ícono, el
+         favicon y el ícono del iPhone salen de ahí. -->
+    <template id="webclient_icono_dcasa" inherit_id="web.webclient_bootstrap" name="Tommalo: ícono y color del panel">
+        <xpath expr="//t[@t-set='head_web']" position="before">
+            <t t-set="dcasa_marca" t-value="request.env.company._dcasa_panel_pagina(color_scheme)"/>
+            <t t-if="dcasa_marca.get('favicon')" t-set="x_icon" t-value="dcasa_marca['favicon']"/>
+        </xpath>
+        <xpath expr="//link[@rel='apple-touch-icon']" position="attributes">
+            <attribute name="href"></attribute>
+            <attribute name="t-att-href">dcasa_marca.get('apple') or '/dcasa_base/static/img/icono/apple-touch-icon.png'</attribute>
+        </xpath>
+        <xpath expr="//meta[@name='theme-color']" position="attributes">
+            <attribute name="content"></attribute>
+            <attribute name="t-att-content">'#121212' if color_scheme == 'dark' else '#FAFAFA'</attribute>
+        </xpath>
+        <xpath expr="//t[@t-call-assets='web.assets_web_dark']/.." position="attributes">
+            <attribute name="t-if">not dcasa_marca.get('hoja') and color_scheme == 'dark'</attribute>
+        </xpath>
+        <xpath expr="//t[@t-call-assets='web.assets_web'][@media='screen']/.." position="attributes">
+            <attribute name="t-else"></attribute>
+            <attribute name="t-elif">not dcasa_marca.get('hoja')</attribute>
+        </xpath>
+        <xpath expr="//t[@t-call-assets='web.assets_web'][@media='screen']/.." position="after">
+            <link t-if="dcasa_marca.get('hoja')" type="text/css" rel="stylesheet" t-att-href="dcasa_marca['hoja']"
+                  media="screen"/>
+        </xpath>
+    </template>
+
+    <!-- Nombre de la app instalable (por defecto «Odoo»). -->
+    <record id="web_app_name" model="ir.config_parameter">
+        <field name="key">web.web_app_name</field>
+        <field name="value">Tommalo</field>
+    </record>
+</odoo>

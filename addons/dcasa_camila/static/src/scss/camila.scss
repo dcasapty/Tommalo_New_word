@@ -1,0 +1,788 @@
+// Camila — marca Tommalo (docs/MARCA_TOMMALO.md), como el panel propio de Tommalo: fondo crema, tarjetas en la
+// superficie con su canto y radio de 14 a 16 px, letra navy, el botón principal en pastilla naranja con la letra navy
+// (5.56), el verde salvia para lo secundario (lo elegido, las píldoras) y Montserrat en todo, con los titulares como
+// frase. El naranja y el verde de la marca son RELLENO: el texto de color va en sus versiones oscuras (#595959, 4.60 sobre
+// la superficie). Lo que se toca mide 44 px. Plano: sin degradados ni sombras dramáticas. En el celular: 16 px
+// de margen y sin scroll de lado. Etapa 2: el constructor a todo el ancho; la vista previa, el buscador de productos y
+// «Nueva campaña» en diálogos (que bajan con su propio scroll).
+
+// Odoo pone a todo `.o_action` en columna con `overflow: hidden` (webclient_layout.scss) y esa regla pesa más que una
+// clase suelta: sin esta regla fuerte la pantalla no baja con la rueda ni con el dedo (el bug de siempre; ver
+// docs/CONTEXTO_AGENTICO.md y dcasa_interfaz/tests/test_scroll.py).
+.o_web_client > .o_action_manager > .o_camila.o_action {
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    &::-webkit-scrollbar { display: block; width: 8px; }
+    &::-webkit-scrollbar-thumb { background: rgba(38, 38, 38, .25); border-radius: 4px; }
+    > * { flex-shrink: 0; }
+}
+
+// Lo de Camila que se usa en la pantalla y en sus diálogos.
+.o_camila,
+.o_camila_dialogo {
+    // Los colores del panel (dcasa_interfaz/static/src/scss/tokens.scss): son los de la marca de Tommalo de día y
+    // tienen su versión de noche (oscuro/tokens.dark.scss), y Ajustes › Marca del panel los vuelve a pintar con los de
+    // cada empresa. Con colores fijos propios, de noche la letra navy quedaba sobre el fondo oscuro (1.24:1) y el giro
+    // de la marca no los alcanzaba. La letra ENCIMA del verde o del naranja es --dc-en-salvia / --dc-en-naranja: navy
+    // de día y de noche (6.96 y 5.56), nunca la tinta, que de noche es crema.
+    --cm-tinta: var(--dc-tinta);
+    --cm-tinta-2: var(--dc-tinta-3);
+    --cm-linea: var(--dc-linea);
+    --cm-control: var(--dc-control);
+    --cm-crema: var(--dc-crema);
+    --cm-superficie: var(--dc-superficie);
+    --cm-naranja: var(--dc-naranja);
+    --cm-en-naranja: var(--dc-en-naranja);
+    --cm-naranja-texto: var(--dc-naranja-fuerte);
+    --cm-naranja-filo: var(--dc-naranja-filo);
+    --cm-salvia: var(--dc-salvia);
+    --cm-en-salvia: var(--dc-en-salvia);
+    --cm-salvia-claro: var(--dc-salvia-claro);
+    --cm-salvia-filo: var(--dc-salvia-filo);
+    --cm-sombra: var(--dc-sombra-2);
+    color: var(--cm-tinta);
+    font-family: "Montserrat", system-ui, sans-serif;
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    .o_camila_etiqueta {
+        display: block;
+        margin: 12px 0 4px;
+        font-weight: 600;
+        color: var(--cm-tinta);
+    }
+
+    // Los chips (público, filtros): pastillas de contorno (el borde de lo que se toca, 3:1); el elegido, en el verde
+    // salvia con la letra navy (6.96).
+    .o_camila_chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 44px;
+        padding: 4px 16px;
+        border: 1px solid var(--cm-control);
+        border-radius: 999px;
+        background: var(--cm-crema);
+        color: var(--cm-tinta);
+        font-size: .9rem;
+        font-weight: 500;
+        cursor: pointer;
+        &.o_activa { background: var(--cm-salvia); border-color: var(--cm-salvia-filo); color: var(--cm-en-salvia); font-weight: 600; }
+        &:focus-visible { outline: 2px solid var(--cm-tinta); outline-offset: 2px; box-shadow: none; }
+        &:disabled { cursor: default; opacity: .75; }
+    }
+
+    // El número del chip: superficie con la letra navy; en el chip elegido, crema sobre el verde.
+    .o_camila_chip_n {
+        min-width: 24px;
+        padding: 0 7px;
+        border-radius: 999px;
+        background: var(--cm-superficie);
+        color: var(--cm-tinta);
+        font-family: "Montserrat", system-ui, sans-serif;
+        font-weight: 700;
+        text-align: center;
+    }
+    .o_camila_chip.o_activa .o_camila_chip_n { background: var(--cm-crema); color: var(--cm-tinta); }
+
+    // Los botones de Camila con las formas de la marca (docs/MARCA_TOMMALO.md, «Formas»), aunque el resto del panel
+    // todavía no las tenga: el principal en pastilla naranja con la letra navy en 700; el secundario, pastilla de
+    // contorno (el borde de lo que se toca, 3:1) con la letra navy y el fondo transparente. Lo que se toca mide 44 px.
+    .btn:not(.btn-link) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        min-height: 44px;
+        border-radius: 999px;
+    }
+    .btn-link {
+        min-height: 44px;
+        color: var(--cm-naranja-texto);
+        font-weight: 600;
+        &:hover, &:focus { color: var(--cm-naranja-texto); }
+    }
+    .btn-primary {
+        --bs-btn-color: var(--cm-en-naranja);
+        --bs-btn-bg: var(--cm-naranja);
+        --bs-btn-border-color: var(--cm-naranja);
+        --bs-btn-hover-color: var(--cm-en-naranja);
+        --bs-btn-hover-bg: var(--cm-naranja);
+        --bs-btn-hover-border-color: var(--cm-naranja-filo);
+        --bs-btn-active-color: var(--cm-en-naranja);
+        --bs-btn-active-bg: var(--cm-naranja);
+        --bs-btn-active-border-color: var(--cm-naranja-filo);
+        --bs-btn-disabled-color: var(--cm-en-naranja);
+        --bs-btn-disabled-bg: var(--cm-naranja);
+        --bs-btn-disabled-border-color: var(--cm-naranja);
+        color: var(--bs-btn-color);
+        background-color: var(--bs-btn-bg);
+        border-color: var(--bs-btn-border-color);
+        font-weight: 700;
+    }
+    .btn-secondary {
+        --bs-btn-color: var(--cm-tinta);
+        --bs-btn-bg: transparent;
+        --bs-btn-border-color: var(--cm-control);
+        --bs-btn-hover-color: var(--cm-tinta);
+        --bs-btn-hover-bg: var(--cm-superficie);
+        --bs-btn-hover-border-color: var(--cm-tinta);
+        --bs-btn-active-color: var(--cm-tinta);
+        --bs-btn-active-bg: var(--cm-superficie);
+        --bs-btn-active-border-color: var(--cm-tinta);
+        --bs-btn-disabled-color: var(--cm-tinta);
+        --bs-btn-disabled-bg: transparent;
+        --bs-btn-disabled-border-color: var(--cm-control);
+        color: var(--bs-btn-color);
+        background-color: var(--bs-btn-bg);
+        border-color: var(--bs-btn-border-color);
+        font-weight: 600;
+    }
+    .btn:focus-visible { outline: 2px solid var(--cm-tinta); outline-offset: 2px; box-shadow: none; }
+    // Los campos: radio de 14 px, borde de control (3.26) y 16 px de letra (el iPhone no hace zoom).
+    .form-control,
+    .form-select {
+        min-height: 44px;
+        font-size: 1rem;
+        border-color: var(--cm-control);
+        border-radius: 14px;
+    }
+    // Las casillas: el borde de control y, marcadas, el navy (13 a 1 frente a la palomita blanca), no el azul de fábrica.
+    .form-check-input {
+        border-color: var(--cm-control);
+        &:checked {
+            background-color: #262626;
+            border-color: #262626;
+        }
+        &:focus-visible { outline: 2px solid var(--cm-tinta); outline-offset: 2px; box-shadow: none; }
+    }
+    // Lo que dice Camila (la nota de la IA, del texto fijo): el verde aclarado con la letra navy, no el azul de Bootstrap.
+    .alert-info {
+        background: var(--cm-salvia-claro);
+        border-color: var(--cm-salvia-filo);
+        color: var(--cm-tinta);
+        border-radius: 14px;
+    }
+}
+
+.o_camila {
+    background: var(--cm-crema);
+
+    // La cabecera: la superficie crema con su canto, el titular navy y el botón principal a la derecha.
+    .o_camila_encabezado {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 24px;
+        background: var(--cm-superficie);
+        border-bottom: 1px solid var(--cm-linea);
+        color: var(--cm-tinta);
+    }
+
+    // «Nueva campaña»: el botón principal de la marca, pastilla naranja con la letra navy en 700.
+    .o_camila_nueva {
+        min-height: 44px;
+        padding-left: 22px;
+        padding-right: 22px;
+        border-radius: 999px;
+        background: var(--cm-naranja);
+        border-color: var(--cm-naranja);
+        color: var(--cm-en-naranja);
+        font-weight: 700;
+        &:hover, &:active { background: var(--cm-naranja); border-color: var(--cm-naranja-filo); color: var(--cm-en-naranja); }
+        &:focus-visible { outline: 2px solid var(--cm-tinta); outline-offset: 2px; box-shadow: none; }
+    }
+
+    .o_camila_titulo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+
+        // Titular de la marca: Montserrat 700, como frase (nunca en caja alta).
+        h1 {
+            margin: 0;
+            font-family: "Montserrat", system-ui, sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: -0.03em;
+            text-transform: none;
+            color: var(--cm-tinta);
+        }
+
+        p { margin: 2px 0 0; color: var(--cm-tinta-2); }
+    }
+
+    // El avatar: el círculo verde salvia con la inicial en navy (6.96).
+    .o_camila_avatar {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--cm-salvia);
+        color: var(--cm-en-salvia);
+        font-family: "Montserrat", system-ui, sans-serif;
+        font-weight: 700;
+        font-size: 1.3rem;
+    }
+
+    .o_camila_cuerpo {
+        width: 100%;
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 20px 24px 40px;
+    }
+
+    .o_camila_cifras {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .o_camila_cifra {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 14px 16px;
+        background: var(--cm-superficie);
+        border: 1px solid var(--cm-linea);
+        border-radius: 16px;
+        box-shadow: var(--cm-sombra);
+        min-width: 0;
+    }
+
+    .o_camila_cifra_valor {
+        font-family: "Montserrat", system-ui, sans-serif;
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+        color: var(--cm-tinta);
+    }
+
+    .o_camila_cifra_fecha { font-size: 1.45rem; }
+    .o_camila_cifra_nombre { color: var(--cm-tinta-2); font-size: .9rem; }
+
+    // Etapa 1b: por dónde dijeron que sí (solo cuántos).
+    .o_camila_caminos {
+        list-style: none;
+        margin: 10px 0 0;
+        padding: 10px 0 0;
+        border-top: 1px solid var(--cm-linea);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .o_camila_camino {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: var(--cm-salvia-claro);
+        color: var(--cm-tinta);
+        font-size: .85rem;
+    }
+    .o_camila_camino_n { font-weight: 700; }
+
+    .o_camila_bloqueos {
+        margin-bottom: 16px;
+        padding: 12px 16px;
+        background: var(--cm-superficie);
+        border: 1px solid var(--cm-linea);
+        border-left: 4px solid var(--cm-naranja);
+        border-radius: 14px;
+        color: var(--cm-tinta);
+
+        ul { margin: 6px 0 0; padding-left: 20px; }
+    }
+
+    // Las campañas abiertas, como pestañas que se envuelven (sin scroll de lado).
+    .o_camila_pestanas {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+    }
+
+    .o_camila_pestana {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 44px;
+        padding: 8px 14px;
+        text-align: left;
+        background: var(--cm-superficie);
+        border: 1px solid var(--cm-control);
+        border-radius: 14px;
+        color: var(--cm-tinta);
+        // La campaña abierta: el canto naranja y la raya de relleno debajo (no es solo el color: también la raya).
+        &.o_activa { border-color: var(--cm-naranja-filo); box-shadow: inset 0 -4px 0 var(--cm-naranja); }
+        &:focus-visible { outline: 2px solid var(--cm-tinta); outline-offset: 2px; }
+    }
+    .o_camila_pestana_nombre { font-family: "Montserrat", system-ui, sans-serif; font-weight: 600; overflow-wrap: anywhere; }
+    .o_camila_pestana_detalle { color: var(--cm-tinta-2); font-size: .8rem; }
+
+    .o_camila_vacio {
+        padding: 28px 24px;
+        background: var(--cm-superficie);
+        border: 1px solid var(--cm-linea);
+        border-radius: 16px;
+        text-align: center;
+
+        h2 { font-family: "Montserrat", system-ui, sans-serif; font-weight: 700; letter-spacing: -0.03em; color: var(--cm-tinta); font-size: 1.35rem; }
+        p { max-width: 40rem; margin: 8px auto 16px; color: var(--cm-tinta-2); }
+    }
+
+    // El constructor del correo, a todo el ancho.
+    .o_camila_constructor,
+    .o_camila_historial {
+        background: var(--cm-superficie);
+        border: 1px solid var(--cm-linea);
+        border-radius: 16px;
+        box-shadow: var(--cm-sombra);
+        padding: 16px 20px;
+        min-width: 0;
+    }
+
+    .o_camila_bloque {
+        padding: 14px 0;
+        border-top: 1px solid var(--cm-linea);
+        &:first-of-type { border-top: 0; }
+    }
+
+    .o_camila_estado {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .o_camila_badge { background: var(--cm-salvia-claro); color: var(--cm-tinta); }
+    .o_camila_nombre { font-family: "Montserrat", system-ui, sans-serif; font-weight: 600; color: var(--cm-tinta); }
+    .o_camila_detalle { color: var(--cm-tinta-2); font-size: .9rem; }
+
+    .o_camila_idea { .o_camila_etiqueta { margin-top: 0; } }
+    .o_camila_ia_botones {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+        .btn { white-space: normal; }
+    }
+    .o_camila_ia_escribiendo {
+        margin-top: 10px;
+        padding: 8px 12px;
+        border-radius: 14px;
+        background: var(--cm-salvia-claro);
+        color: var(--cm-tinta);
+        font-weight: 600;
+    }
+    .o_camila_ia_error { margin: 10px 0 0; }
+    // Junto al producto que se está escribiendo (el aviso no queda arriba, fuera de la vista).
+    .o_camila_producto {
+        .o_camila_ia_escribiendo, .o_camila_ia_error { margin: 8px 0; font-size: .9rem; }
+    }
+
+    .o_camila_subtitulo {
+        margin: 0 0 10px;
+        font-family: "Montserrat", system-ui, sans-serif;
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        color: var(--cm-tinta);
+        small { font-family: "Montserrat", system-ui, sans-serif; font-size: .8rem; font-weight: 400; letter-spacing: 0; color: var(--cm-tinta-2); }
+    }
+
+    .o_camila_sin_productos { color: var(--cm-tinta-2); }
+
+    // Los productos: tarjetas en rejilla (dos o tres por fila en la computadora, una en el celular).
+    .o_camila_productos {
+        list-style: none;
+        margin: 0 0 12px;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 12px;
+    }
+
+    .o_camila_producto {
+        display: flex;
+        gap: 12px;
+        padding: 12px;
+        border: 1px solid var(--cm-linea);
+        border-radius: 16px;
+        min-width: 0;
+        background: var(--cm-crema);
+    }
+
+    .o_camila_producto_foto { flex: 0 0 auto; }
+    .o_camila_miniatura {
+        display: block;
+        width: 84px;
+        height: 84px;
+        object-fit: cover;
+        border-radius: 12px;
+        background: var(--cm-superficie);
+    }
+
+    .o_camila_producto_cuerpo { flex: 1 1 auto; min-width: 0; }
+
+    .o_camila_producto_cabeza {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 4px 12px;
+    }
+
+    .o_camila_producto_nombre { color: var(--cm-tinta); overflow-wrap: anywhere; }
+    .o_camila_producto_precio { color: var(--cm-naranja-texto); font-weight: 700; white-space: nowrap; }
+    .o_camila_producto_datos {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 8px;
+        margin: 2px 0 6px;
+    }
+    .o_camila_existencias { color: var(--cm-tinta-2); font-size: .8rem; }
+
+    .o_camila_grupo {
+        display: inline-block;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: var(--cm-salvia-claro);
+        color: var(--cm-tinta);
+        font-size: .75rem;
+    }
+
+    .o_camila_producto_botones {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 2px 4px;
+        margin-top: 6px;
+        .btn-link { padding-left: 6px; padding-right: 6px; }
+    }
+
+    .o_camila_chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .o_camila_interruptores {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 8px 16px;
+    }
+    .o_camila_interruptor {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        min-width: 0;
+        min-height: 44px;
+        color: var(--cm-tinta);
+        cursor: pointer;
+        .form-check-input { flex: 0 0 auto; margin-top: 3px; }
+        span { overflow-wrap: anywhere; }
+    }
+
+    .o_camila_publico_total {
+        margin: 12px 0 4px;
+        font-size: 1.05rem;
+        color: var(--cm-tinta);
+        strong { font-family: "Montserrat", system-ui, sans-serif; font-weight: 700; font-size: 1.3rem; color: var(--cm-tinta); }
+    }
+
+    .o_camila_fuera {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--cm-tinta-2);
+        font-size: .9rem;
+    }
+
+    .o_camila_acciones {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 6px;
+        padding-top: 14px;
+        border-top: 1px solid var(--cm-linea);
+
+        .btn { white-space: normal; }
+    }
+
+    .o_camila_prueba_hecha,
+    .o_camila_ayuda,
+    .o_camila_tabla_nota,
+    .o_camila_historial_vacio {
+        margin: 10px 0 0;
+        color: var(--cm-tinta-2);
+        font-size: .88rem;
+    }
+
+    .o_camila_historial {
+        margin-top: 20px;
+
+        h2 { font-family: "Montserrat", system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; font-size: 1.15rem; color: var(--cm-tinta); }
+    }
+
+    // Lo que dijo Resend del remitente de las campañas: plano, en la superficie con el filete naranja a la izquierda y la
+    // letra navy.
+    .o_camila_aviso_remitente {
+        margin-bottom: 16px;
+        padding: 12px 16px;
+        background: var(--cm-superficie);
+        border: 1px solid var(--cm-linea);
+        border-left: 4px solid var(--cm-naranja-filo);
+        border-radius: 14px;
+        color: var(--cm-tinta);
+        overflow-wrap: anywhere;
+
+        .o_camila_aviso_titulo { display: block; font-size: 1rem; }
+        .o_camila_aviso_detalle { margin: 6px 0 0; color: var(--cm-tinta-2); }
+        .o_camila_aviso_pasos_titulo { margin: 8px 0 2px; font-weight: 600; }
+        .o_camila_aviso_pasos { margin: 0; padding-left: 22px; color: var(--cm-tinta); li + li { margin-top: 2px; } }
+        .o_camila_aviso_revisar { padding-left: 0; margin-top: 6px; color: var(--cm-naranja-texto); font-weight: 600; }
+    }
+
+    // El remitente de las campañas (lo cambian Gerencia y los administradores).
+    .o_camila_remitente {
+        margin-top: 20px;
+        background: var(--cm-superficie);
+        border: 1px solid var(--cm-linea);
+        border-radius: 16px;
+        padding: 16px;
+        overflow-wrap: anywhere;
+
+        h2 { font-family: "Montserrat", system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; font-size: 1.05rem; color: var(--cm-tinta); }
+        p { margin: 6px 0 10px; color: var(--cm-tinta-2); }
+        .o_camila_remitente_actual { color: var(--cm-tinta); }
+        .o_camila_remitente_fila { display: flex; flex-wrap: wrap; gap: 8px; }
+        .o_camila_remitente_correo { flex: 1 1 260px; min-width: 0; max-width: 460px; }
+        .o_camila_remitente_nota { color: var(--cm-tinta); }
+        .o_camila_remitente_revision { margin-bottom: 0; font-size: .88rem; }
+        .o_camila_remitente_revisar { padding: 0 0 0 4px; vertical-align: baseline; }
+    }
+
+    // El interruptor de Gerencia de la línea «Sí, quiero» del pie de la factura y la bienvenida.
+    .o_camila_pie_ajuste {
+        margin-top: 20px;
+        background: var(--cm-superficie);
+        border: 1px solid var(--cm-linea);
+        border-radius: 16px;
+        padding: 16px;
+
+        h2 { font-family: "Montserrat", system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; font-size: 1.05rem; color: var(--cm-tinta); }
+        p { margin: 6px 0 10px; color: var(--cm-tinta-2); }
+    }
+
+    .o_camila_tabla_envoltura { overflow-x: auto; }
+    .o_camila_tabla { margin: 0; min-width: 560px; }
+    .o_camila_tabla_asunto { color: var(--cm-tinta-2); font-size: .85rem; }
+
+    @media (max-width: 767.98px) {
+        .o_camila_encabezado { padding: 14px 16px; }
+        .o_camila_nueva { width: 100%; }
+        .o_camila_cuerpo { padding: 16px 16px 32px; }
+        .o_camila_cifras { grid-template-columns: minmax(0, 1fr); }
+        .o_camila_constructor,
+        .o_camila_historial { padding: 12px; }
+        .o_camila_productos { grid-template-columns: minmax(0, 1fr); }
+        .o_camila_miniatura { width: 64px; height: 64px; }
+        .o_camila_acciones .btn { flex: 1 1 100%; }
+    }
+}
+
+// Los diálogos de Camila (Previsualizar, cambiar o agregar un producto, Nueva campaña): el cuerpo baja con su propio
+// scroll y la ventana nunca pasa del alto de la pantalla (la misma regla del scroll de las pantallas).
+.o_camila_dialogo.modal-content {
+    max-height: calc(100dvh - 2rem);
+    .modal-body {
+        overflow-y: auto;
+        overflow-x: hidden;
+        min-height: 0;
+        > * { flex-shrink: 0; }
+    }
+}
+
+.o_camila_dialogo {
+    .o_camila_previa_cabecera {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .o_camila_previa_textos { min-width: 0; overflow-wrap: anywhere; }
+
+    .o_camila_asunto_previa {
+        margin: 0;
+        color: var(--cm-tinta);
+        font-size: 1.05rem;
+        span { color: var(--cm-tinta-2); }
+    }
+
+    .o_camila_de_previa {
+        margin: 2px 0 0;
+        color: var(--cm-tinta-2);
+        font-size: .88rem;
+    }
+
+    .o_camila_marco {
+        margin: 0 auto;
+        border: 1px solid var(--cm-linea);
+        border-radius: 24px;
+        overflow: hidden;
+        background: var(--cm-crema);
+        max-width: 100%;
+    }
+
+    .o_camila_marco_celular { width: 390px; }
+    .o_camila_marco_computadora { width: 100%; }
+
+    .o_camila_previa_correo {
+        display: block;
+        width: 100%;
+        border: 0;
+    }
+
+    // El buscador de productos: como «Armar combo».
+    .o_camila_buscar { margin-bottom: 10px; }
+    .o_camila_filtros {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        .o_camila_filtro_categoria { width: auto; max-width: 100%; min-height: 44px; font-size: 1rem; border-color: var(--cm-control); border-radius: 14px; }
+    }
+    .o_camila_nota_sugeridos { color: var(--cm-tinta-2); font-size: .9rem; }
+    .o_camila_busqueda_vacia { color: var(--cm-tinta-2); }
+
+    .o_camila_rejilla {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+        gap: 12px;
+    }
+
+    .o_camila_tarjeta {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+        min-width: 0;
+        padding: 10px;
+        text-align: left;
+        color: inherit;
+        background: var(--cm-superficie);
+        border: 1px solid var(--cm-linea);
+        border-radius: 16px;
+        cursor: pointer;
+        &:hover:not(:disabled) { border-color: var(--cm-naranja-filo); }
+        &:focus-visible { border-color: var(--cm-naranja-filo); outline: 2px solid var(--cm-tinta); outline-offset: 2px; }
+        &:disabled { cursor: default; }
+        &.o_no_se_puede, &.o_ya_esta { background: var(--cm-crema); opacity: .8; }
+    }
+    .o_camila_tarjeta_foto {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        aspect-ratio: 1.333;
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--cm-crema);
+        img { width: 100%; height: 100%; object-fit: contain; }
+    }
+    .o_camila_tarjeta_nombre { font-weight: 600; color: var(--cm-tinta); overflow-wrap: anywhere; }
+    .o_camila_tarjeta_categoria { color: var(--cm-tinta-2); font-size: .75rem; }
+    .o_camila_tarjeta_precio { color: var(--cm-naranja-texto); font-weight: 700; }
+    .o_camila_tarjeta_existencias { color: var(--cm-tinta-2); font-size: .8rem; &.o_agotado { color: #B42318; font-weight: 600; } }
+    .o_camila_tarjeta_motivo { color: #B42318; font-size: .8rem; font-weight: 600; }
+
+    // «Nueva campaña».
+    .o_camila_nueva_ayuda { color: var(--cm-tinta-2); }
+    .o_camila_temas {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 8px;
+        margin: 12px 0;
+    }
+    .o_camila_tema {
+        min-height: 48px;
+        padding: 10px 14px;
+        text-align: left;
+        background: var(--cm-crema);
+        border: 1px solid var(--cm-control);
+        border-radius: 14px;
+        color: var(--cm-tinta);
+        font-weight: 600;
+        &.o_activa { background: var(--cm-salvia); border-color: var(--cm-salvia-filo); color: var(--cm-en-salvia); }
+        &:focus-visible { outline: 2px solid var(--cm-tinta); outline-offset: 2px; box-shadow: none; }
+    }
+
+    @media (max-width: 767.98px) {
+        .o_camila_marco_celular { width: 100%; }
+        .o_camila_rejilla { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    }
+}
+
+// El tablero de Marketing: «Crear campaña con estos» debajo del título de cada sección.
+.o_dcasa_mk_seccion .o_camila_desde_marketing { margin: 0 0 8px; white-space: normal; }
+
+// Etapa 1b: «¿El cliente quiere recibir novedades por correo?» al confirmar o pagar. Sin la X de cerrar (se contesta
+// «Sí» o «No») y con la regla del scroll: el cuerpo baja con su propio scroll y la ventana no pasa del alto de la
+// pantalla (en el celular, pantalla completa).
+.modal-content:has(.o_dcasa_camila_pregunta) {
+    max-height: calc(100dvh - 2rem);
+    .modal-header .btn-close, .modal-header .oi-arrow-left { display: none; }
+    .modal-body {
+        overflow-y: auto;
+        overflow-x: hidden;
+        min-height: 0;
+    }
+}
+.o_dcasa_camila_pregunta {
+    .o_camila_pregunta_titulo {
+        font-family: "Montserrat", system-ui, sans-serif;
+        font-size: 1.25rem;
+        font-weight: 700;
+        line-height: 1.15;
+        letter-spacing: -0.03em;
+        color: var(--cm-tinta);
+        margin-bottom: 10px;
+    }
+    .o_camila_pregunta_ayuda { color: var(--cm-tinta); }
+    .o_camila_pregunta_paso_correo { margin-top: 8px; }
+    .o_camila_pregunta_correo { max-width: 100%; }
+}
+
+// La ficha del cliente: quién agregó el correo o anotó el «sí» o el «no» va dentro de la frase (en el celular, el campo
+// de usuario de Odoo se iba a una línea propia y partía el texto).
+.o_dcasa_promos .o_field_many2one.oe_inline,
+.o_dcasa_promos .o_field_many2one.oe_inline * {
+    display: inline !important;
+    width: auto !important;
+    min-width: 0 !important;
+}
+
+// La casilla del cuadro de la venta, en el navy de la marca (no el verde de Odoo): el interruptor encendido se distingue
+// del apagado con 13 a 1 frente al botón blanco que corre (el naranja y el verde son de relleno y no llegan a 3:1).
+.o_dcasa_camila_pregunta .o_field_boolean_toggle .form-check-input:checked {
+    background-color: #262626;
+    border-color: #262626;
+}

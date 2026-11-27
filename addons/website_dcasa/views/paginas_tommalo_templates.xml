@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Secciones genéricas de Tommalo. Las páginas de marketing de la plantilla de origen (beneficios, historia, tips,
+         cómo comprar, preguntas frecuentes, testimonios, sellos) se quitaron: Tommalo las escribe cuando decida su
+         mensaje (docs/PENDIENTES_DEL_CLIENTE.md). -->
+
+    <!-- La banda final, genérica: «Ver el catálogo». Cierra la portada. El titular es texto editable por el sitio. -->
+    <template id="seccion_cta_final" name="Tommalo: banda final">
+        <section class="o_dcasa_cta_final" aria-labelledby="dcasa-cta-final-titulo">
+            <div class="o_dcasa_container o_dcasa_cta_final_inner" data-anim-cascada="">
+                <h2 id="dcasa-cta-final-titulo" class="o_dcasa_cta_final_titulo">Explora el catálogo de Tommalo.</h2>
+                <div><a href="/shop" class="btn btn-primary btn-lg o_dcasa_btn_hero">Ver el catálogo</a></div>
+            </div>
+        </section>
+    </template>
+</odoo>

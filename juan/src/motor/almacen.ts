@@ -1,0 +1,549 @@
+// Memoria de trabajo de UNA conversación, en el SQLite del propio Durable Object.
+// Odoo guarda el historial permanente; aquí solo vive lo necesario para contestar bien:
+// los últimos mensajes, la ráfaga pendiente, una cola de escrituras a Odoo y archivos temporales.
+
+import { createHash } from "node:crypto";
+import { bytesDeBlob, type Sql } from "./sql";
+
+const ESQUEMA = [
+  "CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)",
+  `CREATE TABLE IF NOT EXISTS mensajes (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     id_mensaje TEXT UNIQUE,
+     rol TEXT NOT NULL,
+     texto TEXT NOT NULL,
+     adjuntos TEXT,
+     ts INTEGER NOT NULL,
+     pendiente INTEGER NOT NULL DEFAULT 0,
+     modelo TEXT,
+     contexto TEXT
+   )`,
+  "CREATE INDEX IF NOT EXISTS mensajes_ts ON mensajes(ts)",
+  `CREATE TABLE IF NOT EXISTS cola (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     tipo TEXT NOT NULL,
+     cuerpo TEXT NOT NULL,
+     intentos INTEGER NOT NULL DEFAULT 0,
+     proximo INTEGER NOT NULL,
+     creado INTEGER NOT NULL
+   )`,
+  `CREATE TABLE IF NOT EXISTS medios (
+     id TEXT NOT NULL,
+     parte INTEGER NOT NULL,
+     mime TEXT,
+     nombre TEXT,
+     datos BLOB,
+     creado INTEGER NOT NULL,
+     PRIMARY KEY (id, parte)
+   )`,
+  "CREATE TABLE IF NOT EXISTS fotos (codigo TEXT PRIMARY KEY, url TEXT NOT NULL, nombre TEXT, ts INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS enviados (id TEXT PRIMARY KEY, ts INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS seguimientos (clave TEXT PRIMARY KEY, ts INTEGER NOT NULL)",
+  // Mensajes de Meta guardados tal cual llegaron, ANTES de contestarle 200 (`guardarAntes`). Se borran cuando `ingest` los atiende;
+  // si el Worker se cae antes, la alarma los atiende aquí mismo (`proximo`).
+  `CREATE TABLE IF NOT EXISTS bandeja (
+     id_mensaje TEXT PRIMARY KEY,
+     cuerpo TEXT NOT NULL,
+     intentos INTEGER NOT NULL DEFAULT 0,
+     proximo INTEGER NOT NULL,
+     creado INTEGER NOT NULL
+   )`,
+  // De todo lo que entró por la bandeja queda solo una huella (SHA-256) del id, sin contenido ni teléfono, 8 días: un reintento de
+  // Meta que llega tarde (después de un eco, de un canal apagado o de «Borrar mis datos», que no dejan fila en `mensajes`) se
+  // reconoce y no se atiende como nuevo. El id crudo NO se guarda: el `wamid` de WhatsApp lleva el celular del cliente adentro.
+  "CREATE TABLE IF NOT EXISTS recibidos_huella (huella TEXT PRIMARY KEY, ts INTEGER NOT NULL)",
+  // La primera versión (nunca desplegada) guardaba el id crudo en `recibidos`: si un objeto la tiene, se borra.
+  "DROP TABLE IF EXISTS recibidos",
+  // Los comentarios de Instagram y Facebook de esta persona (2026-11-12): el comentario tal cual llegó y en qué va (clasificado,
+  // respuesta privada, pública, aviso en Odoo). `proximo` = cuándo seguir (null = terminado). Se guarda 8 días (más que los 7 en que
+  // Meta deja contestar): así un aviso repetido de Meta nunca se contesta dos veces.
+  `CREATE TABLE IF NOT EXISTS comentarios (
+     id TEXT PRIMARY KEY,
+     cuerpo TEXT NOT NULL,
+     estado TEXT NOT NULL,
+     intentos INTEGER NOT NULL DEFAULT 0,
+     proximo INTEGER,
+     creado INTEGER NOT NULL
+   )`,
+];
+
+export function crearEsquema(sql: Sql): void {
+  for (const s of ESQUEMA) sql.correr(s);
+  // 2026-11-07: lo que el cliente citó o si reenvió el mensaje (`ContextoLocal`, JSON). Las conversaciones que ya existían tienen la
+  // tabla sin la columna.
+  asegurarColumna(sql, "mensajes", "contexto", "TEXT");
+}
+
+/** Agrega una columna a una tabla que ya existía (CREATE TABLE IF NOT EXISTS no la toca). Idempotente. */
+function asegurarColumna(sql: Sql, tabla: string, columna: string, tipo: string): void {
+  try {
+    if (sql.todos<{ name: string }>(`PRAGMA table_info(${tabla})`).some((c) => c.name === columna)) return;
+  } catch {
+    /* sin PRAGMA: se intenta agregar y, si ya estaba, no pasa nada */
+  }
+  try {
+    sql.correr(`ALTER TABLE ${tabla} ADD COLUMN ${columna} ${tipo}`);
+  } catch {
+    /* ya existía */
+  }
+}
+
+export type Rol = "cliente" | "bot" | "vendedora";
+
+export interface FilaMensaje {
+  id: number;
+  id_mensaje: string | null;
+  rol: Rol;
+  texto: string;
+  adjuntos: string | null;
+  ts: number;
+  pendiente: number;
+  modelo: string | null;
+  /** Lo que el cliente citó o si lo reenvió (`ContextoLocal` como JSON), o null. */
+  contexto?: string | null;
+}
+
+/**
+ * Lo que el cliente citó, como lo recuerda la conversación: quién lo dijo y qué decía (null = no se sabe). Si el citado está en esta
+ * misma memoria (`enMemoria`), NO se guarda una copia: se lee de su fila al armar el prompt, así un PIN tapado después o un mensaje que
+ * se purga no sobreviven en la cita (revisión 2026-11-07). `texto` solo guarda lo que vino de afuera (Telegram, o lo que Odoo recordaba).
+ */
+export interface CitaLocal {
+  id: string;
+  autor: "cliente" | "tienda" | null;
+  texto: string | null;
+  enMemoria?: boolean;
+}
+
+/**
+ * La ubicación de entrega que trajo un mensaje, como se recuerda: SIN coordenadas (esas solo viajan a Odoo; docs/UBICACION.md).
+ * «pendiente»: todavía no se le mandó a Odoo (el punto espera en la memoria del objeto, nunca aquí). «guardada»: Odoo la guardó (con la
+ * zona y el envío cotizado con ese punto, si los dio). «fuera_de_panama» / «invalida»: Odoo dijo que el punto no sirve. «no_guardada»:
+ * Odoo no contestó, o el punto se perdió (la copia de rescate no lo guarda): se le pide otra vez.
+ */
+export interface UbicacionLocal {
+  origen: "whatsapp" | "enlace";
+  estado: "pendiente" | "guardada" | "fuera_de_panama" | "invalida" | "no_guardada";
+  zona?: string;
+  /** El resultado de `cotizar_envio` con ese punto, como lo devolvió Odoo y sin coordenadas. */
+  envio?: unknown;
+}
+
+/** Lo que acompaña a un mensaje del cliente y le da sentido («este», un reenviado, un comentario en una publicación, su ubicación). */
+export interface ContextoLocal {
+  cita?: CitaLocal;
+  reenviado?: "una" | "muchas";
+  /** No lo escribió por mensaje: es un comentario en una publicación (y lo que dice la publicación, si se pudo leer). */
+  comentario?: { red: "facebook" | "instagram"; publicacion?: string | null };
+  /** Compartió su ubicación de entrega (o un enlace de mapa): qué pasó con ella, sin coordenadas. */
+  ubicacion?: UbicacionLocal;
+}
+
+/** Valores sueltos de la conversación (identidad, estado, pausas, contadores). */
+export class Kv {
+  constructor(private readonly sql: Sql) {}
+
+  texto(k: string): string | null {
+    return this.sql.uno<{ v: string | null }>("SELECT v FROM kv WHERE k = ?", k)?.v ?? null;
+  }
+  numero(k: string): number | null {
+    const v = this.texto(k);
+    if (v === null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  poner(k: string, v: string | number | boolean | null): void {
+    if (v === null) {
+      this.sql.correr("DELETE FROM kv WHERE k = ?", k);
+      return;
+    }
+    this.sql.correr("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", k, typeof v === "boolean" ? (v ? "1" : "0") : String(v));
+  }
+  bandera(k: string): boolean {
+    return this.texto(k) === "1";
+  }
+  sumar(k: string, delta = 1): number {
+    const n = (this.numero(k) ?? 0) + delta;
+    this.poner(k, n);
+    return n;
+  }
+}
+
+export class Mensajes {
+  constructor(private readonly sql: Sql) {}
+
+  existe(idMensaje: string): boolean {
+    return !!this.sql.uno("SELECT 1 AS x FROM mensajes WHERE id_mensaje = ?", idMensaje);
+  }
+
+  insertar(m: { id_mensaje: string | null; rol: Rol; texto: string; adjuntos?: unknown[]; ts: number; pendiente?: boolean; modelo?: string; contexto?: ContextoLocal | null }): number {
+    this.sql.correr(
+      "INSERT INTO mensajes (id_mensaje, rol, texto, adjuntos, ts, pendiente, modelo, contexto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      m.id_mensaje,
+      m.rol,
+      m.texto,
+      m.adjuntos?.length ? JSON.stringify(m.adjuntos) : null,
+      m.ts,
+      m.pendiente ? 1 : 0,
+      m.modelo ?? null,
+      m.contexto && (m.contexto.cita || m.contexto.reenviado || m.contexto.comentario || m.contexto.ubicacion) ? JSON.stringify(m.contexto) : null,
+    );
+    return this.sql.uno<{ id: number }>("SELECT last_insert_rowid() AS id")!.id;
+  }
+
+  /** Un mensaje por el id que le dio el canal (para saber qué citó el cliente). */
+  buscar(idMensaje: string): FilaMensaje | null {
+    return this.sql.uno<FilaMensaje>("SELECT * FROM mensajes WHERE id_mensaje = ?", idMensaje) ?? null;
+  }
+
+  /** Completa una cita que no se sabía qué decía (Odoo sí lo sabía). No pisa una que ya tiene texto. */
+  completarCita(idMensaje: string, cita: CitaLocal): void {
+    const fila = this.buscar(idMensaje);
+    if (!fila?.contexto) return;
+    let actual: ContextoLocal;
+    try {
+      actual = JSON.parse(fila.contexto) as ContextoLocal;
+    } catch {
+      return;
+    }
+    if (!actual.cita || actual.cita.texto || actual.cita.enMemoria || actual.cita.id !== cita.id) return;
+    this.sql.correr("UPDATE mensajes SET contexto = ? WHERE id = ?", JSON.stringify({ ...actual, cita }), fila.id);
+  }
+
+  /** Lo que pasó con la ubicación de un mensaje (sin coordenadas). Si el mensaje ya no está («Borrar mis datos»), no hace nada. */
+  ponerUbicacion(idMensaje: string, ubicacion: UbicacionLocal): void {
+    const fila = this.buscar(idMensaje);
+    if (!fila) return;
+    let actual: ContextoLocal = {};
+    try {
+      actual = fila.contexto ? (JSON.parse(fila.contexto) as ContextoLocal) : {};
+    } catch {
+      /* un contexto ilegible se reemplaza */
+    }
+    this.sql.correr("UPDATE mensajes SET contexto = ? WHERE id = ?", JSON.stringify({ ...actual, ubicacion }), fila.id);
+  }
+
+  /** La ubicación de un mensaje como se recuerda, o null. */
+  ubicacionDe(idMensaje: string): UbicacionLocal | null {
+    const fila = this.buscar(idMensaje);
+    if (!fila?.contexto) return null;
+    try {
+      return (JSON.parse(fila.contexto) as ContextoLocal).ubicacion ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  pendientes(): FilaMensaje[] {
+    return this.sql.todos<FilaMensaje>("SELECT * FROM mensajes WHERE pendiente = 1 ORDER BY id");
+  }
+
+  marcarPendientes(ids: number[], valor: boolean): void {
+    for (const id of ids) this.sql.correr("UPDATE mensajes SET pendiente = ? WHERE id = ?", valor ? 1 : 0, id);
+  }
+
+  limpiarPendientes(): void {
+    this.sql.correr("UPDATE mensajes SET pendiente = 0 WHERE pendiente = 1");
+  }
+
+  /** Los últimos `n`, en orden cronológico. */
+  ultimos(n: number): FilaMensaje[] {
+    return this.sql.todos<FilaMensaje>("SELECT * FROM mensajes ORDER BY id DESC LIMIT ?", n).reverse();
+  }
+
+  /** Mensajes del cliente en las últimas 24 h (para el tope diario). */
+  delClienteDesde(desde: number): number {
+    return this.sql.uno<{ n: number }>("SELECT COUNT(*) AS n FROM mensajes WHERE rol = 'cliente' AND ts > ?", desde)?.n ?? 0;
+  }
+
+  /** Los textos de los últimos `n` mensajes del cliente (para detectar repetidos). */
+  textosDelCliente(n: number): string[] {
+    return this.sql.todos<{ texto: string }>("SELECT texto FROM mensajes WHERE rol = 'cliente' ORDER BY id DESC LIMIT ?", n).map((f) => f.texto);
+  }
+
+  /**
+   * Los últimos `n` mensajes del cliente con el id de lo que citaba cada uno (null = no citaba nada), del más nuevo al más viejo. Para
+   * el anti-spam: «este» citando tres burbujas distintas son tres preguntas, no la misma tres veces (revisión 2026-11-07).
+   */
+  recientesDelCliente(n: number): { texto: string; citaId: string | null }[] {
+    return this.sql.todos<{ texto: string; contexto: string | null }>("SELECT texto, contexto FROM mensajes WHERE rol = 'cliente' ORDER BY id DESC LIMIT ?", n).map((f) => {
+      let citaId: string | null = null;
+      if (f.contexto) {
+        try {
+          citaId = (JSON.parse(f.contexto) as ContextoLocal).cita?.id ?? null;
+        } catch {
+          citaId = null;
+        }
+      }
+      return { texto: f.texto, citaId };
+    });
+  }
+
+  /** Lo que dijeron el bot o una vendedora hace poco (para reconocer el eco de un mensaje propio). */
+  salientesDesde(desde: number): string[] {
+    return this.sql
+      .todos<{ texto: string }>("SELECT texto FROM mensajes WHERE rol IN ('bot', 'vendedora') AND ts > ?", desde)
+      .map((f) => f.texto);
+  }
+
+  hayDelNegocio(): boolean {
+    return !!this.sql.uno("SELECT 1 AS x FROM mensajes WHERE rol IN ('bot', 'vendedora') LIMIT 1");
+  }
+
+  redactar(secreto: string, marca: string): void {
+    if (secreto.length < 4) return;
+    this.sql.correr("UPDATE mensajes SET texto = REPLACE(texto, ?, ?) WHERE rol = 'cliente' AND instr(texto, ?) > 0", secreto, marca, secreto);
+    // Lo citado que vino de afuera (el texto que manda Telegram, o lo que Odoo recordaba) también puede llevarlo (revisión 2026-11-07).
+    // Se reemplaza dentro del texto citado, no en el JSON crudo: un «secreto» con comillas no puede romper la fila.
+    const filas = this.sql.todos<{ id: number; contexto: string }>("SELECT id, contexto FROM mensajes WHERE contexto IS NOT NULL AND instr(contexto, ?) > 0", secreto);
+    for (const f of filas) {
+      let c: ContextoLocal;
+      try {
+        c = JSON.parse(f.contexto) as ContextoLocal;
+      } catch {
+        continue;
+      }
+      if (!c.cita?.texto?.includes(secreto)) continue;
+      c.cita = { ...c.cita, texto: c.cita.texto.split(secreto).join(marca) };
+      this.sql.correr("UPDATE mensajes SET contexto = ? WHERE id = ?", JSON.stringify(c), f.id);
+    }
+  }
+
+  purgar(antesDe: number, conservar: number): void {
+    this.sql.correr(
+      "DELETE FROM mensajes WHERE ts < ? AND id NOT IN (SELECT id FROM mensajes ORDER BY id DESC LIMIT ?)",
+      antesDe,
+      conservar,
+    );
+  }
+}
+
+export interface FilaCola {
+  id: number;
+  /** «comentario»: el aviso de un comentario de Instagram o Facebook (`POST /comentario`, idempotente). */
+  tipo: "mensaje" | "herramienta" | "comentario";
+  cuerpo: string;
+  intentos: number;
+  proximo: number;
+  creado: number;
+}
+
+export class Cola {
+  constructor(private readonly sql: Sql) {}
+
+  /** `proximo`: cuándo entregarla (por defecto, ya). */
+  agregar(tipo: FilaCola["tipo"], cuerpo: unknown, ahora: number, proximo = ahora): void {
+    this.sql.correr("INSERT INTO cola (tipo, cuerpo, intentos, proximo, creado) VALUES (?, ?, 0, ?, ?)", tipo, JSON.stringify(cuerpo), proximo, ahora);
+  }
+  /** Quita de la cola (si todavía no llegó a Odoo) el mensaje de una vendedora con ese id del canal. Devuelve cuántos quitó. */
+  quitarMensajeDeVendedora(idMensaje: string): number {
+    let quitados = 0;
+    for (const f of this.sql.todos<{ id: number; cuerpo: string }>("SELECT id, cuerpo FROM cola WHERE tipo = 'mensaje'")) {
+      let c: { id_mensaje?: unknown; autor?: unknown } = {};
+      try {
+        c = JSON.parse(f.cuerpo) as typeof c;
+      } catch {
+        continue;
+      }
+      if (c.id_mensaje === idMensaje && c.autor === "vendedora") {
+        this.sql.correr("DELETE FROM cola WHERE id = ?", f.id);
+        quitados++;
+      }
+    }
+    return quitados;
+  }
+  vencidas(ahora: number): FilaCola[] {
+    return this.sql.todos<FilaCola>("SELECT * FROM cola WHERE proximo <= ? ORDER BY id", ahora);
+  }
+  proxima(): number | null {
+    return this.sql.uno<{ p: number | null }>("SELECT MIN(proximo) AS p FROM cola")?.p ?? null;
+  }
+  borrar(id: number): void {
+    this.sql.correr("DELETE FROM cola WHERE id = ?", id);
+  }
+  reintentar(id: number, proximo: number): void {
+    this.sql.correr("UPDATE cola SET intentos = intentos + 1, proximo = ? WHERE id = ?", proximo, id);
+  }
+  /** Aplaza sin gastar un intento (p. ej. mientras falta el token de Odoo). */
+  posponer(id: number, proximo: number): void {
+    this.sql.correr("UPDATE cola SET proximo = ? WHERE id = ?", proximo, id);
+  }
+  /** Borra lo viejo de ese tipo (sin tipo, de todos). */
+  purgar(antesDe: number, tipo?: FilaCola["tipo"]): void {
+    if (tipo) this.sql.correr("DELETE FROM cola WHERE creado < ? AND tipo = ?", antesDe, tipo);
+    else this.sql.correr("DELETE FROM cola WHERE creado < ?", antesDe);
+  }
+  /** ¿Queda algo que ya falló tantas veces seguidas que pasó al reintento lento? */
+  hayEstancadas(intentos: number): boolean {
+    return !!this.sql.uno("SELECT 1 AS x FROM cola WHERE intentos >= ? LIMIT 1", intentos);
+  }
+}
+
+export interface FilaBandeja {
+  id_mensaje: string;
+  cuerpo: string;
+  intentos: number;
+  proximo: number;
+  creado: number;
+}
+
+/** Lo recibido de Meta que todavía no pasó por `ingest` (ver `MotorConversacion.guardarRecibido`). */
+export class Bandeja {
+  constructor(private readonly sql: Sql) {}
+
+  existe(idMensaje: string): boolean {
+    return !!this.sql.uno("SELECT 1 AS x FROM bandeja WHERE id_mensaje = ?", idMensaje);
+  }
+  guardar(idMensaje: string, cuerpo: string, proximo: number, ahora: number): void {
+    this.sql.correr("INSERT OR IGNORE INTO bandeja (id_mensaje, cuerpo, intentos, proximo, creado) VALUES (?, ?, 0, ?, ?)", idMensaje, cuerpo, proximo, ahora);
+  }
+  vencidas(ahora: number): FilaBandeja[] {
+    return this.sql.todos<FilaBandeja>("SELECT * FROM bandeja WHERE proximo <= ? ORDER BY creado, rowid", ahora);
+  }
+  /** Todas, en el orden en que llegaron. */
+  todas(): FilaBandeja[] {
+    return this.sql.todos<FilaBandeja>("SELECT * FROM bandeja ORDER BY creado, rowid");
+  }
+  proxima(): number | null {
+    return this.sql.uno<{ p: number | null }>("SELECT MIN(proximo) AS p FROM bandeja")?.p ?? null;
+  }
+  cuantas(): number {
+    return this.sql.uno<{ n: number }>("SELECT COUNT(*) AS n FROM bandeja")?.n ?? 0;
+  }
+  borrar(idMensaje: string): void {
+    this.sql.correr("DELETE FROM bandeja WHERE id_mensaje = ?", idMensaje);
+  }
+  /** Para más tarde; `fallo` = cuenta como un intento (la espera crece). */
+  posponer(idMensaje: string, proximo: number, fallo: boolean): void {
+    this.sql.correr("UPDATE bandeja SET proximo = ?, intentos = intentos + ? WHERE id_mensaje = ?", proximo, fallo ? 1 : 0, idMensaje);
+  }
+  purgar(antesDe: number): void {
+    this.sql.correr("DELETE FROM bandeja WHERE creado < ?", antesDe);
+  }
+}
+
+/** La huella (SHA-256 en hex) de un `id_mensaje`: reconoce el mismo id sin guardarlo. Síncrona (node:crypto, `nodejs_compat`). */
+export function huellaDeId(idMensaje: string): string {
+  return createHash("sha256").update(idMensaje).digest("hex");
+}
+
+/** Lo que entró por la bandeja: solo la huella del id y cuándo (ver el esquema). */
+export class Recibidos {
+  constructor(private readonly sql: Sql) {}
+
+  existe(idMensaje: string): boolean {
+    return !!this.sql.uno("SELECT 1 AS x FROM recibidos_huella WHERE huella = ?", huellaDeId(idMensaje));
+  }
+  anotar(idMensaje: string, ahora: number): void {
+    this.sql.correr("INSERT OR IGNORE INTO recibidos_huella (huella, ts) VALUES (?, ?)", huellaDeId(idMensaje), ahora);
+  }
+  purgar(antesDe: number): void {
+    this.sql.correr("DELETE FROM recibidos_huella WHERE ts < ?", antesDe);
+  }
+}
+
+export interface FilaComentario {
+  id: string;
+  cuerpo: string;
+  estado: string;
+  intentos: number;
+  proximo: number | null;
+  creado: number;
+}
+
+/** Los comentarios de Instagram y Facebook de esta persona y en qué va cada uno (ver `MotorConversacion.recibirComentario`). */
+export class Comentarios {
+  constructor(private readonly sql: Sql) {}
+
+  existe(id: string): boolean {
+    return !!this.sql.uno("SELECT 1 AS x FROM comentarios WHERE id = ?", id);
+  }
+  guardar(id: string, cuerpo: string, estado: string, proximo: number | null, ahora: number): void {
+    this.sql.correr("INSERT OR IGNORE INTO comentarios (id, cuerpo, estado, intentos, proximo, creado) VALUES (?, ?, ?, 0, ?, ?)", id, cuerpo, estado, proximo, ahora);
+  }
+  leer(id: string): FilaComentario | null {
+    return this.sql.uno<FilaComentario>("SELECT * FROM comentarios WHERE id = ?", id) ?? null;
+  }
+  /** Guarda en qué va (y cuándo seguir; null = terminado). `fallo` suma un intento. */
+  ponerEstado(id: string, estado: string, proximo: number | null, fallo = false): void {
+    this.sql.correr(`UPDATE comentarios SET estado = ?, proximo = ?${fallo ? ", intentos = intentos + 1" : ""} WHERE id = ?`, estado, proximo, id);
+  }
+  /** Los que toca seguir ahora, en el orden en que llegaron. */
+  vencidos(ahora: number): FilaComentario[] {
+    return this.sql.todos<FilaComentario>("SELECT * FROM comentarios WHERE proximo IS NOT NULL AND proximo <= ? ORDER BY creado, rowid", ahora);
+  }
+  proxima(): number | null {
+    return this.sql.uno<{ p: number | null }>("SELECT MIN(proximo) AS p FROM comentarios WHERE proximo IS NOT NULL")?.p ?? null;
+  }
+  purgar(antesDe: number): void {
+    this.sql.correr("DELETE FROM comentarios WHERE creado < ?", antesDe);
+  }
+  /** Los estados de todos los guardados (los de 8 días de UNA persona: pocos), para el tope por persona. */
+  estados(): { id: string; estado: string }[] {
+    return this.sql.todos<{ id: string; estado: string }>("SELECT id, estado FROM comentarios");
+  }
+}
+
+/** Archivos que llegaron en bytes (base64 del puente, fotos de Telegram): viven unos días y se sirven con URL firmada. */
+const PARTE = 900_000;
+export const MEDIO_MAXIMO = 12 * 1024 * 1024;
+export const MEDIO_VIDA_MS = 2 * 24 * 3600_000;
+
+export class Medios {
+  constructor(private readonly sql: Sql) {}
+
+  guardar(id: string, bytes: Uint8Array, mime: string, nombre: string | undefined, ahora: number): void {
+    if (bytes.byteLength > MEDIO_MAXIMO) throw new Error(`archivo demasiado grande (${bytes.byteLength} bytes)`);
+    const partes = Math.max(1, Math.ceil(bytes.byteLength / PARTE));
+    for (let i = 0; i < partes; i++) {
+      this.sql.correr(
+        "INSERT INTO medios (id, parte, mime, nombre, datos, creado) VALUES (?, ?, ?, ?, ?, ?)",
+        id,
+        i,
+        mime,
+        nombre ?? null,
+        bytes.slice(i * PARTE, (i + 1) * PARTE),
+        ahora,
+      );
+    }
+  }
+
+  leer(id: string, ahora: number): { bytes: Uint8Array; mime: string; nombre: string | null } | null {
+    const filas = this.sql.todos<{ mime: string; nombre: string | null; datos: unknown; creado: number }>(
+      "SELECT mime, nombre, datos, creado FROM medios WHERE id = ? ORDER BY parte",
+      id,
+    );
+    if (filas.length === 0 || ahora - filas[0].creado > MEDIO_VIDA_MS) return null;
+    const trozos = filas.map((f) => bytesDeBlob(f.datos));
+    const bytes = new Uint8Array(trozos.reduce((n, t) => n + t.byteLength, 0));
+    let i = 0;
+    for (const t of trozos) {
+      bytes.set(t, i);
+      i += t.byteLength;
+    }
+    return { bytes, mime: filas[0].mime, nombre: filas[0].nombre };
+  }
+
+  purgar(antesDe: number): void {
+    this.sql.correr("DELETE FROM medios WHERE creado < ?", antesDe);
+  }
+}
+
+export class Fotos {
+  constructor(private readonly sql: Sql) {}
+  guardar(codigo: string, url: string, nombre: string | undefined, ts: number): void {
+    this.sql.correr(
+      "INSERT INTO fotos (codigo, url, nombre, ts) VALUES (?, ?, ?, ?) ON CONFLICT(codigo) DO UPDATE SET url = excluded.url, nombre = excluded.nombre, ts = excluded.ts",
+      codigo,
+      url,
+      nombre ?? null,
+      ts,
+    );
+  }
+  buscar(codigo: string): { url: string; nombre: string | null } | undefined {
+    return this.sql.uno<{ url: string; nombre: string | null }>("SELECT url, nombre FROM fotos WHERE codigo = ?", codigo);
+  }
+  purgar(antesDe: number): void {
+    this.sql.correr("DELETE FROM fotos WHERE ts < ?", antesDe);
+  }
+}

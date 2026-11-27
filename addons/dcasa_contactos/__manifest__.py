@@ -1,0 +1,44 @@
+{
+    'name': "Tommalo — Contactos sin duplicados",
+    'summary': "Un celular, un correo, un RUC o cédula: una sola ficha. Lista de posibles duplicados y fusión",
+    'description': """
+Una persona, una ficha:
+
+* No se guardan dos fichas con el mismo celular o teléfono, el mismo correo ni el mismo RUC o cédula. Sí pueden
+  llamarse igual. Se compara sin importar mayúsculas, espacios, guiones ni el +507 (y un número de otro país no se
+  confunde con uno de Panamá).
+* Las direcciones de entrega de un mismo cliente, los usuarios, los empleados y las empresas propias no cuentan.
+* Lo que ya estaba guardado no se toca: solo se revisan las fichas nuevas y los datos que se cambian.
+* Socios › Posibles duplicados lista lo viejo para limpiarlo, con el botón de fusionar de Odoo.
+* En el sitio y en el chat, quien compra o escribe de nuevo con el mismo celular o correo cae en su misma ficha.
+* Celular y correo bien escritos y obligatorios: la vendedora no confirma una venta ni publica una factura si al
+  cliente le falta alguno o están mal escritos («¿Quisiste decir ana@gmail.com?»). Si de verdad no tiene correo, se
+  marca «Cliente no tiene correo electrónico» en su ficha o en la cotización (el celular sigue obligatorio).
+* Teléfono fijo (7 números en Panamá) en su propio campo, debajo del celular: sirve en lugar del celular para quien no
+  tiene. No se compara entre fichas (una casa o una empresa lo comparten).
+* Encontrar y corregir fácil (2026-11-04): el selector de «Cliente» encuentra por celular y lo muestra junto al nombre;
+  los datos del cliente se corrigen dentro de la cotización y la factura; al crear un cliente que ya existe, sale su
+  ficha con el botón «Es esta persona», que la abre con lo escrito encima.
+""",
+    'version': '19.0.1.2.0',
+    'category': 'Sales/CRM',
+    'author': "Tommalo",
+    'website': 'https://tommalo.example',
+    'license': 'LGPL-3',
+    'depends': ['dcasa_base', 'dcasa_socios', 'hr', 'mail', 'phone_validation', 'sale_management', 'account'],
+    'data': [
+        'security/ir.model.access.csv',
+        'views/duplicado_views.xml',
+        'views/sale_order_views.xml',
+        'views/res_partner_views.xml',
+        'views/account_move_views.xml',
+    ],
+    'assets': {
+        'web.assets_backend': [
+            'dcasa_contactos/static/src/coincidencias/*.js',
+            'dcasa_contactos/static/src/coincidencias/*.xml',
+            'dcasa_contactos/static/src/coincidencias/*.scss',
+        ],
+    },
+    'installable': True,
+}

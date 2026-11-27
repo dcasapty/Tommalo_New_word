@@ -1,0 +1,267 @@
+// @ts-check
+// Qué hacer con cada mensaje que Baileys entrega: ¿es de un cliente, lo escribió
+// una persona desde el teléfono del negocio, lo mandó el propio puente (eco), o
+// no es nada que atender (estados, grupos, historial viejo, reacciones…)?
+//
+// Heredado del CRM de origen (puente-wa/contenedor/propios.mjs) y ampliado:
+// ahora también clasifica el contenido (texto, imagen, audio, documento, video…)
+// para el contrato con Juan. Vive aparte del socket para probarse sin abrir uno.
+//
+// Lo que manda el bot contra lo que manda una persona: los dos salen del mismo
+// número y los dos le llegan a Baileys como `fromMe`. La diferencia la pone el
+// bot: cada envío lleva un id que se genera ANTES de mandarlo y se anota aquí.
+// Tiene que ser antes: Baileys emite el eco de lo enviado en el mismo tick en que
+// termina `sendMessage`, y anotar el id que devuelve llegaría tarde a su eco.
+
+import { esChatDeUnaPersona, sinDispositivo } from "./numeros.mjs";
+
+/** Cuánto se recuerda un envío del bot. El eco llega en milisegundos; tras un reinicio, en minutos. */
+const RECORDAR_ENVIOS_MS = 2 * 60 * 60 * 1000;
+const TOPE_DE_ENVIOS = 2000;
+
+/** El registro de ids que mandó el bot. Se poda solo; no crece con los días. */
+export function crearRegistroDeEnvios() {
+  /** @type {Map<string, number>} */
+  const enviados = new Map();
+  /**
+   * @param {string} id
+   * @param {number} ahora
+   */
+  function anotar(id, ahora = Date.now()) {
+    enviados.set(id, ahora);
+    for (const [k, t] of enviados) {
+      if (ahora - t > RECORDAR_ENVIOS_MS || enviados.size > TOPE_DE_ENVIOS) enviados.delete(k);
+      else break;
+    }
+  }
+  return {
+    anotar,
+    /** Carga ids que el Worker recuerda (sobreviven a un reinicio del contenedor). */
+    cargar(/** @type {{ id: string, ts: number }[]} */ lista) {
+      for (const { id, ts } of [...lista].sort((a, b) => a.ts - b.ts)) anotar(id, ts);
+    },
+    tiene: (/** @type {string} */ id) => enviados.has(id),
+    get tamano() {
+      return enviados.size;
+    },
+  };
+}
+
+/**
+ * Cuánto de viejo puede ser un mensaje propio para contar. Al reconectar,
+ * WhatsApp entrega (como `append`) lo que la dueña mandó mientras el contenedor
+ * estaba caído: eso sí cuenta, si es reciente. Lo de hace horas no pausa nada.
+ */
+export const RESPUESTA_VIGENTE_MS = 15 * 60 * 1000;
+
+/** Un mensaje de un cliente más viejo que esto no se contesta (historial). */
+export const ENTRANTE_VIGENTE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Lo que una clienta escribió MIENTRAS el puente estaba desconectado y que, al volver, sí se
+ * atiende. Baileys 7 entrega eso como `append` (lo «atrasado» que WhatsApp guardó), no como
+ * historial: antes se tiraba todo, y un corte de 10 segundos dejaba sin respuesta a quien
+ * escribió justo en ese momento.
+ *
+ * El mismo margen que una respuesta de la dueña (`RESPUESTA_VIGENTE_MS`) a propósito: todo lo
+ * atrasado que se le pasa a Juan llega junto con lo que la dueña haya contestado desde el
+ * teléfono en ese rato, así el bot no le contesta encima. Lo más viejo NO se contesta solo
+ * (sería responder tarde y quizá encima de una persona): se cuenta y se avisa para hacerlo a mano.
+ */
+export const ATRASADO_VIGENTE_MS = RESPUESTA_VIGENTE_MS;
+
+/**
+ * El contenido del mensaje, sin las envolturas de «temporal» o «ver una vez».
+ * @param {any} msg
+ * @returns {any}
+ */
+function interior(msg) {
+  const m = msg?.message ?? {};
+  return m.ephemeralMessage?.message ?? m.viewOnceMessage?.message ?? m.viewOnceMessageV2?.message ?? m;
+}
+
+/**
+ * El nombre del tipo de mensaje de Baileys (`conversation`, `imageMessage`…), o null.
+ * @param {any} msg
+ */
+export function tipoDe(msg) {
+  return (
+    Object.keys(interior(msg)).find(
+      (k) => k !== "messageContextInfo" && k !== "senderKeyDistributionMessage",
+    ) ?? null
+  );
+}
+
+/**
+ * Texto o leyenda del mensaje, sin envolturas.
+ * @param {any} msg
+ */
+export function textoDe(msg) {
+  const m = interior(msg);
+  return (
+    m.conversation ??
+    m.extendedTextMessage?.text ??
+    m.imageMessage?.caption ??
+    m.videoMessage?.caption ??
+    m.documentMessage?.caption ??
+    m.documentWithCaptionMessage?.message?.documentMessage?.caption ??
+    null
+  );
+}
+
+/**
+ * Los `Long` de protobuf, números o textos → número (0 si no se puede).
+ * @param {any} x
+ */
+function aNumero(x) {
+  if (x === null || x === undefined) return 0;
+  if (typeof x === "object" && typeof x.toNumber === "function") return x.toNumber();
+  const n = Number(x);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * @typedef {{ lat: number, lon: number, nombre?: string, direccion?: string }} Punto
+ * @typedef {{
+ *   clase: "texto" | "imagen" | "audio" | "documento" | "video" | "sticker" | "ubicacion" | "contacto" | null,
+ *   texto: string | null,
+ *   mime: string | null,
+ *   nombre: string | null,
+ *   tamano: number,
+ *   ubicacion?: Punto | null,
+ * }} Contenido
+ */
+
+/** Hasta cuántas letras viajan el nombre y la dirección del lugar (el contrato de Juan con Odoo: docs/UBICACION.md). */
+const MAX_NOMBRE_LUGAR = 120;
+const MAX_DIRECCION = 200;
+
+/**
+ * @param {unknown} v
+ * @param {number} max
+ */
+function textoDeLugar(v, max) {
+  if (typeof v !== "string") return undefined;
+  const t = v.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim().slice(0, max).trim();
+  return t || undefined;
+}
+
+/**
+ * El punto de una ubicación de WhatsApp (`locationMessage` o `liveLocationMessage`), validado: números finitos y dentro de rango. null
+ * si no sirve: nunca se adivina uno.
+ *
+ * @param {any} u
+ * @returns {Punto | null}
+ */
+export function puntoDe(u) {
+  const lat = u?.degreesLatitude;
+  const lon = u?.degreesLongitude;
+  if (typeof lat !== "number" || typeof lon !== "number" || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const nombre = textoDeLugar(u.name, MAX_NOMBRE_LUGAR);
+  const direccion = textoDeLugar(u.address, MAX_DIRECCION);
+  return { lat, lon, ...(nombre ? { nombre } : {}), ...(direccion ? { direccion } : {}) };
+}
+
+/**
+ * Qué trae el mensaje, en las clases que entiende el contrato con Juan (más tres
+ * que no son archivos: sticker, ubicación y contacto). `clase: null` = no es
+ * nada que atender (reacción, borrado, edición, aviso del protocolo…).
+ *
+ * @param {any} msg
+ * @returns {Contenido}
+ */
+export function contenidoDe(msg) {
+  const m = interior(msg);
+  /** @type {Contenido} */
+  const vacio = { clase: null, texto: null, mime: null, nombre: null, tamano: 0 };
+
+  if (m.conversation) return { ...vacio, clase: "texto", texto: m.conversation };
+  if (m.extendedTextMessage) return { ...vacio, clase: "texto", texto: m.extendedTextMessage.text ?? "" };
+
+  if (m.imageMessage) {
+    const i = m.imageMessage;
+    return { ...vacio, clase: "imagen", texto: i.caption ?? null, mime: i.mimetype ?? "image/jpeg", tamano: aNumero(i.fileLength) };
+  }
+  if (m.audioMessage) {
+    const a = m.audioMessage;
+    return { ...vacio, clase: "audio", mime: a.mimetype ?? "audio/ogg", tamano: aNumero(a.fileLength) };
+  }
+  const doc = m.documentMessage ?? m.documentWithCaptionMessage?.message?.documentMessage;
+  if (doc) {
+    return {
+      ...vacio,
+      clase: "documento",
+      texto: doc.caption ?? null,
+      mime: doc.mimetype ?? "application/octet-stream",
+      nombre: doc.fileName ?? null,
+      tamano: aNumero(doc.fileLength),
+    };
+  }
+  if (m.videoMessage) {
+    const v = m.videoMessage;
+    return { ...vacio, clase: "video", texto: v.caption ?? null, mime: v.mimetype ?? "video/mp4", tamano: aNumero(v.fileLength) };
+  }
+  if (m.stickerMessage) return { ...vacio, clase: "sticker" };
+
+  const ubicacion = m.locationMessage ?? m.liveLocationMessage;
+  if (ubicacion) {
+    // El punto va APARTE (`ubicacion`), nunca en el texto: el texto es lo que se guarda de la conversación y lo que ve el modelo de IA
+    // (docs/UBICACION.md). El texto final lo pone `armarEntrante` (no es el mismo si lo compartió la tienda desde el teléfono).
+    return { ...vacio, clase: "ubicacion", texto: "Ubicación compartida", ubicacion: puntoDe(ubicacion) };
+  }
+  if (m.contactMessage || m.contactsArrayMessage) {
+    const nombre = m.contactMessage?.displayName ?? m.contactsArrayMessage?.displayName ?? null;
+    return { ...vacio, clase: "contacto", texto: `Contacto compartido${nombre ? `: ${nombre}` : ""}` };
+  }
+  return vacio;
+}
+
+/**
+ * @typedef {{ accion: "entrante", atrasado?: boolean } | { accion: "propio" } | { accion: "ignorar", motivo: string }} Decision
+ */
+
+/**
+ * La decisión para cada mensaje de un evento `messages.upsert`.
+ *
+ *   · estados, difusiones, grupos, canales y bots de Meta → ignorar
+ *   · `fromMe` → eco del propio puente (ignorar) o una persona desde el teléfono
+ *     (`propio`), solo si es reciente
+ *   · de otros, en vivo (`notify`): se atiende si no tiene más de 24 h
+ *   · de otros, atrasado (`append`: llegó mientras el puente estaba desconectado): se
+ *     atiende solo si no tiene más de `ATRASADO_VIGENTE_MS` (`atrasado: true`); lo más
+ *     viejo es «historial» y NO se contesta (se cuenta y se avisa)
+ *   · sin contenido que atender y stickers → ignorar
+ *
+ * @param {any} msg
+ * @param {string} type  `notify` o `append` (Baileys).
+ * @param {{ enviados: { tiene(id: string): boolean }, yo?: (string | null | undefined)[], ahora?: number }} ctx
+ * @returns {Decision}
+ */
+export function decidirUpsert(msg, type, ctx) {
+  const ahora = ctx.ahora ?? Date.now();
+  const id = msg?.key?.id;
+  if (!id) return { accion: "ignorar", motivo: "sin_id" };
+  if (!esChatDeUnaPersona(msg.key.remoteJid)) return { accion: "ignorar", motivo: "no_es_chat" };
+
+  if (msg.key.fromMe) {
+    if (ctx.enviados.tiene(id)) return { accion: "ignorar", motivo: "eco_del_bot" };
+    const propios = (ctx.yo ?? []).filter(Boolean).map((j) => sinDispositivo(j));
+    if (propios.includes(sinDispositivo(msg.key.remoteJid))) return { accion: "ignorar", motivo: "nota_personal" };
+    if (contenidoDe(msg).clase === null) return { accion: "ignorar", motivo: "sin_contenido" };
+    const ts = aNumero(msg.messageTimestamp) * 1000;
+    if (ts && ahora - ts > RESPUESTA_VIGENTE_MS) return { accion: "ignorar", motivo: "propio_viejo" };
+    return { accion: "propio" };
+  }
+
+  const contenido = contenidoDe(msg);
+  if (contenido.clase === null) return { accion: "ignorar", motivo: "sin_contenido" };
+  if (contenido.clase === "sticker") return { accion: "ignorar", motivo: "sticker" };
+  const ts = aNumero(msg.messageTimestamp) * 1000;
+  if (type !== "notify") {
+    // Sin fecha no se puede saber si es de hace un minuto o de hace un mes: no se contesta.
+    if (!ts || ahora - ts > ATRASADO_VIGENTE_MS) return { accion: "ignorar", motivo: "historial" };
+    return { accion: "entrante", atrasado: true };
+  }
+  if (ts && ahora - ts > ENTRANTE_VIGENTE_MS) return { accion: "ignorar", motivo: "viejo" };
+  return { accion: "entrante" };
+}

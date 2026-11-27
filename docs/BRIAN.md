@@ -1,0 +1,775 @@
+# Brian — el asistente de D'CASA (plan y contrato)
+
+Brian es el asistente de IA del panel administrativo. Conversa en español, entiende la
+pantalla donde está el administrador, consulta todo (ventas, inventario, clientes,
+contabilidad, socios, usuarios) y, con su habilidad **el constructor**, crea y edita
+registros dentro de reglas claras. Está en tres canales con **un solo catálogo de
+herramientas**:
+
+| Canal | Dónde | Quién |
+|---|---|---|
+| Chat en el panel | Botón flotante en computadora; en el celular, en la barra de arriba (Ctrl + J) | Usuarios internos |
+| Telegram | Bot propio; se vincula con un código de un solo uso | Administradores vinculados |
+| MCP | `POST /brian/mcp` (Streamable HTTP, JSON-RPC 2.0), clave de API de Odoo | Clientes MCP (Claude Desktop, etc.) |
+
+## Arquitectura (módulo `dcasa_brian`)
+
+```
+chat (OWL) ─┐
+Telegram ───┼─> brian.conversacion ─> proveedor de IA (Claude / OpenAI-compatible / prueba)
+MCP ────────┘         │                        │  tool calls
+                      └──> brian.herramientas.ejecutar() ─> brian.politica ─> herramienta
+                                         │                                      (como el usuario)
+                                         └─> brian.accion (registro de auditoría)
+```
+
+* **`registro.py`** — decorador `@herramienta`, catálogo, preselección de herramientas por
+  mensaje, ejecución con savepoint, confirmación humana. Es el contrato; ver su docstring.
+* **`politica.py`** — lo que Brian no puede hacer aunque se lo pidan (lista abajo).
+* **`accion.py`** — `brian.accion`: cada herramienta ejecutada, con usuario, canal,
+  argumentos, resultado y estado (hecha, error, bloqueada, por confirmar, rechazada).
+* **`proveedores.py`** — adaptadores: Anthropic (Claude), OpenAI-compatible (ChatGPT,
+  Grok/xAI, Llama vía Groq/Together/OpenRouter, Ollama local) y `prueba` (guion fijo para
+  tests). Configuración por variables de entorno (secretos de Cloudflare), nunca en Git.
+* **`conversacion.py`** — hilo, mensajes, adjuntos, bucle agente (pensar → herramienta →
+  observar) con límite de pasos y de tokens; `_PasosEnVivo` cuenta cada paso al navegador por el
+  bus; `estado_panel()` arma las pastillas de la cabecera.
+* **`pasos.py`** — funciones puras: el título humano de un paso («Buscando productos «888K»»), el
+  resumen corto del resultado y el detalle expandible. Nunca inventa: texto, conteo o «Listo».
+* **`herramientas_*.py`** — las capacidades, por área.
+
+## Niveles de permiso
+
+| Nivel | Ejemplos | Comportamiento |
+|---|---|---|
+| lectura | reporte del día, buscar productos, balance, clientes que deben, abrir una pantalla | Directo |
+| construcción | crear producto, cliente, cotización, factura en borrador; editar precio; pedirle a Sofía que revise el CRM | Directo, auditado |
+| sensible | confirmar una venta, publicar una factura, registrar un pago, ajustar existencias, cambiar el rol de un usuario, archivar | Brian propone → el humano pulsa **Permitir** (o **Rechazar**) en una tarjeta con el detalle exacto |
+| prohibido | ver abajo | No existe herramienta para eso |
+
+`crear_cliente` pide el celular y el correo, los dos bien escritos (los mismos «¿Quisiste decir…?» de la ficha); si
+el cliente de verdad no tiene correo, se escribe «no tiene» y queda marcada «Cliente no tiene correo electrónico».
+Si no tiene celular, su **teléfono fijo** (7 números) va en «celular» y se guarda como teléfono fijo (2026-10-22);
+`actualizar_cliente` también cambia `telefono_fijo`. `actualizar_cliente` revisa igual el celular, el teléfono fijo y el correo
+(y acepta el correo «no tiene»).
+
+**Dinero:** mientras la dueña no decida los topes de dinero de Brian (issue #26), no se agregan herramientas nuevas que
+creen o cambien facturas, pagos, puntos ni existencias. Lo de 2026-11-06 («Brian al día») es todo de lectura, menos
+`revisar_con_sofia`, que solo deja propuestas.
+
+### Lo que Brian nunca hace
+
+1. Eliminar, archivar o quitarle permisos al administrador, ni a sí mismo (el usuario con quien conversa).
+2. Modificar facturas publicadas o pagadas, asientos publicados ni conciliaciones: eso se corrige con notas de crédito o asientos contrarios, por una persona.
+3. Borrar (unlink) registros contables, del libro de puntos (`dcasa.movimiento`) o del registro de acciones de Brian.
+4. Tocar el programa Socios o el de vendedores fuera de sus reglas (cifras solo de `puntos.json`; el libro no se edita).
+5. Ver o cambiar contraseñas, claves de API, `DCASA_PIN_PEPPER` ni parámetros técnicos del sistema.
+6. Ejecutar código, SQL o acciones del servidor arbitrarias.
+7. Actuar con más permisos que el usuario: todo corre como él.
+
+## Modelos pequeños primero
+
+Brian debe funcionar bien con modelos económicos (Claude Haiku, GPT-4o-mini, Llama 3.x
+8B/70B, Grok mini) y mejor con los grandes:
+
+* Herramientas con verbo + objeto en español, pocos parámetros, tipos simples, ejemplos.
+* **Preselección**: con un modelo pequeño (haiku, mini, 8b…) o `BRIAN_HERRAMIENTAS_MAX`, por
+  mensaje se ofrecen solo las ~12 herramientas más relevantes; las generales (pantalla actual,
+  ayuda, buscar) ocupan como mucho un tercio de los cupos. Con modelos grandes, todas.
+* Resultados compactos y ya formateados (montos con $, fechas dd/mm/aaaa), sin IDs sueltos.
+* Errores en español que dicen cómo corregir; el bucle permite reintentar.
+* Instrucciones del sistema cortas, con el contexto de la pantalla y la fecha de Panamá.
+* Informes deterministas: las cifras las calcula Odoo, no el modelo.
+
+## Seguridad
+
+* Cada canal autentica al usuario de Odoo (sesión, clave de API con alcance, o vínculo de
+  Telegram por código de un solo uso) y todo se ejecuta con sus permisos.
+* Contenido de adjuntos, correos, descripciones y registros es **dato**, nunca instrucción
+  (defensa contra inyección de prompts): va marcado como tal al modelo. Las marcas del bloque
+  (`<<…>>`) y etiquetas tipo `</system>` escritas dentro de un archivo o en su nombre se
+  neutralizan: un adjunto no puede «cerrar» su bloque de datos.
+* **Lo que se construye a partir de adjuntos pide confirmación**: en un turno cuyo mensaje trae
+  archivos o fotos, toda herramienta de construcción (crear cliente, cotización, factura, cambiar
+  precio…) queda «por confirmar» como una sensible. Excepción: las que solo dejan un borrador
+  revisable, marcadas `segura_con_adjuntos=True` (hoy `proponer_importacion`). La acción queda con
+  `con_adjuntos` en el registro.
+* **Dura más de un turno** (ronda 8): el turno cuenta como «con adjuntos» si alguno de los **últimos 6 mensajes** de la persona trae
+  un archivo (el texto del adjunto sigue a la vista del modelo; un «ok, sigue» no quita la defensa).
+* **Texto que escribió un cliente** (`@herramienta(texto_externo=True)`, hoy `oportunidades_abiertas`): una vez usada una herramienta
+  así en el turno, las de construcción también piden confirmación («acabo de leer textos que escribieron clientes…»).
+* **Tamaño de lo que manda el modelo**: hasta 10 000 letras por dato y 30 000 entre todos, revisado **antes** de registrar la llamada
+  (si no, la auditoría —que no se puede borrar— se infla). `leer_lineas` rechaza líneas de más de 300 letras.
+* **Tope de gasto de IA** (*Ajustes › Brian*): dólares por mes (hora de Panamá), uno para **todos** y uno **por persona**.
+  **De fábrica NO hay tope (0):** la cifra la pone la dueña, y el límite que ponga en el panel de su proveedor de IA es el freno
+  más fuerte (está fuera del código). Al llegar, Brian lo dice con claridad y no llama al modelo; una acción
+  por confirmar sigue pendiente hasta que haya cupo. Cuenta el costo estimado con la tarifa pública (`brian.uso`); un modelo sin
+  tarifa se cuenta con la más cara que conocemos, así que un modelo nuevo no deja el tope ciego. No es un presupuesto: es la red
+  para una clave filtrada o un script que repite mensajes.
+* **Tamaño de lo que se manda**: hasta 8 000 letras por mensaje (un documento largo va como adjunto) y 5 archivos por mensaje.
+* **Telegram, lista de chats permitidos** (`BRIAN_TELEGRAM_CHATS`): con la lista puesta, Brian solo atiende y solo le escribe a esos
+  chats; de cualquier otro **no contesta nada** (ni las instrucciones para vincularse) y nadie puede vincularse desde otro chat.
+  Detalle en «Conectar el Telegram de la gerencia».
+* **Telegram**: el vínculo se revisa en cada mensaje y botón; un usuario archivado (o que ya no es interno) pierde su chat al instante.
+* Límite de pasos por turno y de mensajes por minuto por usuario.
+* Las claves (`BRIAN_API_KEY`, `TELEGRAM_BOT_TOKEN`) viven como secretos de Cloudflare /
+  GitHub Actions; **nunca en el repositorio**.
+
+## Historial: renombrar, borrar y retención
+
+En el panel, cada fila de «Conversaciones anteriores» trae **Renombrar** (en línea: Enter
+guarda, Esc cancela) y **Borrar** (pide confirmación). También se borra desde Menú › Brian ›
+Conversaciones. Cada quien renombra y borra **solo las suyas** (ni el administrador toca las
+ajenas desde la interfaz).
+
+Borrar es **borrado real** (decisión del dueño):
+
+| Dato | Qué pasa |
+|---|---|
+| Conversación, mensajes y sus adjuntos (`ir.attachment` de la conversación) | Se borran. |
+| Registro de acciones `brian.accion` | **Se conserva** (auditoría inmutable) con la conversación en blanco. |
+| Acciones «por confirmar» de esa conversación | Pasan a «rechazada»: un botón viejo de Telegram ya no las ejecuta. |
+| Adjuntos de otros registros citados en el chat | Se quedan en su registro. |
+| Telegram con esa conversación activa | El siguiente mensaje abre una nueva. |
+
+El servidor avisa al navegador del dueño por el bus (`dcasa_brian/conversacion_borrada`,
+`dcasa_brian/conversacion_cambiada`): el panel quita la fila al momento, y si la conversación
+abierta se borró, sigue en una nueva conservando lo escrito. Si el bus no conecta, el panel
+vuelve a comprobar al regresar a la pestaña.
+
+El dueño y el canal de una conversación no se cambian después de crearla, y un mensaje no se
+muda de conversación (cierra la puerta a «regalarle» un historial fabricado a otra persona).
+
+**Retención** (cron mensual «Brian: borrar conversaciones viejas y adjuntos huérfanos»):
+
+* Borra, por el mismo camino que el botón, las conversaciones sin actividad hace más de
+  `dcasa_brian.retencion_dias` días (Ajustes › Técnico › Parámetros del sistema; por defecto
+  **180**; **0 = nunca**).
+* Borra los adjuntos subidos a Brian cuya conversación/mensaje ya no existe, y los que llevan
+  más de un día sin enviarse en ningún mensaje (subidos y quitados antes de enviar).
+
+## Brian en vivo: pasos, permisos y pastillas
+
+### Ver a Brian trabajar (pasos en tiempo real)
+
+Mientras `enviar` / `confirmar_accion` corren, el panel ya no muestra solo «Brian está
+pensando…»: pinta la lista de pasos del turno a medida que ocurren («Pensando…», «Leyendo adjunto
+«42»», «Buscando productos «888K» — 3 productos», con lo que tardó cada uno) y, al terminar, los
+mismos pasos quedan en «Usó N herramientas», cada uno con **Ver resultado** (el JSON compacto,
+recortado a 600 caracteres).
+
+* **Por qué el bus de Odoo y no SSE**: el módulo ya usa el bus para avisar borrados y renombres
+  (`dcasa_brian/conversacion_borrada`, `…_cambiada`), el cliente web ya está suscrito al canal del
+  usuario y el Worker de Cloudflare ya pasa el websocket. SSE habría exigido una ruta HTTP nueva, un
+  segundo *stream* abierto por turno y configurar el borde para no cortarlo; además el bucle agente
+  sigue dentro de la petición RPC, que ya devuelve la respuesta completa. **No cambia el proveedor
+  de IA ni la política**: lo que viaja son metadatos del turno (títulos, resúmenes cortos,
+  duraciones), nunca el prompt ni la respuesta del modelo.
+* **Cómo**: `_PasosEnVivo` (en `conversacion.py`) manda por `dcasa_brian/pasos` la lista
+  **completa** de pasos en cada cambio (idempotente: el panel la reemplaza), con `turno` = id del
+  mensaje que lo disparó. Se emite con un **cursor aparte y commit inmediato**: `bus.bus` escribe en
+  el *precommit* y notifica en el *postcommit*, así que dentro de la transacción del RPC nada
+  llegaría hasta el final (ese cursor aparte usa el superusuario solo para escribir la fila del bus;
+  el destino es siempre el partner del dueño de la conversación). Solo canal `chat` (Telegram y MCP reciben la respuesta por su canal).
+  Si el bus falla, el turno sigue igual: la respuesta completa llega por el RPC.
+* Formato: ver el docstring de `models/conversacion.py` (`paso = {id, tipo: modelo|herramienta,
+  nombre, titulo, estado: en_curso|ok|error|por_confirmar, resumen, detalle, duracion_ms}`).
+
+### Tarjeta Permitir / Rechazar (acciones sensibles)
+
+La tarjeta de una acción sensible (o de construcción en un turno con adjuntos) trae el resumen de
+la política **más el detalle exacto**, campo por campo, de los argumentos registrados en
+`brian.accion` (`_detalle_accion`): son los mismos que `brian.herramientas.confirmar` relee al
+ejecutar, así que lo que se ve es lo que se hace. Botones: **Permitir** y **Rechazar**, nada más.
+**No existe «Siempre»** (decisión de seguridad: cada acción se aprueba una por una, en el panel y
+en Telegram). Permitir vale una sola vez; volver a pulsar no repite la acción.
+
+En Telegram la misma tarjeta llega como texto («Necesito tu permiso: … Detalle exacto de lo que voy
+a hacer: • Nombre: …») con botones *inline* **Permitir / Rechazar**; solo el dueño del chat
+vinculado puede pulsarlos.
+
+### Pastillas de estado (cabecera del chat)
+
+`brian.conversacion.estado_panel()` devuelve las pastillas que **ese usuario** puede ver; el
+servidor decide según el rol (cada bloque pregunta `has_access` y lee sin sudo, con sus reglas de
+registro; el único sudo cuenta las claves de API del propio usuario):
+
+| Pastilla | Quién la ve | Qué dice |
+|---|---|---|
+| Telegram | todos | «Telegram conectado» (tono ok) o «Telegram sin vincular» |
+| MCP | todos | «MCP activo» si tiene una clave de API vigente (global o alcance `brian`); si no, «MCP sin clave» |
+| Importaciones | quien ve `brian.importacion` (vendedoras las suyas, Gerencia todas) | «N importación(es) por aplicar» (tono aviso; solo si hay borradores) |
+| Consumo de IA | administradores (quien lee `brian.uso`) | «IA este mes: N llamadas · $X.XX»; sin tarifa registrada, solo tokens (nunca un costo inventado) |
+| Última actividad | todos | «Última actividad: hoy 14:05» / «ayer…» / fecha, en hora de Panamá |
+
+El panel las carga al abrir, las refresca al terminar cada turno y al volver a la pestaña. Son un
+extra: si fallan, el chat sigue igual.
+
+### Estados del avatar (preparado, sin construir)
+
+El panel (`<aside id="o_brian_panel">`) lleva **siempre** una clase `o_brian_avatar_<estado>` y
+`data-avatar="<estado>"`, que pone `brian_panel.js` (`ESTADOS_AVATAR`, getter `estadoAvatar`):
+
+| Estado | Cuándo |
+|---|---|
+| `esperando` | nada en curso, sin pendientes |
+| `trabajando` | hay un turno en marcha (pasos en vivo) |
+| `te_necesito` | hay una tarjeta Permitir / Rechazar sin responder, o el último mensaje es un error |
+| `termine` | acaba de responder (8 s, `TERMINE_MS`, o hasta que la persona vuelve a escribir) |
+
+Las clases existen en `brian_panel.scss` **intencionalmente vacías**: cuando se dibuje el avatar
+(ronda posterior) se cuelga de ellas sin tocar el JS, p. ej. `.o_brian_avatar_trabajando
+.o_brian_monograma { … }`. Reglas de marca (las de Tommalo): plano, sin degradados, sin naranja como letra sobre
+blanco.
+
+## Adjuntos que Brian lee
+
+El tipo se decide por la **firma del archivo**, no por la etiqueta del navegador (que manda
+`application/vnd.ms-excel` tanto para un CSV como para un .xls binario):
+
+* **Excel** `.xlsx`/`.xlsm` (openpyxl) y `.xls` (xlrd): por hoja, nombre y tamaño, las filas de
+  título como contexto, el encabezado (la fila más llena entre las primeras 10) y la tabla;
+  números redondeados a 2 decimales; fórmulas sin valor guardado se marcan; recorte con
+  «… N filas más». Avisa cuántas imágenes incrustadas trae cada hoja (el modelo no las ve;
+  `proponer_importacion` las usa como foto de su fila). El encabezado del bloque lleva el número
+  del adjunto («adjunto 42») para que Brian se lo pase a las herramientas.
+* **Word** `.docx` (texto de párrafos y tablas), **PDF** (texto), texto/CSV/JSON/Markdown.
+* Protegidos con contraseña o dañados: mensaje amable, la conversación sigue.
+* **Fotos**: se ajustan para el modelo (lado mayor ≤ 1568 px, JPEG calidad 85 o PNG si tiene
+  transparencia, ≤ 5 MB) sin tocar el adjunto original. Formatos que PIL no abre (p. ej. HEIC)
+  reciben un aviso: mándala como JPG o PNG.
+
+## Notas de voz (2026-11-16, en la rama)
+
+Pedido de la dueña: darle indicaciones a Brian hablando, **sin que nadie pueda usar la herramienta para clonar voces**.
+
+- **En el panel:** un micrófono al lado de la caja de texto (solo si el Worker de Juan está conectado y el navegador puede
+  grabar). Al tocarlo, el navegador pide permiso la primera vez; se ve «Grabando», el tiempo («0:07 / 1:00») y una barra
+  del minuto; **Esc o la X cancelan** sin mandar nada y **«Listo»** pasa la nota a texto. A los 60 s para sola. El texto
+  queda **en la caja** (no se envía solo): la persona lo revisa, lo corrige y lo manda como cualquier mensaje. Debajo se
+  lee «Solo se queda el texto: el audio no se guarda». Accesible: botones con nombre, el foco va a «Listo» al grabar y
+  vuelve a la caja al terminar, y un aviso para lectores de pantalla («Listo: revisa el texto y envíalo»); el punto rojo
+  no late con «reducir movimiento».
+- **Por dentro:** `static/src/js/brian_voz.js` (MediaRecorder, Opus a 32 kbps; al terminar apaga el micrófono) →
+  `POST /dcasa/brian/v1/voz` (`controllers/voz.py`: JSON-RPC, `auth='user'`, **solo usuarios internos**, cuerpo con tope
+  y en memoria) → `dcasa.brian.voz.transcribir` (`models/voz.py`: tipo, firma, tamaño y duración; privado, no se llama
+  por RPC) → el Worker de Juan, `POST /odoo/voz`, con el token de Odoo (`dcasa_conversaciones/models/brian_voz.py`).
+  Odoo no transcribe: lo hace Whisper de Workers AI, en la cuenta de Cloudflare de D'CASA (docs/JUAN.md §12a).
+- **Lo que no se negocia:** el audio **no se guarda en Odoo** (ni adjunto, ni mensaje, ni auditoría, ni registro), no se
+  devuelve y no se usa para generar voz; tampoco en el Worker. Solo vuelve el texto.
+- **Topes y gasto:** los cuenta el Worker (30 notas por hora por persona, 500 al día, US$5 al mes) y el gasto sale en
+  Costos de IA en su renglón «Cloudflare: notas de voz del panel».
+- **Pruebas:** `dcasa_brian/tests/test_voz.py` (interno sí; portal y público no, también por HTTP; nada queda guardado ni
+  en los registros; las reglas de la nota; el micrófono en Chrome con una voz de mentira) y
+  `dcasa_conversaciones/tests/test_brian_voz.py` (la llamada al Worker). La Guía: «Dictarle a Brian con una nota de voz».
+
+## Importar productos desde el Excel de un proveedor
+
+Para el inventario nuevo: se le manda a Brian el Excel del proveedor (chat o Telegram) y se le
+pide «carga estos productos». Tres herramientas, mismo catálogo en los tres canales:
+
+| Herramienta | Nivel | Quién | Qué hace |
+|---|---|---|---|
+| `proponer_importacion(adjunto, hoja?, columna_precio?, modo_itbms?)` | construcción | Vendedora y Gerencia | Lee el Excel y deja un **borrador** `brian.importacion` con la vista previa. No toca productos. |
+| `aplicar_importacion(importacion_id)` | **sensible** | Solo Gerencia | Crea y actualiza los productos (la persona confirma con un clic; desde MCP nunca). |
+| `deshacer_importacion(importacion_id, motivo)` | **sensible** | Solo Gerencia | Revierte una importación aplicada. |
+
+**Lectura** (`models/lector_importacion.py`, funciones puras):
+
+* Encabezado: la fila (entre las 10 primeras) con más columnas reconocidas; título, proveedor y
+  buscador de arriba se ignoran. Roles por el texto del encabezado: Código/SKU/Referencia →
+  `default_code`, Descripción/Nombre → `name`, Medidas → `dcasa_medidas` (con la etiqueta del
+  encabezado, p. ej. «L × A × Alto: 228 × 223 × 120 cm»; un «Queen» sin números no son medidas),
+  Tamaño (o el nombre) → atributo Tamaño, Categoría (o el nombre) → categoría con las reglas de
+  `dcasa_catalogo/reglas.py`.
+* Precio: la primera columna que dice «precio» (nunca «costo»), o la que se pida con
+  `columna_precio` (letra o encabezado). Si hay otras, la vista previa las nombra. Los números
+  se redondean a 2 decimales (`259.98999999999998` → 259.99); «$—», texto o vacío = sin precio
+  (no se importa); una fórmula sin valor guardado se avisa, no se calcula.
+* Filas de totales al pie («TOTAL») no son productos.
+* **Fotos incrustadas**: cada imagen flotante (`ws._images`) se asigna a la fila que cubre la
+  mayor parte de su alto, calculado con el alto real de cada fila (en el catálogo LTSC-07 dos
+  fotos empiezan al final de la fila anterior y se corrigen solas). Una foto que cruza dos filas
+  por igual, que cae fuera de la tabla o que comparte fila con otra **no se asigna**: se avisa.
+  Se guarda normalizada (lado mayor ≤ 1920 px; JPEG calidad 85, o PNG si tiene transparencia).
+  Las imágenes *dentro* de celdas de Excel 365 todavía no se leen (se avisa).
+
+**Decisión por fila** (crear / actualizar / omitir):
+
+* Se empareja por `default_code` exacto, sin espacios y sin distinguir mayúsculas (también
+  contra archivados).
+* Omite (con motivo): sin código, **código repetido en el archivo** (todas sus filas, hasta que
+  se corrija), sin precio o precio ≤ 0, varios productos con ese código en Odoo, producto
+  archivado, código de una variante de un producto con varios tamaños, o sin cambios.
+* Crear: con las reglas del catálogo (`valores_producto_nuevo` de `dcasa_catalogo`):
+  inventariable, existencias sin confirmar, ITBMS 7 % que se suma, categoría interna y de la
+  tienda, tamaño único como atributo, foto y medidas. **Nace sin publicar** (se publica con
+  `publicar_producto_web`, como `crear_producto`).
+* Actualizar: **solo el precio**; medidas y foto se llenan si el producto no tenía. Nombre,
+  categoría, publicación y lo demás no se tocan. Cada línea guarda el *antes* y el *después*.
+* `modo_itbms` es obligatorio en el borrador: `mas_itbms` (D'CASA, por defecto: `list_price` =
+  precio del Excel tal cual, la web muestra «+ ITBMS») o `incluido` (se divide entre 1 + tasa).
+* Avisos de la vista previa: códigos repetidos, sin precio, cambios de precio de más del 30 %
+  (también en la tarjeta de confirmación), productos nuevos sin foto, fotos sin asignar, otras
+  columnas de precio, encabezado de precio que menciona el ITBMS.
+
+**Aplicar** corre como el usuario (sin sudo), línea por línea con savepoint: una línea con error
+queda marcada y las demás siguen. Si un código apareció entre la vista previa y la confirmación,
+esa línea da error (no duplica). Una importación se aplica una sola vez.
+
+**Deshacer**: lo creado se **borra** si nadie lo usó (ni ventas, ni inventario, ni facturas, ni
+compras, ni está publicado); si no, se **archiva**. Lo actualizado vuelve a su valor anterior
+**solo si sigue como lo dejó la importación** (un precio cambiado a mano después se respeta y se
+reporta).
+
+**Registro**: `brian.importacion` y `brian.importacion.linea` (Brian › Importaciones de
+productos). ACL de solo lectura: nadie los escribe por RPC; los escribe el sistema después de
+comprobar permisos. Cada vendedora ve las suyas; Gerencia, todas. No agregan métodos públicos
+(superficie RPC sin cambios).
+
+## Configuración
+
+| Variable | Ejemplo |
+|---|---|
+| `BRIAN_PROVEEDOR` | `anthropic` · `openai` · `xai` · `groq` · `openrouter` · `ollama` |
+| `BRIAN_MODELO` | Anthropic por defecto `claude-sonnet-5-5` (económico: `claude-haiku-4-5`); en los demás proveedores es obligatorio, p. ej. `gpt-4o-mini`, `llama-3.3-70b-versatile` |
+| `BRIAN_HERRAMIENTAS_MAX` | opcional: cuántas herramientas ofrecer por mensaje (0 = automático) |
+| `BRIAN_ESFUERZO` | opcional (Anthropic): `low`, `medium`, `high`, `xhigh`, `max`. Vacío = el del modelo. Haiku 4.5 no lo recibe |
+| `BRIAN_CACHE` | caché de prompts de Anthropic, activa por defecto; `0` la apaga |
+| `BRIAN_API_KEY` | secreto |
+| `BRIAN_BASE_URL` | opcional (OpenAI-compatible) |
+| `TELEGRAM_BOT_TOKEN` | secreto |
+
+(Cada variable también se puede poner como parámetro del sistema `dcasa_brian.<clave>`:
+`esfuerzo`, `cache`, …)
+
+## Costo y consumo
+
+* **Caché de prompts** (Anthropic): marca de caché en la última herramienta, en la parte fija
+  del sistema (`brian.conversacion._sistema_fijo`: sin fecha, persona ni pantalla) y en el último
+  mensaje. En el bucle, cada paso relee lo anterior a ~10 % del precio.
+* **`brian.uso`**: una fila por llamada al modelo (persona, canal, modelo, tokens de entrada,
+  salida, leídos y escritos en caché). Solo lectura para administradores (Brian › Consumo de IA);
+  la escribe el sistema; sobrevive al borrado de la conversación.
+* `consumo_de_brian(periodo)` (administradores): llamadas y tokens por modelo y persona, % leído
+  de caché y costo estimado con la tarifa pública (`models/uso.py`, `PRECIOS`); un modelo sin
+  tarifa se reporta «sin tarifa registrada».
+* Un turno no pasa de 150 s (`MAX_SEGUNDOS_TURNO`): Brian se detiene y lo dice. Si el proveedor
+  corta la respuesta por largo, Brian lo avisa.
+
+## Herramientas del día a día (ronda 6)
+
+| Herramienta | Nivel | Quién |
+|---|---|---|
+| `sugerir_reabastecimiento` — vendido en N días, hay, en camino, comprometido, cuánto pedir para cubrir N días, proveedor y costo | lectura | Inventario |
+| `crear_pedido_compra(proveedor, lineas)` — solicitud de compra en borrador | construcción | Compras |
+| `buscar_compras` — borradores, confirmadas, por recibir | lectura | Compras |
+| `que_reponer(proveedor?, meses?, reserva?)` — lo mismo que Compras › Reponer: por producto, vendido en los últimos N meses (de fábrica 5; facturas menos notas de crédito), se vende al mes, disponible hoy (en bodega − lo vendido por entregar), viene en camino, alcanza para, tarda en llegar, pedir y `pedir_ya`, de más urgente a menos. Sin el tiempo de llegada del proveedor no calcula cuánto pedir (lo dice) | lectura | Gerencia y administradores |
+| `poner_tiempo_llegada(proveedor, dias? / meses?)` — guarda cuánto tarda en llegar un proveedor (1 día a 24 meses; un mes = 30 días) en todos sus precios de proveedor; queda anotado en su ficha. Nunca lo inventa: lo pregunta | construcción | Gerencia y administradores |
+| `pendientes_de_hoy` — entregas, cotizaciones dormidas, compras por recibir, vencidas, publicados agotados, acciones por confirmar | lectura | Interno |
+| `entregas_por_despachar(como?, estado?, limite?)` — las del panel de Bodega: cuántas para envío, para retirar en la tienda y sin definir; listas para salir y esperando producto; las más antiguas con cliente, pedido, fecha, productos y «con abono: falta una parte» (sin montos ni precios); solo pedidos con pago o abono; botón para abrir el panel (módulo `dcasa_barras`) | lectura | Inventario |
+| `productos_incompletos` — sin foto, precio, categoría, medidas o código | lectura | Interno |
+| `publicar_productos_en_bloque` — una tarjeta con cuáles; al publicar se saltan los sin foto o sin precio | sensible | Gerencia de ventas |
+| `ajustar_existencias_en_bloque(cantidad, productos? / categoria? / todos?, almacen?)` — deja la misma cantidad en varios productos a la vez (lo normal: en cero). La tarjeta dice cuántos y cuáles; `todos` solo sirve con cantidad 0 y toma los que hoy tienen existencias en el almacén; hasta 1,000 por vez | sensible | Gerencia de inventario |
+| `actualizar_productos_en_bloque(campo, productos? / categoria?, valor? / porcentaje?)` — cambia varios productos a la vez: `precio` (valor fijo o porcentaje, sin ITBMS), `categoria` o `vendible`; la tarjeta muestra el antes y el después de cada uno; hasta 200 por vez | sensible | Gerencia de ventas |
+| `consumo_de_brian` | lectura | Administrador |
+| `oportunidades_abiertas(temperatura?, para_hoy?, limite?)` — las del CRM que nacieron de una conversación, de la más caliente a la más fría: etapa, qué pidió, para cuándo, zona, si esperan respuesta o tienen cotización; `para_hoy` = tibias y calientes sin mensaje de una vendedora en 24 h (módulo `dcasa_conversaciones`) | lectura | Ventas |
+| `resumen_del_crm` — abiertas por temperatura y por etapa, las que esperan respuesta, con cotización enviada, en manos de una persona y lo ganado y archivado en 30 días | lectura | Ventas |
+
+| `buscar_en_guia(consulta)` — busca en la Guía del negocio (módulo `dcasa_guia`, [GUIA.md](GUIA.md)) qué pantalla sirve para lo que la persona quiere hacer (declaración de renta, ITBMS, cerrar el mes, planilla…): qué logra, dónde queda en el menú, los pasos y la nota; solo lo que quien pregunta puede abrir | lectura | Interno |
+
+**Ventas, ITBMS y ganancia (2026-10-16).** `resumen_ventas` y `reporte_del_dia` dan las ventas **sin ITBMS** (la cifra
+principal), con el ITBMS y el total con ITBMS aparte; lo cobrado va con ITBMS. Solo para Gerencia y administradores
+agregan la **ganancia** (venta menos costo, sin ITBMS); a la Vendedora nunca le llega el costo ni la ganancia. Si hay
+ventas con productos sin costo cargado, lo avisan en vez de inventar la ganancia. Son las mismas cifras del Inicio.
+
+**Facturado, Con abonos o Completadas, por vendedora, y comparar (2026-10-17).** Para Gerencia, Brian cuenta las ventas
+como su Inicio, **sobre las facturas publicadas** (como Contabilidad) y con las mismas palabras del interruptor
+([OPERACION.md](OPERACION.md), «Facturado, Con abonos o Completadas, y Comparar»):
+
+| Herramienta | Qué hace | Nivel | Quién |
+|---|---|---|---|
+| `resumen_ventas(periodo?, desde?, hasta?, base?, vendedora?)` | Lo de siempre y, para Gerencia, `base` = `facturado` (por defecto: todas las facturas publicadas, por su fecha, igual que Contabilidad; las notas de crédito restan; agrega `de_un_pedido`, «N de M salieron de un pedido de una vendedora»), `con_abonos` (con al menos un abono, por su valor total; agrega `falta_por_cobrar_con_itbms`) o `completadas` (pagadas al 100 %, el día del último pago), y `vendedora` (un nombre o «sin vendedora»; una factura es de la vendedora de su pedido o, sin pedido, de su «Vendedor»). La respuesta dice qué cuenta (`cuenta`) y cuántas notas de crédito restaron (`notas_de_credito`). Trae el ticket promedio (`ticket_promedio_sin_itbms`, «—» sin ventas) y, para Gerencia, `unidades_por_tipo` y `unidades_total`, los mismos del Inicio (categoría de primer nivel; «Otros» pasados 8 tipos; las notas de crédito restan). Quien vende sin controlar ve solo lo suyo, sus pedidos facturados por completo; si pide otra vendedora, se le niega | lectura | Ventas |
+| `comparar_ventas(comparacion, a?, b?, base?, vendedora?)` | Las cifras del bloque **Comparar**: `ayer`, `dia_mes_pasado`, `semana_pasada`, `mes_a_la_fecha`, `mes` (contra el mes completo que diga `b`: «septiembre», «09/2026» o «2026-09»; responde «Llevas 58 % de septiembre») o `rango` (`a` = «01/10/2026-07/10/2026»; `b` = dónde empieza B, del mismo largo, o B entero si es de otro largo, y entonces el % va por día). Filas: ventas, ganancia, margen (en puntos), número de ventas, ticket promedio, falta por cobrar (con abonos) y cobrado, con su cambio («▲ 27.6 %», «▼ 5.4 pts», «—» sin base). Si A termina hoy, dice hasta qué hora se cortó. `vendedora=por vendedora` agrega una fila por vendedora (5 parámetros: el contrato de los modelos pequeños) | lectura | Gerencia |
+
+**Por día y movimientos de inventario (2026-10-22).** Las mismas cuentas de *Por día* y de *Inventario › Movimientos*
+([OPERACION.md](OPERACION.md), «Por día, Estadísticas y Movimientos»):
+
+| Herramienta | Qué hace | Nivel | Quién |
+|---|---|---|---|
+| `ventas_por_dia(dia?, mes?, base?, vendedora?)` | Con `dia` («hoy», «ayer», «el martes» = el último martes, hoy incluido; «el martes pasado» = antes de hoy; o «20/10/2026»): el total de ese día sin ITBMS (ITBMS y total aparte) y cada factura o pedido con cliente, vendedora, monto y estado. Sin `dia`: cada día del mes con ventas (`mes` = «este mes», «mes pasado», «septiembre», «09/2026»), el total, el ticket promedio, el mejor día y la comparación con el mes anterior (la misma de la pantalla). `base`: `facturado` (por defecto), `confirmado` (lo vendido: pedidos confirmados, el día que se confirmaron), `con_abonos` o `completadas` (pagadas por completo, el día que se terminó de pagar). Desde el 2026-11-02 trae también lo cobrado ese día o ese mes por forma de pago (efectivo, Yappy, tarjeta…), con ITBMS, de toda la tienda (la cuenta de la Caja de hoy) | lectura | Gerencia |
+| `valor_del_inventario()` | (2026-11-02) La mercancía de hoy: al costo (la valuación del inventario de Odoo), a precio de venta sin ITBMS, la ganancia esperada y su margen, las unidades; por tipo de mueble, los 5 productos con más dinero y lo que falta cargar (sin costo, sin precio, en negativo). La misma cuenta de *Inventario › Valor del inventario* | lectura | Gerencia y administradores |
+| `movimientos_de_producto(producto?, desde?, hasta?, tipo?, limite?)` | La historia de un producto (nombre, código o código de barras) en palabras: «Entró por la compra… de…», «Salió por la venta… a…», ajustes, devoluciones y traslados, con la cantidad (+/−), lo que quedó (solo si la historia cuadra; si no, lo avisa), quién y cuándo, y lo que hay hoy. Sin producto, los últimos movimientos de todos. `tipo`: compra, venta, devolucion, ajuste, traslado u otro | lectura | Gerencia de inventario y administradores |
+
+Ejemplos: «¿cuánto se facturó el martes?» → `ventas_por_dia(dia=el martes)`; «ventas por día de este mes» →
+`ventas_por_dia()`; «¿cuánto entró en Yappy ayer?» → `ventas_por_dia(dia=ayer)`; «¿cuánto vale el inventario?» → `valor_del_inventario()`; «¿qué movimientos tuvo el SOF-001?» → `movimientos_de_producto(producto=SOF-001)`.
+
+`reporte_del_dia` le da a Gerencia las ventas de hoy como su Inicio (`ventas_de_hoy`, en «Facturado», con
+`de_un_pedido`) en lugar de «Vendido hoy», que sigue siendo la cifra de la vendedora; lo más vendido de los 30 días es
+también el del Inicio de Gerencia («Facturado»). Ejemplos: «¿cómo vamos contra septiembre?» →
+`comparar_ventas(comparacion=mes, b=septiembre)`; «¿cómo va Ana este mes?» →
+`comparar_ventas(comparacion=mes_a_la_fecha, vendedora=Ana)`.
+
+Brian **solo lee** el CRM: cerrar o ganar oportunidades no está hecho a propósito ([JUAN_ODOO.md › El CRM se ajusta solo](JUAN_ODOO.md#el-crm-se-ajusta-solo)).
+
+**Combos cama + colchón que se arman en la venta (2026-10-22, `herramientas_combos.py`).** Las mismas reglas del panel
+«Armar combo» de la cotización ([OPERACION.md](OPERACION.md), «Combos cama + colchón»): el colchón va a su **precio en
+combo** (el que puso Gerencia, por medida) solo si en la misma venta va una cama de su medida; sin precio en combo, a
+precio normal. Brian corre como quien le habla (tope de descuento y «solo lo suyo» incluidos).
+
+| Herramienta | Qué hace | Nivel | Quién |
+|---|---|---|---|
+| `colchones_para_cama(cama, todos?)` | Los colchones de la medida de la cama, con existencia (`todos`: también los agotados): precio normal, precio en combo, ahorro y disponibles. Una cama sin medida lo dice | lectura | Ventas |
+| `armar_combo(cama, colchon, venta? / cliente?, cantidad?)` | Agrega la cama y el colchón de su misma medida a una cotización (o a una nueva para `cliente`); devuelve el resumen con `el_cliente_ahorra_sin_itbms` | construcción | Ventas |
+| `cambiar_combo(venta, cama_nueva? / colchon_nuevo?, cama_actual?)` | Cambia la cama o el colchón del combo (con varios combos, `cama_actual` dice cuál); el precio se vuelve a calcular | construcción | Ventas |
+| `poner_precio_en_combo(colchon, precio)` | El precio en combo de un colchón en una medida (sin ITBMS, menor que el normal; 0 lo quita) | construcción | Gerencia |
+| `poner_precio_por_par(producto, precio)` | La promoción «2 por…» de un producto: lo que cuestan 2 juntas, sin ITBMS (menor que 2 sueltas y partible en dos al centavo; 0 la quita). Cada par va a ese precio y una suelta a su precio normal (`docs/CATALOGO.md` › «La promoción por pares») | construcción | Gerencia |
+
+`crear_cotizacion` con una cama y un colchón de la misma medida ya da el precio en combo, y el resumen de cualquier
+cotización (`ver_venta`, `crear_cotizacion`…) marca las líneas que van en combo (`combo`: «Combo · ahorras $40.00»).
+
+`crear_cotizacion` y `agregar_linea_cotizacion` aceptan `lineas` («SOF-001 x 2; MES-003 x 1 @ 99»;
+máx. 30). Los modelos pequeños pueden mandar números y sí/no como texto: el registro los convierte
+(`registro.coercer`), y un parámetro mal puesto responde con la lista de los válidos.
+
+## Brian al día (2026-11-06): pantallas propias, Juan, Sofía, clientes repetidos, correo y Meta
+
+La dueña dijo: «Brian es indispensable, pero está desactualizado». Se revisó todo lo que entró desde octubre (la tabla
+de la auditoría está en la bitácora de [LEEME_PRIMERO.md](LEEME_PRIMERO.md), entrada «2026-11-06 (6)») y se cerraron
+los huecos con herramientas **de lectura** (consultar, resumir, decir dónde está algo y abrirlo) y conocimiento al día.
+Nada escribe dinero (issue #26). Cada herramienta cumple el contrato de los modelos pequeños (≤ 5 parámetros,
+descripción de menos de 260 letras; la prueba ahora revisa **todas** las categorías: `buscar_en_guia` tenía 293).
+
+| Herramienta | Qué hace | Nivel | Quién | Dónde vive |
+|---|---|---|---|---|
+| `abrir_pantalla(pantalla)` | Abre con un botón una pantalla propia: Inicio, Conversaciones, Resumen y Reparto de Juan, Sofía, Camila, Marketing, Envíos, Valor del inventario, Ventas por día, Estadísticas, Movimientos, Bodega, Reponer, Posibles duplicados o la Guía; dice dónde queda en el menú. Solo si quien pregunta ve ese menú (los mismos permisos que la Guía) y solo listas o pantallas propias (nunca una acción de servidor ni un enlace) | lectura | Interno | `dcasa_brian` (`herramientas_pantallas.py`) |
+| `propuestas_de_sofia(grupo?, limite?)` | Lo que Sofía propone y espera visto bueno, por grupo (escribir, mantener, datos, repartir), con la última revisión y el botón a su pantalla. De «Guarda sus datos» dice **qué** dato dio el cliente, no el dato (ni el título de Sofía, que lo lleva escrito: se manda «Guarda sus datos» a secas). La vendedora ve las suyas; Gerencia, todas (la regla de registro de Sofía) | lectura (texto de clientes) | Ventas | `dcasa_brian` (`herramientas_asistentes.py`; Sofía no es dependencia: si falta, lo dice) |
+| `revisar_con_sofia()` | El «Revisar ahora» de Sofía: deja sus propuestas al día. No le escribe a nadie ni toca el CRM; si alguien revisó hace menos de un minuto, no repite. Corre en una **transacción corta y propia** (si no, el candado de Sofía y sus propuestas quedaban tomados todo el turno de Brian, hasta 150 s, y fallaban «Revisar ahora», aprobar y la revisión de la mañana). A Gerencia le da las cuentas de la revisión; a una vendedora, cuántas de las suyas dejó | construcción | Ventas | `dcasa_brian` (`herramientas_asistentes.py`) |
+| `resumen_de_conversaciones(periodo?)` | El Resumen de Juan: mensajes, clientes, lo que Juan resolvió solo, oportunidades, ventas atribuidas en tres (solo Juan, Juan y una persona, solo personas; sin ITBMS), tasa de cierre del periodo y de todos los periodos, primera respuesta, cuántos esperan a una persona y los comentarios de Instagram y Facebook que atendió (respondidos y quejas) | lectura | Ventas | `dcasa_conversaciones` (`herramientas_conversaciones.py`) |
+| `reparto_de_conversaciones(periodo?)` | El Reparto: el modo, las reglas (activa en N minutos, pasar a otra), y por vendedora si recibe o no (disponible, «No disponible», sin actividad, fuera del reparto), cuántas recibió y cuántos clientes le esperan; los que esperan sin dueña; el tope de clientes esperándole a la vez; a Gerencia, los clientes que cambiaron de mano (total y los 10 más recientes: cuándo, de quién, a quién y cómo; sin nombres de clientes). La vendedora ve solo lo suyo | lectura | Ventas | `dcasa_conversaciones` |
+| `costos_de_juan()` | Cuánto se le debe a Meta de la IA de Juan: **por pagar** (lo consumido desde el último pago; sin pagos, lo del mes; «aprox.» si a algún mes le faltan fotos), el último pago (monto y fecha) y el gasto del mes frente al tope. Si el Worker no responde, no da cifras de hoy (sí el último pago, que está en Odoo). **No marca pagos**: eso se hace con «Pagar» en Conversaciones › Costos de IA (decisión de la dueña, 2026-11-12) | lectura | Gerencia y administradores | `dcasa_conversaciones` (`herramientas_conversaciones.py`) |
+| `cotizaciones_que_vencen(dias?, limite?)` | Las cotizaciones del chatbot y de la web que se cancelarán solas en los próximos días (sin las que el cron no toca: bloqueadas, con factura, pago en curso o apartado), los días de Ajustes de Juan y cómo darles más días | lectura (texto de clientes) | Ventas | `dcasa_conversaciones` |
+| `clientes_repetidos(tipo?, limite?)` | Las fichas que comparten celular, correo o RUC (Posibles duplicados): cuántas, quiénes y cómo se unen. Brian **no** fusiona | lectura (texto de clientes) | Gerencia de ventas | `dcasa_brian` (`herramientas_clientes.py`) |
+| `estado_del_correo(dias?)` | Si sale correo a los clientes o por qué no, qué se manda (al pagar, bienvenida, recordatorio de abono) y la cola de los últimos días por tipo y estado, con los que no salieron y su motivo. La clave de Resend nunca se lee (ni sus últimas letras). Fechas en hora de Panamá | lectura (texto de clientes) | Gerencia y administradores | `dcasa_correo` |
+| `estado_de_meta()` | El catálogo para anuncios (encendido, cuántos productos entran y cuántos quedan fuera) y el píxel y las ventas a Meta (interruptores, si la clave está cargada —nunca su valor—, eventos de 30 días y el último error). No enciende ni apaga nada | lectura | Gerencia de ventas y administradores | `dcasa_brian` (`herramientas_meta.py`; los módulos de Meta no son dependencia) |
+
+Además:
+
+* **El origen de una venta** (Chatbot, Web o Vendedora, de `dcasa_interfaz`): `buscar_ventas` acepta `origen` y cada
+  fila lo dice; `ver_venta` y `ver_factura` (de cliente) también. «Cotizaciones que armó Juan» → `buscar_ventas(origen=chatbot)`.
+* **Botón «Abrir» para pantallas propias:** un destino puede ser `{accion: <id de ir.actions>, titulo}` (el panel lo abre
+  con `doAction`; solo ids enteros, `_abrir` en `conversacion.py`). `buscar_en_guia` ya da ese botón cuando la tarea de
+  la Guía lleva a una pantalla propia (antes solo decía la ruta).
+* **El prompt** (`_sistema_fijo`) explica en pocas líneas quiénes son Juan, Sofía y Camila, que Brian no aprueba
+  propuestas ni envía campañas (las abre con `abrir_pantalla`) y que use `buscar_en_guia` si no sabe dónde está algo.
+  `ayuda` lo dice también.
+* **La Guía** trae la pregunta lista para Brian en las tareas de Sofía, duplicados, Conversaciones, Reparto,
+  cotizaciones que vencen, Meta, correos, Camila y envíos.
+
+Lo que sigue sin herramienta, a propósito: aprobar o descartar propuestas de Sofía y enviar campañas de Camila (se
+revisan en su pantalla), fusionar clientes (mueve facturas y puntos), encender Meta o el correo (Ajustes), sacar a
+una vendedora del reparto (Gerencia, en la pantalla) y todo lo que escriba dinero (issue #26).
+
+Ejemplos: «¿qué me propone Sofía hoy?» → `propuestas_de_sofia`; «¿cuál es la tasa de cierre de Juan este mes?» →
+`resumen_de_conversaciones(periodo=30_dias)`; «¿qué vendedoras están recibiendo clientes?» →
+`reparto_de_conversaciones`; «¿qué cotizaciones de la web vencen pronto?» → `cotizaciones_que_vencen`; «¿hay clientes
+repetidos?» → `clientes_repetidos`; «¿qué correos no salieron esta semana?» → `estado_del_correo`; «¿cómo va Meta?» →
+`estado_de_meta`; «ábreme Sofía» → `abrir_pantalla(pantalla=sofia)`.
+
+### El botón flotante no tapa nada (2026-11-06)
+
+En Conversaciones, en computadora, el botón azul de abajo a la derecha tapaba «Enviar» y «Nota interna». Ahora, mientras
+el botón se ve (computadora, panel cerrado; `body:has(.o_brian_lanzador:not(.o_brian_oculto))` en `brian_panel.scss`):
+
+* en Conversaciones la caja de responder deja libre su esquina derecha (Enviar queda a la izquierda del botón) y, con la
+  ficha del cliente abierta, su desplazamiento termina por encima del botón;
+* las pantallas propias que bajan con scroll (Sofía, Camila, Envíos, Inicio, Marketing, las de Juan, Contabilidad, la
+  Guía, Reponer) terminan con un espacio libre del alto del botón: lo último siempre sube por encima de él.
+
+Brian no se esconde. Prueba de navegador por geometría (`tests/test_boton_no_tapa.py`, 1366×768 y 1024×768): el
+rectángulo del botón no se cruza con el de ningún botón, enlace o campo visible.
+
+## Envíos (2026-11-06, módulo `dcasa_envios`)
+
+Las mismas cifras de la calculadora de envíos ([ENVIOS.md](ENVIOS.md)): el motor del servidor calcula, nunca el modelo
+de IA. Mientras Gerencia no apruebe la tarifa, la respuesta trae `tarifa` = «en revisión: estos precios todavía no se
+usan con clientes» y Brian tiene que decirlo.
+
+| Herramienta | Qué hace | Nivel | Quién |
+|---|---|---|---|
+| `cotizar_envio(lugar? \| km? + peaje?, distrito?, limite?)` | Busca el lugar como lo dice el cliente (barrio, urbanización, PH, corregimiento o un lugar conocido) y da hasta 5 parecidos con su `total`, `km`, `desglose` y `texto_para_el_cliente`; o, con `km`, el precio de ese viaje (con `peaje`). Sin resultados: `quisiste_decir`. Lejos o sin carretera: «se cotiza aparte» | lectura | Interno |
+
+Ejemplos: «¿cuánto cuesta el envío a Villa Lucre?» → `cotizar_envio(lugar=Villa Lucre)`; «¿y a 34 km con peaje?» →
+`cotizar_envio(km=34, peaje=true)`.
+
+### La ubicación exacta de la entrega (2026-11-25, módulo `dcasa_ubicacion`)
+
+Detalle en [UBICACION.md](UBICACION.md). Todas van marcadas `privado=True`: la auditoría (`brian.accion`) guarda sin
+coordenadas, sin secretos de enlaces, sin teléfonos y sin lo que la clienta escribió de su casa. Ninguna le da al
+modelo las coordenadas: para la ruta, el botón «abrir» lleva a la venta («Ruta del motorizado») o a la ficha («Abrir en
+Waze / Google Maps»).
+
+| Herramienta | Qué hace | Nivel | Quién |
+|---|---|---|---|
+| `ubicacion_de_entrega(venta)` | La zona, la dirección, la referencia, quién recibe, el teléfono de respaldo, si hay foto, de dónde salió el punto y si es confiable; «abrir» a la venta | lectura | Interno |
+| `enlace_de_ubicacion_para_cliente(cliente)` | Crea el enlace de un solo uso (24 horas) para que el cliente marque su casa; devuelve el texto para mandarlo a mano | construcción | Interno |
+| `poner_ubicacion_de_entrega(cliente, enlace_mapa? \| latitud + longitud, referencia?)` | Guarda el punto que el cliente mandó por otro lado (un enlace de Google Maps, Waze o Apple) | construcción | Interno |
+| `poner_quien_recibe(cliente, nombre?, telefono?)` | Quién recibe y un teléfono de respaldo de Panamá | construcción | Interno |
+| `quitar_foto_de_fachada(cliente)` | Quita la foto de la casa de la ficha | construcción | Interno |
+| `pedir_ubicacion_al_cliente(venta)` | Le pide al cliente que marque su casa (por el chat si se puede; si no, devuelve el WhatsApp listo para abrir) | construcción | Ventas |
+| `avisar_que_sale_hoy(venta)` | «🚚 Hoy le llega su pedido… ¿habrá alguien en casa?» (una vez por venta y por día) | construcción | Ventas |
+
+Juan (el asistente de los clientes) tiene además `enlace_de_ubicacion(para_otra_casa?)`, `guardar_indicaciones(texto)`
+y `guardar_quien_recibe(nombre?, telefono?)` ([JUAN.md](JUAN.md)).
+
+## Camila, el correo de novedades (2026-11-06, módulo `dcasa_camila`)
+
+Las mismas cifras de la pantalla **Marketing › Camila** ([CAMILA.md](CAMILA.md)); nada lo calcula el modelo de IA. Brian
+no arma ni envía campañas: eso se aprueba en la pantalla.
+
+| Herramienta | Qué hace | Nivel | Quién |
+|---|---|---|---|
+| `estado_campanas(cuantas?)` | Las campañas abiertas (desde la etapa 2 pueden ser varias: nombre, estado, asunto, a quién va, a cuántos les llegaría, cuántos quedan fuera y por qué, productos con su precio de la tienda), cuántos clientes tienen permiso, si está la clave de campañas de Resend, el tope (a cada cliente, un correo de campaña cada 15 días), por qué no puede salir ahora y los resultados de las últimas `cuantas` campañas (enviados, chats que llegaron con la marca, ventas por el chat y en la web; el monto solo para Gerencia y administradores; aperturas y clics de Resend) | lectura | Gerencia, administradores y el rol Marketing |
+
+Ejemplos: «¿cómo va la campaña de correo?» → `estado_campanas`; «¿cuántos clientes reciben las novedades?» →
+`estado_campanas`; «resultados de las últimas 5 campañas» → `estado_campanas(cuantas=5)`.
+
+## Marketing y fotos (2026-10-22, módulo `dcasa_marketing`)
+
+Las mismas cifras de la app **Marketing** ([MARKETING.md](MARKETING.md)); nada lo calcula el modelo de IA.
+
+| Herramienta | Qué hace | Nivel | Quién |
+|---|---|---|---|
+| `movimiento_de_productos(periodo?, que?, categoria?, limite?)` | `periodo` = `semana` (7 días corridos, por defecto), `15_dias` o `mes` (30 días); `que` = `mas_movimiento` (lo vendido o entregado; una venta facturada y entregada cuenta una vez), `quietos` (con stock y sin ventas ni entregas; primero los que nunca se vendieron, con la última venta y los días sin vender), `mas_vendidos` (unidades facturadas, las notas de crédito restan, la base del Inicio) o `todo`; `categoria` = el tipo (p. ej. «Salas»). Responde cómo se cuenta (`como_se_cuenta`) | lectura | Gerencia, administradores y el rol Marketing |
+| `rotacion_de_inventario(grupo?, categoria?, orden?, rebaja?, limite?)` | Como la pantalla Rotación ([ROTACION.md](ROTACION.md)): `grupo` = `mas_de_30`, `mas_de_60`, `mas_de_90` (por defecto), `mas_de_180` (días sin vender), `nunca`, `nuevo`, `abierto`, `ancla` o `todos`; **solo Gerencia y administradores**: `estrella`, `trafico`, `oportunidad` o `revisar` (margen y rotación); `orden` = `capital`, `dias`, `rotacion`, `margen`, `cobertura` o `nombre`; `rebaja` = un descuento en % (1 a 95) para **simular** (no cambia ningún precio). Devuelve el resumen, los grupos, los productos (días sin vender, vendidas en 30 · 60 · 90 días, cuántos días alcanza lo que hay) y cómo se cuenta. **El dinero** (capital al costo, precio, margen y la simulación) solo sale para Gerencia y administradores; el rol Marketing recibe unidades y días | lectura | Gerencia, administradores y el rol Marketing |
+| `comparar_movimiento(periodo?, contra?, vista?, categoria?, limite?)` | Como la pantalla Movimiento ([MOVIMIENTO.md](MOVIMIENTO.md)): compara las ventas de dos periodos por producto. `periodo` = `7`, `15`, `30` (por defecto), `60`, `90`, `este_mes` o `mes_pasado`; `contra` = `anterior` (el tramo de justo antes, por defecto) o `anio` (el mismo tramo del año pasado); `vista` = `venden` (por defecto), `subieron`, `bajaron`, `enfriaron`, `quietos` o `todos`. Devuelve las fechas exactas de los dos periodos, el resumen (unidades y pedidos ahora y antes), cuántos productos hay en cada lista, los productos (estado, vendidas ahora y antes, cambio, pedidos, existencias, para cuántos días alcanza) y cómo se cuenta. **El dinero** (lo vendido en $) solo sale para Gerencia y administradores | lectura | Gerencia, administradores y el rol Marketing |
+| `fotos_que_faltan(estado?, texto?, categoria?, limite?)` | Productos a la venta sin foto (`sin_foto`), con una sola (`una_foto`) o los dos (`faltan`, por defecto); con cuántas tiene cada uno, los conteos y dónde subirlas (Marketing › Fotos o tocando la foto del producto) | lectura | Interno |
+
+Ejemplos: «¿qué productos están más quietos esta semana?» → `movimiento_de_productos(que=quietos)`; «¿qué se movió más
+este mes en Salas?» → `movimiento_de_productos(periodo=mes, que=mas_movimiento, categoria=Salas)`; «¿a qué colchones les
+faltan fotos?» → `fotos_que_faltan(categoria=Colchones)`; «¿qué lleva más de 90 días sin venderse?» →
+`rotacion_de_inventario(grupo=mas_de_90)`; «si rebajo 20 % lo que lleva 60 días sin venderse, ¿cuánto entra?» →
+`rotacion_de_inventario(grupo=mas_de_60, rebaja=20)`; «¿qué subió este mes frente al mes pasado?» →
+`comparar_movimiento(periodo=este_mes, vista=subieron)`. Brian no sube ni cambia fotos (eso se hace en la pantalla).
+
+## Roles y «Cada vendedora ve solo sus documentos» (2026-10-17)
+
+* **Roles** de `listar_usuarios`, `cambiar_rol_usuario` y `crear_usuario` (`herramientas_usuarios.py`, `ROLES`):
+  `vendedor` = «Tommalo / Vendedora», `cajero` = «Tommalo / Caja» (factura y cobra lo de toda la tienda), `gerencia` =
+  «Tommalo / Gerencia» (solo la da un administrador del sistema, igual que `administrador`), `contador` y
+  `administrador`. Un cambio de rol quita antes los tres roles D'CASA y «Ventas: todos los documentos»: pasar de Caja a
+  Vendedora no deja a la persona viendo lo de sus compañeras. Antes Brian llamaba «Cajero/a» a la Vendedora y a Gerencia.
+* **Brian corre como quien le habla**: con el interruptor encendido, a la Vendedora no le encuentra la venta, la
+  factura de otra (`ver_venta` y `ver_factura` responden que no la encuentran: las reglas filtran). Las herramientas que dan
+  cifras de facturas o cotizaciones (`clientes_que_deben`, la deuda de un cliente, `facturas_pendientes`,
+  `pendientes_de_hoy`) agregan la clave **`alcance`** («solo tus facturas y las que no tienen vendedora») para que no
+  presente una cifra parcial como si fuera la de toda la tienda. A Caja, contabilidad y Gerencia no se les agrega.
+* **`cambiar_restriccion_vendedoras(encender)`** (sensible, Gerencia o administrador): enciende o apaga «Cada vendedora
+  ve solo sus documentos» (lo mismo que *Ventas › Configuración › Permisos de las vendedoras*). `listar_usuarios` dice
+  cómo está (`cada_vendedora_ve_solo_lo_suyo`). Ejemplo: «que las vendedoras vuelvan a ver todo».
+
+## Reglas contables de la gerencia (2026-10-17)
+
+Brian corre como quien le habla, así que las reglas del servidor ([PERMISOS.md](PERMISOS.md), «Reglas contables de la
+gerencia») le valen igual; además:
+
+* **`registrar_pago`** solo sale a quien cobra: Caja, Gerencia, contabilidad o administrador. `grupos` acepta ahora un
+  elemento «alguno de» (una tupla dentro de la tupla: `('account.group_account_invoice', (Caja, contador, …))`). A la
+  Vendedora no se le ofrece; si de todos modos llega a la herramienta, responde «Los cobros los registra Caja…». Con
+  el interruptor «ver solo lo suyo» apagado, tampoco.
+* El **primer abono** menor a la mitad del total: `registrar_pago` usa el asistente «Pagar», así que a Caja y a
+  contabilidad les contesta «El primer abono debe ser de al menos la mitad: $X. Si es menos, lo registra Gerencia.»;
+  Gerencia sí lo registra (queda una nota en la factura). Los abonos siguientes y el pago completo son libres.
+* `forma_pago` acepta **Tafi** y **Crediviva** (diarios «Tafi (financiamiento)» y «Crediviva (financiamiento)»).
+* **El vencimiento del abono** sale de `_dcasa_estado_abono` (30 días continuos desde el primer abono): `ver_factura` y
+  `facturas_pendientes` agregan, en una factura de cliente en abono, `abono` = `{inicio, pagado, saldo, vence,
+  vencido}`. El `vence` de siempre sigue siendo el de la condición de pago de la factura.
+* **El prompt**: a quien no cobra, Brian sabe que «los cobros los registra Caja (o Gerencia)»; a quien no es Gerencia,
+  que anular, pasar a borrador, notas de crédito y devolver dinero son solo de Gerencia. Brian no tiene herramientas
+  para anular, pasar a borrador ni hacer notas de crédito (sigue siendo de una persona).
+
+## Bodega, nómina y el ZIP de comprobantes (2026-10-22)
+
+Archivo `models/herramientas_bodega_nomina.py` (usan modelos de `dcasa_existencias`, `dcasa_nomina` y
+`dcasa_contabilidad`; si uno no está instalado, la herramienta lo dice). Pruebas: `tests/test_bodega_nomina_brian.py`.
+
+| Herramienta | Nivel | Quién | Qué hace |
+|---|---|---|---|
+| `resumen_de_mermas` | lectura | gerente de Inventario (Gerencia) | Mermas del mes por código, contra lo comprado y el tope del 0.5 % |
+| `registrar_merma` | sensible | gerente de Inventario | Da de baja una merma, daño, muestra o regalo (pide «qué pasó») |
+| `bitacora_de_bodega` | lectura | gerente de Inventario | Últimos ajustes: antes → después, motivo y quién |
+| `adelantos_y_prestamos` | lectura | Administra la nómina | Adelantos con su saldo y cuota por quincena |
+| `registrar_adelanto` | construcción | Administra la nómina | Lo deja «por autorizar» (lo autoriza Gerencia en la pantalla) |
+| `enviar_comprobantes_de_pago` | sensible | Administra la nómina | Manda los comprobantes de una planilla confirmada (respeta el interruptor de correos) |
+| `preparar_zip_de_comprobantes` | construcción | contabilidad | Prepara el ZIP de un año o un rango; avisa cuando está listo |
+
+Además, **`ajustar_existencias` y `ajustar_existencias_en_bloque` piden ahora el `motivo`** (obligatorio): queda en la
+bitácora de bodega con origen «Brian». La tarjeta de confirmación del bloque lo muestra.
+
+## Decisiones de la gerencia D1, D3 y F5 y clientes limpios (2026-10-22)
+
+`models/herramientas_decisiones.py`:
+
+| Herramienta | Nivel | Quién | Qué hace |
+|---|---|---|---|
+| `pedir_descuento_a_gerencia` | construcción | todos | Pide un descuento mayor al tope para una cotización; a cada persona de Gerencia le llega su clave por Telegram (chats vinculados, lista de permitidos) |
+| `aplicar_descuento_con_clave` | construcción | quien pidió | Aplica el descuento con la clave (una vez, esa cotización y ese total, con vencimiento e intentos contados) |
+| `descuentos_por_autorizar` | lectura | Gerencia | Lo que espera autorización |
+| `decidir_descuento` | sensible | Gerencia | Aprueba (y aplica) o rechaza |
+| `saldos_de_centavos` / `cerrar_saldos_de_centavos` | lectura / sensible | Gerencia y contabilidad | Facturas y cobros con 1 a 5 centavos de redondeo; cerrarlos con su ajuste |
+| `abonos_por_vencer` | lectura | Caja, Gerencia, contabilidad | Los que vencen en 5 días o ya vencieron, con el enlace de WhatsApp listo (lo manda la persona) y si salió el correo |
+| `productos_repetidos`, `nombres_por_pasar_a_mayusculas` | lectura | Gerencia | El catálogo por limpiar (F5) |
+| `pasar_nombres_a_mayusculas`, `unir_productos` | sensible | Gerencia | Lo mismo que las pantallas de Ventas › Productos |
+
+`crear_cliente` busca antes de crear (celular, correo, RUC y nombre parecido); con un nombre parecido no crea y
+pregunta; si la persona confirma que es otra, `crear_cliente_distinto`.
+
+## La marca del panel (2026-11-18, `dcasa_interfaz` › Ajustes › Marca del panel)
+
+Cuatro herramientas en `dcasa_brian/models/herramientas_marca.py`, solo para **administradores** (los mismos que ven la
+pantalla). Van por el mismo camino que Ajustes (`res.company._dcasa_panel_poner`: exige administrador antes de escribir
+y valida igual). Detalle de la función: [MARCA_DEL_PANEL.md](MARCA_DEL_PANEL.md).
+
+| Herramienta | Qué hace | Nivel y por qué |
+|---|---|---|
+| `ver_marca_del_panel()` | Logo e ícono (propios o de fábrica), los dos colores, el oscuro de la marca, cómo se leen y el botón a la pantalla | lectura |
+| `cambiar_colores_del_panel(principal?, acento?)` | Cambia uno o los dos colores. Si no se leen (el principal pide 4.5:1 con el blanco; el acento, 4.5:1 con el oscuro de la marca), no cambia nada y dice qué color sí sirve | **construcción**: se deshace con otro cambio o con la vuelta a fábrica, no toca dinero, permisos ni datos de nadie, y lo que no se lee ni se guarda. Queda en el registro de acciones |
+| `poner_imagen_del_panel(adjunto, uso)` | Pone como logo o ícono una imagen PNG, JPG o WebP que la persona le mandó a Brian (chat o Telegram), por su nombre o número | **construcción**; como la imagen viene en el mensaje, la regla de los adjuntos le hace pedir **Permitir** de todos modos (no lleva `segura_con_adjuntos`) |
+| `volver_a_la_marca_de_fabrica(que)` | `colores`, `logo`, `icono` o `todo` | **sensible**: quita lo que se subió y eso no se recupera sin el archivo; lo aprueba una persona y por MCP nunca corre solo |
+
+**Por MCP no viaja la imagen.** El canal solo lleva texto JSON (cada dato hasta 10 000 letras y 30 000 entre todos; un
+logo en base64 no cabe) y no tiene adjuntos. Por MCP sí se ven y se cambian los colores; para el logo o el ícono sirve
+una imagen que ya se le mandó a Brian en el chat del panel o en Telegram (se nombra en `adjunto`), o se sube en
+*Ajustes › Marca del panel*. `abrir_pantalla(pantalla=marca_del_panel)` abre esa pantalla.
+
+## Para cada función nueva
+
+Toda función nueva de la plataforma debe poder usarla Brian (ver la plantilla de PR):
+registrar su herramienta con nivel, respetar la política y llevar test.
+
+## Conectarse
+
+### MCP (Claude Desktop, Claude Code, otros clientes MCP)
+
+Endpoint: `POST https://tommalo.example/brian/mcp` — MCP revisión **2025-06-18**, transporte
+*Streamable HTTP*, respuestas `application/json` (sin SSE; `GET`/`DELETE` → 405). Un mensaje
+JSON-RPC por petición: los lotes se rechazan (la 2025-06-18 los eliminó).
+
+1. **Crear la clave de API en Odoo** (con el usuario que va a usar Brian; todo corre con sus
+   permisos): avatar → *Mis preferencias* → pestaña *Seguridad* → *Nueva clave de API* →
+   nombre (p. ej. «Claude Desktop de Ana») y vencimiento. Copiarla: Odoo no la vuelve a mostrar.
+   Sirve una clave global o una con alcance `brian`.
+2. **Configurar el cliente** con la URL y el encabezado `Authorization: Bearer <clave>`.
+   Ejemplo (cliente con soporte HTTP remoto):
+
+   ```json
+   {
+     "mcpServers": {
+       "brian-dcasa": {
+         "type": "http",
+         "url": "https://tommalo.example/brian/mcp",
+         "headers": { "Authorization": "Bearer ${BRIAN_ODOO_API_KEY}" }
+       }
+     }
+   }
+   ```
+
+   En Claude Code: `claude mcp add --transport http brian-dcasa https://tommalo.example/brian/mcp
+   --header "Authorization: Bearer $BRIAN_ODOO_API_KEY"`. La clave va en una variable del
+   equipo, nunca en un archivo del repositorio.
+3. `tools/list` devuelve las herramientas que ese usuario puede usar, con anotaciones:
+   `readOnlyHint` (lectura), `destructiveHint` (sensible), `openWorldHint: false`.
+
+Reglas del canal MCP:
+
+* Sin clave válida → 401 con `WWW-Authenticate: Bearer`. Clave vencida o revocada = sin acceso.
+* **Las herramientas sensibles nunca se ejecutan desde MCP**: la llamada responde
+  `isError: true` con el resumen y el `accion_id`, y la acción queda «por confirmar». La
+  confirma una persona en el panel o en Telegram (si el usuario tiene el chat vinculado, le
+  llegan al instante el detalle exacto y los botones Permitir / Rechazar). `rechazar_accion`
+  siempre existe.
+* Solo si un administrador pone el parámetro del sistema `dcasa_brian.mcp_permite_confirmar`
+  en `True` aparece la herramienta `confirmar_accion` (marcada `destructiveHint`), pensada para
+  clientes que piden aprobación humana en cada llamada. Por defecto está apagado.
+* Límites: 1 MB por mensaje, 120 peticiones por minuto por usuario, 20 intentos fallidos por
+  minuto por IP, más el límite de acciones por minuto de la política.
+* Si llega `Origin` (navegador), debe ser el de `web.base.url` o uno de
+  `dcasa_brian.mcp_origenes` (separados por coma); si no, 403 (protección DNS rebinding).
+
+### Telegram
+
+1. **Crear el bot**: en Telegram, hablar con [@BotFather](https://t.me/BotFather) → `/newbot`
+   → nombre («Brian D'CASA») y usuario (terminado en `bot`). Copiar el token. Recomendado:
+   `/setjoingroups` → *Disable* (Brian solo responde en chats privados).
+2. **Guardar los secretos** (GitHub → *Settings → Secrets and variables → Actions*, environment
+   `production`; el despliegue los sube al Worker con `wrangler secret bulk`):
+   * `TELEGRAM_BOT_TOKEN` — el token de @BotFather.
+   * `BRIAN_TELEGRAM_SECRETO` — texto aleatorio largo (solo `A-Z a-z 0-9 _ -`), p. ej.
+     `openssl rand -hex 32`. Va en la URL del webhook y en el encabezado
+     `X-Telegram-Bot-Api-Secret-Token`; sin él, el webhook responde 404.
+3. **Registrar el webhook**: con `web.base.url` = `https://tommalo.example`, un administrador va a
+   *Brian → Telegram* y pulsa **Registrar webhook** (llama a `setWebhook` con
+   `https://tommalo.example/brian/telegram/<secreto>`; guarda el @usuario del bot para los mensajes).
+4. **Vincular** (cada persona, una vez): *Mis preferencias* → **Vincular Telegram** (o *Brian →
+   Telegram* → *Vincular mi Telegram*). Aparece un código de 6 dígitos que vence en 10 minutos y
+   sirve una sola vez; enviarle al bot `/vincular 123456`. Desde ese chat Brian trabaja con los
+   permisos de esa persona.
+
+Comandos del bot: `/ayuda`, `/nuevo` (conversación nueva), `/desvincular`, `/vincular CÓDIGO`.
+Se pueden mandar fotos y documentos (hasta 10 MB): se guardan como adjuntos de la conversación.
+Las acciones sensibles llegan con el detalle exacto y botones **Permitir / Rechazar** (sin
+«Siempre»); solo el dueño del chat vinculado puede pulsarlos. Un chat no vinculado solo recibe las instrucciones para vincularse.
+Para cortar el acceso: `/desvincular` en el chat, o *Brian → Telegram* → *Desvincular*.
+
+#### Conectar el Telegram de la gerencia (paso a paso, sin correo)
+
+**Ningún paso depende de un correo** (el correo de Odoo por Resend solo manda lo de clientes: [CORREO.md](CORREO.md)). **Brian tiene su propio bot**, distinto
+del bot de Juan (el de los clientes): un bot solo tiene un destino y usar el de Juan le quitaría la conexión.
+
+1. **Crear el bot**: en Telegram, @BotFather › `/newbot` › nombre `Brian D'CASA` y un usuario que termine en `bot`. Copiar el
+   token (nunca por el chat ni en el repositorio).
+2. **El ID del jefe** (un número, no es secreto pero es personal): él le escribe `/miid` al bot de Juan (o al de Brian, que también lo
+   dice mientras no haya lista) y recibe «Tu chat id es: 123456789». Es el mismo número en cualquier bot.
+3. **Secretos y variable en Cloudflare**: Workers y Pages › `dcasa` › Settings › Variables and Secrets. **Secret** `TELEGRAM_BOT_TOKEN`
+   (el token), **Secret** `BRIAN_TELEGRAM_SECRETO` (40 letras y números al azar) y **Text** `BRIAN_TELEGRAM_CHATS` con el ID del jefe
+   (varios: separados por coma). Deploy. (Los despliegues no tocan lo que se pone en el panel.)
+4. **Que Odoo los recoja**: el contenedor los lee al arrancar: entran con el próximo despliegue o con un reinicio.
+5. **Registrar el bot** (administrador): Brian › Telegram › **Registrar webhook**. Confirma y muestra el @ del bot. Si dice «Falta
+   TELEGRAM_BOT_TOKEN», el contenedor todavía no recogió el secreto. Si sale **ATENCIÓN: no hay lista de chats permitidos**, falta
+   `BRIAN_TELEGRAM_CHATS`: hasta que se ponga, cualquiera que encuentre el bot recibe las instrucciones para vincularse.
+6. **El usuario del jefe**: Ajustes › Usuarios › Nuevo (rol Gerencia; además Administrador si va a recibir los avisos de operación y de
+   inicios de sesión). La clave se la pone un administrador: usuario › Acciones › **Cambiar contraseña** (no llega invitación por
+   correo). Si es administrador, al entrar enrola el código de la app (Google Authenticator), que tampoco usa correo.
+7. **Él pide su código**, con su propia sesión: Brian › Telegram › **Vincular mi Telegram** (o Mis preferencias › Vincular Telegram).
+   Sale un aviso con un código de 6 números (vence en 10 min, sirve una vez). El botón solo vale para quien tiene la sesión abierta.
+8. **En su Telegram**, en el bot de Brian: `/vincular 123456`. Brian contesta «Listo, <nombre>: este chat quedó vinculado a tu usuario».
+9. **Aviso de «el contenedor se cayó»** (Odoo está apagado y avisa el Worker): en Cloudflare, como **Text**,
+   `DCASA_ALERTA_TELEGRAM_CHAT` con el mismo ID. No va en el repositorio: es un dato de una persona.
+
+**La lista de chats permitidos** (`BRIAN_TELEGRAM_CHATS`, o el parámetro `dcasa_brian.telegram_chats` en Ajustes › Técnico):
+con ella puesta Brian **solo** atiende y solo le escribe a esos chats. De cualquier otro no contesta nada (tampoco las instrucciones
+para vincularse ni `/miid`), no deja vincularse aunque traiga un código válido, ignora sus botones, y los avisos (inicios de sesión,
+disco, caídas) solo salen hacia chats de la lista. Un valor sin ningún número (un error al escribirlo) cuenta como lista vacía:
+nadie. **Sin la variable todo sigue como antes**: por eso el paso 5 lo advierte. Si más adelante vendedoras responden a clientes por
+Telegram (la consola del equipo usa este mismo bot), sus IDs se agregan a la lista. Lo que aún **no** se filtra en el borde: un
+mensaje de un chat no permitido todavía despierta el contenedor (Odoo lo ignora sin contestar).
+
+Lo que Brian avisa hoy a los administradores vinculados: inicios de sesión del personal, disco/memoria/base al límite, caídas del
+contenedor y las acciones que esperan permiso (con botones Permitir / Rechazar). Por el mismo bot y a los chats vinculados salen
+también las claves de descuento a Gerencia (`dcasa_base`), las alertas diarias de bodega si Gerencia las enciende
+(`dcasa_existencias`) y el resumen de Sofía de cada mañana a cada vendedora (`dcasa_sofia`). Un resumen de ventas o de lo
+vencido por Telegram **no existe todavía**.
+
+## Correo
+
+Con el correo a clientes encendido ([CORREO.md](CORREO.md)), Brian también manda documentos por correo, con la marca
+D'CASA y el PDF:
+
+| Herramienta | Nivel | Quién | Qué hace |
+|---|---|---|---|
+| `enviar_factura_por_correo` | construcción | Facturación | Encola la factura publicada de un cliente; sale con su PDF nuevo (si todavía debe algo, como abono: lo pagado, lo que falta y hasta cuándo) |
+| `enviar_cotizacion_por_correo` | construcción | Ventas | Manda la cotización (borrador o enviada) con su PDF; si estaba en borrador, pasa a «Enviada». No la confirma |
+
+Si los correos están apagados, o el cliente no tiene un correo bien escrito, Brian lo dice con las mismas palabras que la
+pantalla («… no tiene correo. Escríbelo en su ficha o envíasela por WhatsApp.»). Registrar un pago con `registrar_pago`
+ya manda la factura sola: no hace falta pedírselo aparte.

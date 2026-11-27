@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Botón flotante de WhatsApp en todo el sitio: un círculo de 56 px con el ícono (colores: PENDIENTE, colores de
+         Tommalo; hoy la paleta neutra de primary_variables.scss). -->
+    <template id="layout_whatsapp_float" inherit_id="website.layout" name="Tommalo: botón de WhatsApp"
+              customize_show="True">
+        <xpath expr="//div[@id='wrapwrap']" position="inside">
+            <!-- En carrito y checkout no: taparía el botón de confirmar (la página ya ofrece WhatsApp). -->
+            <aside t-if="website and not request.httprequest.path.startswith(('/shop/cart', '/shop/checkout', '/shop/address', '/shop/payment', '/shop/confirm', '/shop/extra_info', '/payment/status'))"
+                   aria-label="WhatsApp">
+                <a t-att-href="website._dcasa_whatsapp_url()" target="_blank" rel="noopener"
+                   class="o_dcasa_wa_float" title="Escríbenos por WhatsApp">
+                    <i class="fa fa-whatsapp" aria-hidden="true"/>
+                    <span class="visually-hidden">Escríbenos por WhatsApp (se abre en una pestaña nueva)</span>
+                </a>
+            </aside>
+        </xpath>
+    </template>
+
+    <!-- Cabecera sobre el hero: la portada (pageName) y las plantillas que piden
+         `dcasa_header_overlay` (contacto, socios) llevan la misma clase que la opción de Odoo
+         «Cabecera sobre el contenido». -->
+    <template id="layout_cabecera_sobre_hero" inherit_id="website.layout" name="Tommalo: cabecera sobre el hero">
+        <xpath expr="//div[@id='wrapwrap']" position="attributes">
+            <attribute name="t-attf-class" add="#{'o_header_overlay' if dcasa_header_overlay or pageName == 'homepage' else ''}" separator=" "/>
+        </xpath>
+    </template>
+
+    <!-- Fuente autoalojada (static/src/scss/fuentes.scss): fuera el preconnect a fonts.gstatic.com y precarga de
+         Montserrat, la única letra del sitio (pinta el titular del hero, lo primero que se ve). PENDIENTE: la tipografía de
+         Tommalo. -->
+    <template id="layout_fuentes_locales" inherit_id="website.layout" name="Tommalo: fuentes locales">
+        <xpath expr="//link[@rel='preconnect'][@href='https://fonts.gstatic.com/']" position="replace">
+            <link rel="preload" href="/website_dcasa/static/src/fonts/montserrat-latin-var.woff2" as="font" type="font/woff2" crossorigin=""/>
+        </xpath>
+        <!-- Ronda 6: fuera la precarga de FontAwesome que pone Odoo (76 KB). En 4G lenta compartía
+             la red con el CSS que bloquea el primer pintado y retrasaba la foto principal; los
+             iconos llegan igual con el CSS, un instante después. -->
+        <xpath expr="//link[@rel='preload'][contains(@href, 'fontawesome-webfont')]" position="replace"/>
+    </template>
+
+    <!-- Ícono al guardar el sitio, la tienda o el acceso del equipo (/web/login, /master) en la pantalla de inicio del
+         celular: estrictamente el logo (scripts/iconos_de_la_marca.py). Odoo usaba el
+         favicon del sitio (un .ico), que el iPhone no acepta y reemplaza por una foto de la página. El iPhone toma
+         apple-touch-icon (logo sobre blanco, sin transparencia); Android, el ícono más grande de la página. Sin
+         manifiesto a propósito: el acceso directo abre la misma página que se guardó (/master sigue siendo /master). -->
+    <template id="layout_icono_inicio" inherit_id="website.layout" name="Tommalo: ícono de la pantalla de inicio">
+        <xpath expr="//link[@rel='apple-touch-icon']" position="replace">
+            <link rel="apple-touch-icon" sizes="180x180" href="/dcasa_base/static/img/icono/apple-touch-icon.png"/>
+            <link rel="icon" type="image/png" sizes="192x192" href="/dcasa_base/static/img/icono/logo-192.png"/>
+            <link rel="icon" type="image/png" sizes="512x512" href="/dcasa_base/static/img/icono/logo-512.png"/>
+        </xpath>
+    </template>
+
+    <!-- Con el carrusel de la portada (models/portada.py) la imagen LCP es la foto de su primer producto (WebP del
+         ancho justo, website_dcasa.hero_carrusel), pedida desde el <head> antes de que el CSS de Odoo termine de bajar.
+         Sin carrusel, el hero es solo texto: no hay nada que precargar. -->
+    <template id="layout_precarga_hero" inherit_id="website.layout" name="Tommalo: precarga de la foto de la portada">
+        <xpath expr="//head" position="inside">
+            <t t-if="website and request and request.httprequest.path in ('/', website.homepage_url or '/')">
+                <t t-set="dcasa_primera" t-value="(website._dcasa_hero_carrusel() or [None])[0]"/>
+                <link t-if="dcasa_primera and dcasa_primera['srcset']" rel="preload" as="image" type="image/webp"
+                      fetchpriority="high" t-att-imagesrcset="dcasa_primera['srcset']"
+                      t-att-imagesizes="dcasa_primera['sizes']"/>
+                <link t-elif="dcasa_primera" rel="preload" as="image" fetchpriority="high" t-att-href="dcasa_primera['src']"
+                      t-att-imagesrcset="dcasa_primera['srcset_respaldo']" t-att-imagesizes="dcasa_primera['sizes']"/>
+            </t>
+        </xpath>
+    </template>
+
+    <!-- Datos estructurados de la tienda (Google: ficha local y resultados enriquecidos). -->
+    <template id="layout_json_ld" inherit_id="website.layout" name="Tommalo: datos estructurados">
+        <xpath expr="//head" position="inside">
+            <script t-if="website and request and request.httprequest.path in ('/', website.homepage_url or '/')" type="application/ld+json"
+                    t-out="website._dcasa_json_ld()"/>
+        </xpath>
+    </template>
+
+    <!-- JSON-LD «Organization» de website_sale (todas las páginas): el de Odoo escapa el nombre
+         para HTML dentro del JSON («D&#39;Nombre») y publica la URL local si no hay dominio. -->
+    <template id="organizacion_json_ld" inherit_id="website_sale.website_sale_layout" name="Tommalo: organización (JSON-LD)">
+        <xpath expr="//script[@t-if='res_company and website']" position="replace">
+            <script t-if="res_company and website" type="application/ld+json"
+                    t-out="website._dcasa_json_ld_organizacion(res_company)"/>
+        </xpath>
+    </template>
+
+    <!-- Descripción para Google de la tienda (las categorías pueden tener la suya propia). -->
+    <template id="products_meta_dcasa" inherit_id="website_sale.products" name="Tommalo: descripción de la tienda">
+        <xpath expr="//t[@t-call='website.layout']" position="inside">
+            <t t-set="website_meta_description">Catálogo de Tommalo: belleza, hogar y salud. Venta en línea con entrega a domicilio en Panamá.</t>
+            <!-- Sin categoría, Odoo titula la pestaña con el nombre de la vista («Products»). -->
+            <t t-if="not category" t-set="additional_title">Catálogo</t>
+        </xpath>
+    </template>
+
+    <!-- Nombre accesible de la barra de navegación: el de Odoo es «Main» / «Mobile», en inglés
+         y sin traducción para el lector de pantalla. -->
+    <template id="navbar_nombre_dcasa" inherit_id="website.navbar" name="Tommalo: nombre del menú en español">
+        <xpath expr="//nav[@data-name='Navbar']" position="attributes">
+            <attribute name="t-attf-aria-label">#{'Menú del celular' if _navbar_name == 'Mobile' else (_navbar_name or 'Menú principal')}</attribute>
+        </xpath>
+    </template>
+
+    <!-- El menú del celular es un diálogo y tiene que portarse como uno («el foco entra, da la vuelta dentro, sale con Escape
+         y vuelve al botón que lo abrió»). El offcanvas de Bootstrap ya hace todo
+         eso, pero solo si puede ponerle el foco al panel al abrirse: sin tabindex="-1" el foco se quedaba en la
+         hamburguesa, DEBAJO del panel, y Escape no cerraba (su tecla la escucha el panel). Y los nombres, en español. -->
+    <template id="menu_movil_accesible" inherit_id="website.template_header_mobile" name="Tommalo: menú del celular accesible">
+        <xpath expr="//div[@id='top_menu_collapse_mobile']" position="attributes">
+            <attribute name="tabindex">-1</attribute>
+            <attribute name="aria-label">Menú de navegación</attribute>
+        </xpath>
+        <xpath expr="//button[@data-bs-target='#top_menu_collapse_mobile']" position="attributes">
+            <attribute name="aria-label">Abrir menú</attribute>
+        </xpath>
+        <xpath expr="//div[@id='top_menu_collapse_mobile']//button[@data-bs-dismiss='offcanvas']" position="attributes">
+            <attribute name="aria-label">Cerrar menú</attribute>
+        </xpath>
+    </template>
+
+    <!-- Ficha de producto: WhatsApp con el nombre del producto y sellos de confianza junto al botón de compra. Tommalo
+         vende solo en línea: entrega a domicilio y atención por WhatsApp; nada de «te lo llevas hoy» ni «míralo en
+         tienda». -->
+    <template id="product_cta_dcasa" inherit_id="website_sale.cta_wrapper" name="Tommalo: confianza en la ficha">
+        <!-- WhatsApp es el CTA de la marca: botón principal y antes de «Agregar al carrito». -->
+        <xpath expr="//div[@id='o_wsale_cta_wrapper']" position="before">
+            <a t-if="website and product" t-att-href="website._dcasa_whatsapp_producto(product)" target="_blank" rel="noopener"
+               class="btn btn-primary btn-lg w-100 mb-3 o_dcasa_wa_producto">
+                <i class="fa fa-whatsapp me-2" aria-hidden="true"/>Pregunta por este producto por WhatsApp
+            </a>
+            <ul class="o_dcasa_sellos" role="list">
+                <li><i class="fa fa-truck" aria-hidden="true"/><span><strong>Entrega a domicilio.</strong> Costo y fecha por WhatsApp.</span></li>
+                <li><i class="fa fa-comments" aria-hidden="true"/><span><strong>Atención personal.</strong> Te ayudamos por WhatsApp a elegir tu producto.</span></li>
+            </ul>
+        </xpath>
+    </template>
+
+    <!-- Filtro de refracción de la pastilla de vidrio. Lo
+         aplica animaciones.js (en línea, con una variable CSS) solo donde backdrop-filter: url() funciona, y le agrega
+         el movimiento lento del ruido (18 s), en pausa con la pestaña oculta y nunca con prefers-reduced-motion. -->
+    <template id="layout_filtro_liquido" inherit_id="website.layout" name="Tommalo: filtro de vidrio líquido">
+        <xpath expr="//div[@id='wrapwrap']" position="inside">
+            <svg class="o_dcasa_filtros" width="0" height="0" aria-hidden="true" focusable="false">
+                <filter id="dcasa-liquido" x="-10%" y="-40%" width="120%" height="180%" color-interpolation-filters="sRGB">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.009 0.022" numOctaves="2" seed="7" result="ruido"/>
+                    <feGaussianBlur in="ruido" stdDeviation="1.5" result="ruido_suave"/>
+                    <feDisplacementMap in="SourceGraphic" in2="ruido_suave" scale="38"
+                                       xChannelSelector="R" yChannelSelector="G"/>
+                </filter>
+            </svg>
+        </xpath>
+    </template>
+
+    <!-- La marca de la pastilla: solo el nombre «Tommalo» escrito (PENDIENTE: logo de Tommalo; no se inventa uno). En el
+         editor sigue el campo del logo de Odoo, para que se pueda cambiar desde ahí. El nombre no se traduce ni se parte
+         en dos líneas (translate="no" y nowrap en el CSS). -->
+    <template id="logo_webp_dcasa" inherit_id="website.option_header_brand_logo" name="Tommalo: logo en WebP">
+        <xpath expr="//span[@t-field='website.logo']" position="attributes">
+            <attribute name="t-if">editable</attribute>
+            <attribute name="t-att-aria-label">website.name</attribute>
+        </xpath>
+        <xpath expr="//span[@t-field='website.logo']" position="after">
+            <span t-else="" class="o_dcasa_marca" translate="no" t-out="website.name"/>
+        </xpath>
+    </template>
+
+    <!-- Botón de la cabecera: el CTA único del ADN en lugar de «Contáctanos». -->
+    <!-- Sin «Escríbenos» en el menú. WhatsApp sigue en la portada (la sección de contacto), en las tarjetas, en el chat
+         de Brian y en el pie. El enlace queda en la plantilla (las variantes de Odoo se apoyan en él) pero no se dibuja. -->
+    <template id="header_cta_dcasa" inherit_id="website.header_call_to_action" name="Tommalo: WhatsApp en la cabecera">
+        <xpath expr="//li" position="attributes">
+            <attribute name="t-if">False</attribute>
+        </xpath>
+        <xpath expr="//a[hasclass('btn_cta')]" position="replace">
+            <a href="/whatsapp" target="_blank" rel="noopener nofollow" class="oe_unremovable btn btn-primary btn_cta"
+               aria-label="Escríbenos por WhatsApp"><i class="fa fa-whatsapp me-2" aria-hidden="true"/>Escríbenos</a>
+        </xpath>
+    </template>
+
+    <!-- Fuera «Con la tecnología de Odoo»: el sitio es de la empresa. Se quita el bloque del pie
+         y se vacía la plantilla, así tampoco aparece en el portal ni en otras páginas. -->
+    <template id="sin_credito_odoo" inherit_id="web.brand_promotion" name="Tommalo: sin crédito de Odoo">
+        <xpath expr="//div[hasclass('o_brand_promotion')]" position="replace"/>
+    </template>
+
+    <template id="sin_credito_odoo_pie" inherit_id="website.layout" name="Tommalo: pie sin crédito de Odoo">
+        <xpath expr="//t[@t-call='web.brand_promotion']/.." position="attributes">
+            <attribute name="t-if">False</attribute>
+        </xpath>
+    </template>
+
+    <!-- Páginas del programa de socios: la misma cabecera de página del resto del sitio (el antetítulo en píldora y el titular;
+         website_dcasa.cabecera_pagina). Sin foto. -->
+    <template id="socios_cabecera_dcasa" inherit_id="dcasa_socios.socios_layout" name="Tommalo: cabecera de socios">
+        <!-- Título de pestaña distinto por página y la pastilla de vidrio encima de la cabecera. -->
+        <xpath expr="//t[@t-set='additional_title']" position="replace">
+            <t t-set="additional_title" t-value="('%s · ' % titulo if titulo else '') + 'Socios Tommalo'"/>
+            <t t-set="dcasa_header_overlay" t-value="True"/>
+        </xpath>
+        <xpath expr="//div[hasclass('o_dcasa_socios_head')]" position="replace">
+            <section class="o_dcasa_hero o_dcasa_hero_compacto o_dcasa_cabecera_pagina o_dcasa_socios_head">
+                <div class="o_dcasa_container o_dcasa_hero_inner">
+                    <div class="o_dcasa_hero_texto" data-anim-entrada="">
+                        <p class="o_dcasa_kicker o_dcasa_kicker_pildora">Programa de socios</p>
+                        <h1 class="o_dcasa_display mb-0" t-out="titulo or 'Socios Tommalo'"/>
+                    </div>
+                </div>
+            </section>
+        </xpath>
+        <xpath expr="//div[hasclass('o_dcasa_band')]" position="replace"/>
+    </template>
+
+    <!-- Cabecera de página para las que no traen la suya (legales, cuenta, contacto, socios): con el antetítulo en
+         píldora y el titular como frase. Quien la llama pone
+         `dcasa_header_overlay` (la pastilla va encima), cabecera_kicker y cabecera_titulo. cabecera_imagen,
+         cabecera_srcset, cabecera_ancho y cabecera_alto se siguen aceptando (dcasa_mi_cuenta los pasa) pero no se
+         dibujan: las cabeceras no llevan foto. -->
+    <template id="cabecera_pagina" name="Tommalo: cabecera de página">
+        <section class="o_dcasa_hero o_dcasa_hero_compacto o_dcasa_cabecera_pagina">
+            <div class="o_dcasa_container o_dcasa_hero_inner">
+                <div class="o_dcasa_hero_texto" data-anim-entrada="">
+                    <p class="o_dcasa_kicker o_dcasa_kicker_pildora" t-out="cabecera_kicker"/>
+                    <h1 class="o_dcasa_display mb-0" t-out="cabecera_titulo"/>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Entrar, crear cuenta y recuperar la clave: la misma cabecera de página que el resto del sitio y el
+         formulario en una tarjeta (antes: formulario suelto bajo la píldora clara). -->
+    <template id="login_cabecera_dcasa" inherit_id="website.login_layout" name="Tommalo: cabecera de la cuenta">
+        <xpath expr="//div[hasclass('oe_website_login_container')]" position="before">
+            <t t-set="dcasa_header_overlay" t-value="True"/>
+            <t t-call="website_dcasa.cabecera_pagina">
+                <t t-set="cabecera_kicker">Tu cuenta Tommalo</t>
+                <t t-set="cabecera_titulo">Mi cuenta</t>
+            </t>
+        </xpath>
+        <xpath expr="//div[hasclass('oe_website_login_container')]" position="attributes">
+            <attribute name="class" add="o_dcasa_login" separator=" "/>
+            <!-- Destino del enlace «Saltar al contenido» (#wrap): en la cuenta no existía. -->
+            <attribute name="id">wrap</attribute>
+        </xpath>
+    </template>
+
+    <!-- Accesibilidad del formulario de entrar de Odoo (Lighthouse): el botón del ojo no tenía
+         nombre y «Restablecer contraseña» llevaba tabindex="1" (rompe el orden del teclado). -->
+    <template id="login_accesible_dcasa" inherit_id="web.login" name="Tommalo: entrar accesible">
+        <xpath expr="//button[hasclass('o_show_password')]" position="attributes">
+            <attribute name="aria-label">Mostrar u ocultar la contraseña</attribute>
+            <attribute name="title">Mostrar u ocultar la contraseña</attribute>
+        </xpath>
+    </template>
+
+    <!-- Ficha: la cantidad no tenía nombre para el lector de pantalla (Lighthouse «label»). -->
+    <template id="ficha_cantidad_accesible_dcasa" inherit_id="website_sale.product_quantity" name="Tommalo: cantidad con nombre">
+        <xpath expr="//input[@name='add_qty']" position="attributes">
+            <attribute name="aria-label">Cantidad</attribute>
+            <attribute name="inputmode">numeric</attribute>
+        </xpath>
+    </template>
+
+    <template id="login_orden_teclado_dcasa" inherit_id="auth_signup.login" name="Tommalo: orden del teclado al entrar">
+        <xpath expr="//a[@tabindex='1']" position="attributes">
+            <attribute name="tabindex"/>
+        </xpath>
+    </template>
+
+    <!-- El copyright. Sin el año: esta zona la guarda el editor del sitio como texto fijo. PENDIENTE: razón social
+         de Tommalo. -->
+    <template id="footer_copyright_dcasa" inherit_id="website.footer_copyright_company_name" name="Tommalo: copyright">
+        <xpath expr="//span[hasclass('o_footer_copyright_name')]" position="replace">
+            <span class="o_footer_copyright_name me-2 small">© <span translate="no">Tommalo</span>. Todos los derechos reservados.</span>
+        </xpath>
+    </template>
+
+    <!-- «Promociones» en el menú solo mientras la campaña está activa (un enlace sencillo, igual a los demás). Lleva a
+         /promociones; se enciende y se apaga con las fechas de la campaña (Sitio web › Campaña del sitio), así que
+         fuera de campaña el menú queda igual. -->
+    <template id="menu_promociones" inherit_id="website.navbar_nav" name="Tommalo: Promociones en el menú">
+        <xpath expr="//t[@t-out='0']" position="after">
+            <li t-if="website and website._dcasa_black_weekend_activo()"
+                t-attf-class="nav-item #{is_mobile and 'border-top border-bottom' or ''}" role="presentation">
+                <a href="/promociones" role="menuitem"
+                   t-attf-class="nav-link o_dcasa_menu_promo #{request and request.httprequest.path == '/promociones' and 'active' or ''}">
+                    <span>Promociones</span>
+                </a>
+            </li>
+        </xpath>
+    </template>
+
+    <!-- Pie de página: la marca, el lema, la cobertura, los enlaces, el contacto y los legales. Sin RUC, sin dirección y
+         sin redes: no existen todavía (PENDIENTE, docs/PENDIENTES_DEL_CLIENTE.md) y no se inventan. Editable en el
+         constructor; nada dinámico aquí dentro: al guardar, el editor escribe en la vista el HTML ya dibujado de esta
+         zona (ir.ui.view.save) y un t-out quedaría como texto fijo. Lo dinámico va fuera, como el horario (pie_horario).
+         Lo que heredan otros módulos y no se puede mover: el enlace a /my (dcasa_mi_cuenta lo cambia a /mi-cuenta) y el
+         <li> de /terminos (dcasa_meta_eventos pone «Preferencias de cookies» después). -->
+    <template id="footer_dcasa" inherit_id="website.footer_custom" name="Tommalo: pie de página">
+        <xpath expr="//div[@id='footer']" position="replace">
+            <div id="footer" class="oe_structure oe_structure_solo o_dcasa_footer" t-ignore="true" t-if="not no_footer">
+                <section class="s_text_block o_dcasa_pie" data-snippet="s_text_block" data-name="Pie de página">
+                    <div class="container">
+                        <div class="o_dcasa_pie_rejilla">
+                            <div class="o_dcasa_pie_marca">
+                                <p class="o_dcasa_pie_nombre" translate="no">Tommalo</p>
+                                <p class="o_dcasa_pie_lema">Tienda en línea de belleza, hogar y salud.</p>
+                                <p class="o_dcasa_pie_cobertura">Venta 100% en línea con entrega a domicilio en Panamá.</p>
+                            </div>
+                            <!-- Los enlaces del pie, los mismos del menú. -->
+                            <nav class="o_dcasa_pie_columna" aria-labelledby="dcasa-pie-enlaces">
+                                <h2 id="dcasa-pie-enlaces" class="o_dcasa_pie_titulo">Enlaces</h2>
+                                <ul class="list-unstyled">
+                                    <li><a href="/shop">Productos</a></li>
+                                </ul>
+                            </nav>
+                            <!-- La cuenta del cliente, los puntos y el contacto. -->
+                            <nav class="o_dcasa_pie_columna" aria-labelledby="dcasa-pie-cuenta">
+                                <h2 id="dcasa-pie-cuenta" class="o_dcasa_pie_titulo">Tu cuenta</h2>
+                                <ul class="list-unstyled">
+                                    <li><a href="/my">Mi cuenta</a></li>
+                                    <li><a href="/socios">Socios: mis puntos</a></li>
+                                    <li><a href="/visitanos">Horario y contacto</a></li>
+                                </ul>
+                            </nav>
+                            <div class="o_dcasa_pie_columna">
+                                <h2 class="o_dcasa_pie_titulo">Contacto</h2>
+                                <ul class="list-unstyled">
+                                    <li><a href="/whatsapp" target="_blank" rel="noopener nofollow">WhatsApp</a></li>
+                                    <li><a href="/visitanos">Contacto</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                        <!-- Aquí y no escondidas: la Ley 81 pide que la persona pueda leer el aviso ANTES
+                             de dar sus datos. -->
+                        <ul class="list-unstyled o_dcasa_pie_legales" aria-label="Enlaces legales">
+                            <li><a href="/privacidad">Privacidad</a></li>
+                            <li><a href="/terminos">Términos y condiciones</a></li>
+                        </ul>
+                    </div>
+                </section>
+            </div>
+        </xpath>
+    </template>
+
+    <!-- El horario de la tienda en el pie, en su propia franja FUERA de #footer: #footer es la zona que guarda el
+         constructor del sitio (oe_structure) y lo que se dibuja dentro se guarda como texto fijo al editar el pie.
+         Aquí no es una zona que el editor guarde, así que siempre sale de los Ajustes de Juan
+         (website._dcasa_horario_tienda, models/horario_tienda.py). t-ignore: sin las marcas del editor, el constructor
+         tampoco la toca. Sin <t> sueltos: elementos de verdad (lección del lote 1 con las marcas del editor). -->
+    <template id="pie_horario" inherit_id="website.layout" name="Tommalo: horario en el pie">
+        <xpath expr="//div[@id='footer']" position="after">
+            <!-- El div de afuera es el que mete la herencia: Odoo le pega las marcas del editor (data-oe-*) aunque
+                 lleve t-ignore. Por eso el t-ignore va en el de adentro: así ninguno de los dos queda con marcas. -->
+            <div class="o_dcasa_pie_franja">
+                <div t-foreach="[website._dcasa_horario_tienda()] if website and not no_footer else []"
+                     t-as="dcasa_horario_pie" t-if="dcasa_horario_pie" class="o_dcasa_pie_horario_banda" t-ignore="true">
+                    <div class="container">
+                        <p class="o_dcasa_pie_horario">
+                            <span class="o_dcasa_pie_horario_titulo">Horario</span>
+                            <span t-foreach="dcasa_horario_pie" t-as="fila" class="o_dcasa_pie_horario_fila" t-out="fila['corto']"/>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </xpath>
+    </template>
+</odoo>

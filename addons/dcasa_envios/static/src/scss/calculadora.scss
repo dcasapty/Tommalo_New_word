@@ -1,0 +1,436 @@
+// Calculadora de envíos — la marca de Tommalo (docs/MARCA_TOMMALO.md): sistema plano (sin degradados ni sombras dramáticas), letra navy, el naranja solo
+// de relleno y con letra navy, Montserrat para todo (los titulares en 700, como frase). En el celular: 16 px de margen
+// y sin scroll de lado.
+
+// Odoo pone a todo `.o_action` en columna con `overflow: hidden` (webclient_layout.scss) y esa regla pesa más que una
+// clase suelta: sin esta regla fuerte la pantalla no baja con la rueda ni con el dedo (el problema de siempre; ver
+// docs/CONTEXTO_AGENTICO.md y dcasa_interfaz/tests/test_scroll.py).
+.o_web_client > .o_action_manager > .o_dcasa_envios.o_action {
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    &::-webkit-scrollbar { display: block; width: 8px; }
+    &::-webkit-scrollbar-thumb { background: var(--dc-linea-fuerte, #8A8A8A); border-radius: 4px; }
+    > * { flex-shrink: 0; }
+}
+
+.o_dcasa_envios {
+    --de-azul: var(--dc-azul-600, #262626);
+    --de-navy: var(--dc-azul-800, #1A1A1A);
+    --de-amarillo: var(--dc-naranja);
+    --de-tinta: var(--dc-tinta, #262626);
+    --de-tinta-2: var(--dc-tinta-2, #404040);
+    --de-tinta-3: var(--dc-tinta-3, #5C5C5C);
+    --de-linea: var(--dc-linea, #E0E0E0);
+    --de-suave: var(--dc-perla, #EBEBEB);
+    background: var(--dc-niebla, #FAFAFA);
+    color: var(--de-tinta);
+    font-family: var(--dc-letra);
+    font-size: 15px;
+    line-height: 1.5;
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    .o_de_envoltura {
+        width: 100%;
+        max-width: 1120px;
+        margin: 0 auto;
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    h1, h2 { text-wrap: balance; }
+
+    h2 {
+        font-family: var(--dc-letra);
+        font-weight: 600;
+        font-size: 1.3rem;
+        margin: 0;
+        color: var(--de-navy);
+    }
+
+    .o_de_sub { color: var(--de-tinta-3); font-size: .85rem; font-weight: 400; margin: 0; }
+
+    // --- Cabecera en la superficie: el buscador grande ---------------------------------------------------------------
+    .o_de_cabecera { background: var(--dc-blanco); border-bottom: 1px solid var(--dc-linea); color: var(--dc-tinta); }
+
+    .o_de_cabecera_dentro { display: grid; gap: 12px; padding-top: 22px; padding-bottom: 24px; }
+
+    .o_de_marca {
+        font-family: var(--dc-letra);
+        font-weight: 600;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+        font-size: .8rem;
+        font-weight: 700;
+        color: var(--dc-naranja-fuerte);
+    }
+
+    h1 {
+        font-family: var(--dc-letra);
+        font-weight: 700;
+        text-transform: none;
+        font-size: 2.6rem;
+        line-height: 1.15;
+        letter-spacing: -.03em;
+        margin: 0;
+        color: var(--dc-tinta);
+    }
+
+    .o_de_regla { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+
+    .o_de_ficha {           // el naranja de relleno, con la letra navy
+        background: var(--de-amarillo);
+        color: var(--dc-en-naranja);
+        font-weight: 700;
+        border-radius: 6px;
+        padding: 3px 10px;
+        font-variant-numeric: tabular-nums;
+        font-size: .9rem;
+    }
+
+    .o_de_mas { color: var(--dc-tinta-3); }
+
+    .o_de_buscar_caja {
+        display: grid;
+        gap: 8px;
+
+        label { font-family: var(--dc-letra); font-weight: 600; font-size: 1.15rem; color: var(--dc-tinta); margin: 0; }
+    }
+
+    .o_de_q {
+        font: inherit;
+        font-size: 1.15rem;
+        width: 100%;
+        min-height: 54px;
+        padding: 12px 16px;
+        border-radius: var(--dc-r-md);
+        border: 1px solid var(--dc-control);
+        background: var(--dc-crema);
+        color: var(--de-tinta);
+
+        &:focus-visible { outline: 2px solid var(--dc-tinta); outline-offset: 2px; }
+    }
+
+    .o_de_ayuda { color: var(--dc-tinta-3); font-size: .88rem; margin: 0; }
+
+    // --- Cuerpo -----------------------------------------------------------------------------------------------------
+    .o_de_cuerpo { display: grid; gap: 22px; padding-top: 20px; padding-bottom: 40px; }
+
+    .o_de_cuerpo > * { min-width: 0; }
+
+    .o_de_aviso {          // banda salvia con la letra navy y la etiqueta naranja
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 10px;
+        margin: 0;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: var(--dc-salvia);
+        color: var(--dc-en-salvia);
+
+        strong { color: var(--dc-en-salvia); }
+    }
+
+    .o_de_aviso_chip {
+        background: var(--de-amarillo);
+        color: var(--dc-en-naranja);
+        font-family: var(--dc-letra);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        font-size: .75rem;
+        border-radius: 4px;
+        padding: 2px 8px;
+    }
+
+    .o_de_aviso_enlace { color: var(--dc-tinta); padding: 0; text-decoration: underline; }
+
+    .o_de_seccion { display: grid; gap: 12px; min-width: 0; }
+
+    .o_de_filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+    .o_de_filtro {
+        border: 1px solid var(--de-azul);
+        background: #FFFFFF;
+        color: var(--de-azul);
+        border-radius: 999px;
+        padding: 6px 14px;
+        min-height: 38px;
+        font-size: .9rem;
+        font-weight: 600;
+        cursor: pointer;
+
+        &[aria-pressed="true"] { background: var(--dc-naranja); color: var(--dc-en-naranja); }
+        &:focus-visible { outline: 2px solid var(--dc-tinta); outline-offset: 2px; }
+    }
+
+    .o_de_distrito { width: auto; min-width: 180px; max-width: 100%; min-height: 38px; }
+
+    .o_de_contador { color: var(--de-tinta-2); font-size: .9rem; margin: 0; }
+
+    .o_de_resultados { display: grid; gap: 10px; }
+
+    .o_de_tarjeta {
+        background: #FFFFFF;
+        border: 1px solid var(--de-linea);
+        border-radius: 12px;
+        padding: 14px 16px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 6px 16px;
+        align-items: start;
+        min-width: 0;
+    }
+
+    .o_de_info { min-width: 0; overflow-wrap: anywhere; }
+
+    .o_de_nombre { font-weight: 700; font-size: 1.05rem; }
+
+    .o_de_donde { color: var(--de-tinta-2); font-size: .9rem; }
+
+    .o_de_tambien { color: var(--de-tinta-3); font-size: .82rem; }
+
+    .o_de_precio { text-align: right; }
+
+    .o_de_total {
+        font-family: var(--dc-letra);
+        font-size: 2rem;
+        line-height: 1;
+        color: var(--de-navy);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .o_de_total_aparte { font-size: 1.2rem; color: var(--de-tinta-2); }
+
+    .o_de_km { color: var(--de-tinta-2); font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .o_de_desglose {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        font-size: .86rem;
+        color: var(--de-tinta-2);
+        font-variant-numeric: tabular-nums;
+
+        b { color: var(--de-tinta); }
+    }
+
+    .o_de_acciones {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 16px;
+
+        a { color: var(--de-azul); font-weight: 600; font-size: .88rem; }
+    }
+
+    .o_de_copiar {
+        border: 1px solid var(--de-azul);
+        background: #FFFFFF;
+        color: var(--de-azul);
+        border-radius: 999px;
+        padding: 4px 12px;
+        min-height: 34px;
+        font-size: .85rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .o_de_chip {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: .74rem;
+        font-weight: 700;
+        white-space: nowrap;
+        vertical-align: 2px;
+        margin-left: 2px;
+    }
+
+    .o_de_chip_tipo { background: var(--dc-azul-50, #EBEBEB); color: var(--dc-azul-700, #1F1F1F); }
+
+    .o_de_chip_revisar { background: #FDEBD3; color: #7A3E00; }
+
+    .o_de_chip_aparte { background: #FBE7E7; color: #8A1C1C; }
+
+    .o_de_chip_mano { background: #DDF2E6; color: #13663B; }
+
+    .o_de_vacio {
+        background: #FFFFFF;
+        border: 1px dashed var(--dc-linea-fuerte, #8A8A8A);
+        border-radius: 12px;
+        padding: 16px;
+        display: grid;
+        gap: 10px;
+    }
+
+    .o_de_sugerencias { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .o_de_botonera { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .o_de_sin_datos {
+        background: #FFFFFF;
+        border: 1px solid var(--de-linea);
+        border-radius: 12px;
+        padding: 20px;
+        display: grid;
+        gap: 12px;
+        justify-items: start;
+
+        p { margin: 0; max-width: 70ch; }
+    }
+
+    .o_de_panel {
+        background: #FFFFFF;
+        border: 1px solid var(--de-linea);
+        border-radius: 12px;
+        padding: 16px;
+        min-width: 0;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+    }
+
+    .o_de_fila2 {
+        display: grid;
+        grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+    }
+
+    .o_de_calc label { font-weight: 600; font-size: .9rem; margin: 0; }
+
+    .o_de_casilla { display: flex; gap: 8px; align-items: center; font-weight: 400 !important; }
+
+    .o_de_calc_precio {
+        font-family: var(--dc-letra);
+        font-size: 2.6rem;
+        line-height: 1;
+        color: var(--de-navy);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .o_de_tramos { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 6px; }
+
+    .o_de_tramo {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: var(--de-suave);
+        font-variant-numeric: tabular-nums;
+        font-size: .82rem;
+        white-space: nowrap;
+    }
+
+    .o_de_rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+
+    .o_de_campo { display: grid; gap: 4px; align-content: start; font-weight: 600; font-size: .9rem; margin: 0; }
+
+    .o_de_campo.o_de_casilla { display: flex; align-self: center; }
+
+    a.o_de_sub { color: var(--de-azul); font-weight: 600; }
+
+    .o_de_atribucion { color: var(--de-tinta-3); font-size: .8rem; margin: 0; }
+
+    @media (max-width: 800px) {
+        .o_de_fila2 { grid-template-columns: minmax(0, 1fr); }
+    }
+
+    @media (max-width: 560px) {       // en el celular la cabecera ocupa menos: los resultados se ven antes
+        .o_de_cabecera_dentro { gap: 8px; padding-top: 14px; padding-bottom: 16px; }
+        .o_de_marca { font-size: .75rem; letter-spacing: .05em; }
+        h1 { font-size: 1.9rem; }
+        .o_de_regla { gap: 4px 6px; }
+        .o_de_ficha { font-size: .78rem; padding: 2px 8px; }
+        .o_de_buscar_caja label { font-size: 1.05rem; }
+        .o_de_q { min-height: 50px; font-size: 1.05rem; }
+        .o_de_cuerpo { gap: 16px; padding-top: 14px; }
+        .o_de_filtros { gap: 6px; }
+        .o_de_filtro { min-height: 34px; padding: 4px 12px; font-size: .85rem; }
+        .o_de_tarjeta { grid-template-columns: minmax(0, 1fr); }
+        .o_de_precio { text-align: left; }
+        .o_de_distrito { width: 100%; }
+        .o_de_tramos { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    }
+}
+
+// La ficha de la tarifa (Envíos › Tarifa).
+.o_dcasa_envios_tarifa {
+    .o_dcasa_envios_regla { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-top: 6px; }
+
+    .o_dcasa_envios_ficha {           // el amarillo nunca toca el blanco: aquí azul
+        display: inline-block;
+        white-space: nowrap;
+        margin: 2px 0;
+        background: var(--dc-naranja);
+        color: var(--dc-en-naranja);
+        font-weight: 700;
+        border-radius: 6px;
+        padding: 2px 10px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .o_dcasa_envios_mas { margin: 0 4px; }
+
+    .o_dcasa_envios_mas { color: var(--dc-tinta-3, #5C5C5C); }
+
+    .o_dcasa_envios_ajuste { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+    .o_dcasa_envios_pct { width: 110px; }
+
+    .o_dcasa_envios_efecto {
+        display: inline-block;
+        background: var(--dc-perla, #EBEBEB);
+        border-radius: 8px;
+        padding: 4px 10px;
+        margin: 0 6px 6px 0;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .o_dcasa_envios_tramos { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 6px; }
+
+    .o_dcasa_envios_aviso {          // navy con la etiqueta amarilla, como en la calculadora
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 10px;
+        margin-bottom: 12px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: var(--dc-salvia);
+        color: var(--dc-en-salvia);
+
+        b { color: var(--dc-en-salvia); }
+    }
+
+    .o_dcasa_envios_aviso_chip {
+        background: var(--dc-naranja);
+        color: var(--dc-en-naranja);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        font-size: .75rem;
+        border-radius: 4px;
+        padding: 2px 8px;
+    }
+
+    .o_dcasa_envios_tramo {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: var(--dc-perla, #EBEBEB);
+        font-variant-numeric: tabular-nums;
+        font-size: .85rem;
+        white-space: nowrap;
+    }
+}
+
+.o_dcasa_envios_resumen { white-space: pre-line; }

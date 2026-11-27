@@ -1,0 +1,69 @@
+// La cámara del lector de códigos: el diálogo «Lector de códigos de barras» de Odoo (web/core/barcode), que abren el
+// Escáner y los campos con cámara. En el iPhone de la dueña (Chrome en iOS, motor WebKit) salía todo blanco aunque leía
+// los códigos (2026-10-19). Odoo deja dos cosas a merced del motor:
+//  1. El tamaño del video: la grilla del recorte centra una fila y una columna que miden lo que mida el video
+//     (`align-content-center justify-content-center`), y el video pide el 100 % de ellas (`w-100 h-100`): un tamaño
+//     que depende de sí mismo. WebKit puede resolverlo a cero de alto: el video no se ve y queda el fondo blanco.
+//  2. Fuera de iOS, el recuadro se marca con una capa negra y un `::after` BLANCO mezclados con `mix-blend-mode`;
+//     WebKit no mezcla capas con el video de la cámara, así que el blanco tapa la imagen si `isIOS()` no lo detecta.
+// Aquí, para todos los navegadores: el video toma su tamaño natural y el alto sale de su proporción, sin un 100 % que
+// dependa de sí mismo (cabe a lo ancho y a lo alto y el recuadro sigue cayendo donde Odoo lo lee), fondo oscuro
+// alrededor, y el recuadro con un borde y una sombra que oscurece lo de fuera, sin mezclas. La capa no recibe toques:
+// el ícono para mover el recuadro sí.
+// Con eso, en el iPhone pasó de blanco a negro: ese motor no pinta el video aunque le llegan los cuadros. La imagen
+// se ve gracias al lienzo de camara.js (`.o_dcasa_camara_lienzo`), que copia cada cuadro encima del video.
+.modal .o-barcode-modal {
+    .modal-body {
+        background-color: #000;
+
+        // Sin cámara o sin permiso, Odoo escribe su aviso en gris oscuro, pensado para fondo blanco: sobre este fondo
+        // negro no se leía, y el segundo renglón iba pegado al borde (auditoría visual del 2026-11-11).
+        > .flex-column.justify-content-center {
+            padding: 0 24px;
+            color: #fff;
+            text-align: center;
+
+            .text-muted { color: rgba(255, 255, 255, .8) !important; }
+        }
+    }
+
+    .o_crop_container {
+        video {
+            display: block;
+            width: auto !important;    // en lugar de w-100 / h-100 de Odoo
+            height: auto !important;
+            max-width: 100%;
+            max-height: 80vh;
+            object-fit: contain;
+        }
+
+        // Encima del video, del mismo tamaño (camara.js pone la posición) y sin recibir toques.
+        .o_dcasa_camara_lienzo {
+            position: absolute;
+            grid-row: auto;
+            grid-column: auto;
+            display: block;
+            pointer-events: none;
+        }
+
+        .o_crop_overlay {
+            position: relative;
+            overflow: hidden;
+            background-color: transparent;
+            mix-blend-mode: normal;
+            pointer-events: none;
+
+            &::after {
+                position: absolute;
+                inset: var(--o-crop-y, 0px) var(--o-crop-x, 0px);
+                width: auto;
+                height: auto;
+                clip-path: none;
+                background-color: transparent;
+                border: 2px solid #fff;
+                border-radius: 8px;
+                box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .55);
+            }
+        }
+    }
+}

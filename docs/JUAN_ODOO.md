@@ -1,0 +1,1022 @@
+# Juan en Odoo: la bandeja de conversaciones
+
+Guía sencilla para la dueña y las vendedoras. Puesto al día el 2026-11-06. Cómo funciona Juan y su contrato con Odoo:
+[JUAN.md](JUAN.md); los canales (WhatsApp, Telegram, Messenger, Instagram): [JUAN_CANALES.md](JUAN_CANALES.md); Sofía, la
+asistente del CRM: [SOFIA.md](SOFIA.md). Aquí está lo que **ves y haces en Odoo**: la bandeja, el reparto, el CRM que se
+ajusta solo y, al final, una parte para quien instala o programa. Junta lo que antes estaba en `JUAN_PANEL.md` y
+`CRM_AUTOMATICO.md` (archivados en historico/).
+
+## Qué es
+
+**Juan** es el asistente que contesta a los clientes por WhatsApp (por la API oficial de Meta, con el número de la
+tienda, desde el 2026-11-02) y por Telegram; Messenger e Instagram están listos para conectar. Se presenta como «Juan de
+D'CASA» (el nombre público de *Ajustes de Juan* es **«el equipo de D'CASA»**). Contesta a cualquier hora. Cuando un cliente necesita a una persona, el asistente se
+calla y le toca a una vendedora. **Odoo es la memoria de todo**: cada conversación, cada cliente y cada oportunidad
+quedan guardados aquí.
+
+## Dónde está
+
+Menú **Conversaciones** (el ícono del globo de chat).
+
+| Opción | Quién | Para qué sirve |
+|---|---|---|
+| **Conversaciones** | Ventas | **La pantalla de trabajo**: lista, chat y ficha del cliente en una sola vista (ver «La pantalla de Conversaciones»). |
+| **Resumen** | Ventas | Los números de hoy, 7, 30 o 90 días o 12 meses, con las ventas atribuidas y la tasa de cierre. |
+| **Reparto** | Ventas | A quién le tocan los clientes que pasa el asistente: cada vendedora ve lo suyo; Gerencia, a todo el equipo (ver «Trabajo en equipo y reparto»). |
+| **Oportunidades** | Ventas | Las oportunidades que nacen de una conversación, de la más caliente a la más fría (ver «El CRM se ajusta solo»). |
+| **Costos de IA** | Gerencia | Cuánto cuesta que el asistente conteste y cómo va el mes frente al tope. |
+| **Conexiones** | Gerencia | Cómo está cada canal y qué clave falta (el QR, reiniciar y desvincular son del puente QR, que no se usa). |
+| **Bandeja** | Ventas | La bandeja de siempre, en tres columnas: *Con el asistente*, *Con una vendedora* y *Cerrada*. |
+| **Mensajes por enviar** | Ventas | Lo que escribiste desde Odoo y todavía no salió (ver «Si algo falla»). Normalmente está vacío. |
+| **Preguntas sin respuesta** | Ventas | Lo que los clientes preguntaron y el asistente no supo contestar; vendedoras y Gerencia las contestan con «Contestar» (ver «El asistente aprende»). |
+| **Conocimiento del bot** | Gerencia | Los textos que el asistente puede usar para contestar (horario, ubicación, Socios, garantía…). |
+| **Configuración › Ajustes de Juan** | Gerencia | Cómo se presenta, cuándo contesta, qué IA usa y cuánto insiste. |
+| **Configuración › Etiquetas** | Gerencia | Las etiquetas de colores para clasificar conversaciones. |
+| **Configuración › Respuestas rápidas** | Gerencia | Los atajos con «/» (`/horario`, `/ubicacion`…). |
+
+La tarjeta de cada conversación muestra a la persona, el canal, las etiquetas, el último mensaje y quién la atiende.
+Una etiqueta azul **«Espera tu respuesta»** marca las que el cliente escribió y nadie ha contestado.
+
+**Desde el CRM y desde Contactos** (2026-11-03): la oportunidad tiene **Abrir el chat** (también un ícono en la tarjeta del
+tablero y en la lista de oportunidades) y la ficha del contacto, **Chat**. Abren la pantalla de Conversaciones con la
+conversación más reciente de ese cliente a la vista. El flujo del CRM abre sin el filtro «Mi flujo».
+
+## La pantalla de Conversaciones
+
+Es la pantalla de trabajo de las vendedoras: **todo en una sola vista**, como un WhatsApp Web pero dentro de Odoo y con la
+ficha del cliente a un botón de distancia. Se abre en *Conversaciones › Conversaciones*. Tiene tres partes:
+
+| Parte | Qué hay |
+|---|---|
+| **Izquierda: la lista** | Todas las conversaciones, las más recientes primero. Cada una muestra a la persona, el canal, las etiquetas, el último mensaje, quién la atiende y cuántos mensajes del cliente esperan respuesta. Se puede **reducir a las fotos** (botón **«**). |
+| **Centro: la conversación** | Los mensajes como un chat y, abajo, la caja para responder. **Es lo que más espacio tiene, siempre.** |
+| **Derecha: la ficha del cliente** | Quién es, si es Socio y cuántos puntos tiene, sus oportunidades y compras, las etiquetas y a quién se la asignaste. **Se abre y se cierra con el botón «Cliente»** de la barra de la conversación. |
+
+Se actualiza **sola**: cuando entra un mensaje, o alguien toma una conversación, aparece sin recargar nada.
+
+### Cómo se acomoda según la computadora
+
+Las computadoras de la tienda son laptops de 1366 × 768, 1280 × 720, 1440 × 900, 1536 × 864 o 1024 × 768 (y un monitor de
+1920 × 1080). En todas, **la conversación es lo más grande y lo único que se desplaza**; todo lo demás se acomoda:
+
+* **La ficha del cliente nace cerrada** (solo en pantallas amplias, de 1500 × 800 o más, nace abierta). El botón **Cliente** la abre
+  al lado de la conversación y la **X** (o la tecla **Esc**) la cierra. Lo que elijas **se recuerda** en esa computadora, por persona.
+  Abrirla no le quita altura a los mensajes (solo un poco de ancho) y los mensajes se quedan en el último renglón.
+* **La lista** mide 300 px, o 72 px si la reduces a las fotos con el botón **«** (**»** la vuelve a abrir; también se recuerda). Con
+  1100 px de ancho o menos nace reducida. Con menos de 1250 px de ancho, mientras la ficha está abierta, la lista se reduce sola
+  (para que la conversación no baje de unos 560 px de ancho) y se ensancha al cerrar la ficha.
+* **Avisos de una línea**: el aviso de arriba («Falta conectar el bot»), la franja de quién atiende y el **Resumen** ocupan una
+  sola línea baja. Si el texto no cabe se corta con «…» y completo sale al pasar el mouse. El **Resumen** nace plegado (una línea
+  con la primera viñeta); con un clic se despliega y con otro se pliega.
+* **La caja de respuesta** es compacta (ver más abajo) y tiene tope: lo que se abre (archivos, programar, devolver) se desplaza por
+  dentro y **nunca** pasa de la mitad de la pantalla.
+* En **tablet** (de 768 a 1023 px) la ficha se abre encima de la conversación y se cierra sola al cambiar de conversación; en
+  **celular** (hasta 767 px) es otra pantalla (ver «En el celular»).
+
+### La lista
+
+* **Buscar**: escribe un nombre, un celular o una palabra que dijo el cliente. Busca en todos los mensajes.
+* **Filtros rápidos**: **Mías** (las que atiendes tú), **Esperan respuesta**, **Con oportunidad** (ya tienen una venta anotada
+  en CRM) y **Más filtros** (canal, estado y etiqueta). **Quitar filtros** deja todo como estaba.
+* **«N esperan»** (arriba de la lista), el filtro **Esperan respuesta** y el número de cada conversación cuentan **lo que espera
+  a una persona** (desde el 2026-11-03): conversaciones en manos de una persona en las que el cliente escribió y nadie le ha
+  contestado; el número es cuántos mensajes del cliente llegaron desde la última respuesta. Lo que atiende el asistente no
+  cuenta. La vendedora ve las suyas y las que no tienen dueña; Gerencia, todas.
+* La **columna de la lista se ajusta** (arrastrando su borde, con el teclado o con doble clic) y el tamaño se recuerda.
+* **Estados** (siempre con palabra, no solo color): **Necesita atención** (el cliente escribió y nadie ha contestado; franja azul
+  oscuro con letras amarillas), **Asistente** (contesta Juan), **Una vendedora** (la atiende una persona) y **Cerrada**.
+* Baja y cargan **30 más** solas. Con las flechas **↑ ↓** del teclado pasas de una conversación a otra.
+
+### La conversación
+
+* **Cada quien en su color**: el cliente a la izquierda; el asistente en azul claro; las vendedoras en azul fuerte. Las horas son de
+  Panamá. Un renglón gris es un **aviso del sistema** («Ana tomó la conversación»).
+* **Foto de perfil** del cliente, en la lista, en la cabecera de la conversación y en la ficha (si no hay foto, o el cliente no la
+  deja ver, se ven sus iniciales). Ver «Privacidad» más abajo.
+* **Notas internas**: burbuja con borde punteado y la leyenda **«El cliente no la ve»**. Sirven para hablar entre vendedoras.
+* **Fotos**: salen como miniatura; un clic las **amplía** (flechas ← → para pasar de una a otra, **Esc** para cerrar). Los
+  documentos (PDF, Word, Excel) se descargan. En un comprobante de pago o un documento de identidad que mandó el cliente puedes
+  pulsar **Es un comprobante**: así el asistente nunca lo ve (**Ya no es sensible** lo deshace).
+* **Notas de voz y videos** se escuchan y se ven con su reproductor dentro del chat (desde el 2026-11-03; las notas de voz
+  viejas que salían como «adjunto» se arreglaron con la actualización). Los **stickers** salen como imagen; el asistente no
+  los mira ni los anota.
+* **Ver mensajes anteriores** trae los 50 anteriores. Si estás leyendo mensajes viejos y entra uno nuevo, no te mueve la pantalla:
+  aparece un botón **«1 mensaje nuevo»** (o «N mensajes nuevos») para bajar cuando quieras.
+* Arriba, en **una sola fila**: el nombre, el canal y el celular, quién la atiende, **Cliente** (muestra u oculta la ficha) y los
+  íconos **Cerrar** la conversación y **Eliminar** (solo Gerencia); con la barra ancha, esos dos también dicen su nombre.
+* Si un mensaje tuyo no salió, dice **«Por enviar»** y tiene el botón **Reintentar**.
+* **Citas** (2026-11-07, pedido de la dueña: «si un cliente dice "este"… solamente vemos la palabra "este"»): cuando el
+  cliente responde a un mensaje en su WhatsApp (o en Telegram), arriba de su texto sale un recuadro con **quién dijo lo
+  citado** (**Tú**, **Juan**, la vendedora o **Cliente**) y sus primeras palabras (dos líneas; **Foto**, **Audio**,
+  **Documento**… si no tenía texto). Si Juan respondió en varias burbujas, sale justo la burbuja citada. Un clic en el
+  recuadro lleva al mensaje original (si está cargado; si no, avisa que se traiga con «Ver mensajes anteriores»). Si lo
+  citado es de antes de esta versión o se borró: **«Mensaje que no está en el historial»**. Juan también ve lo citado, así
+  que entiende «este».
+* **Reenviado**: una etiqueta pequeña con su ícono, **«Reenviado»** o **«Reenviado muchas veces»** (WhatsApp lo marca así
+  cuando el mensaje ha pasado por muchos chats).
+* **Reacciones**: el emoji con que el cliente reaccionó sale en la esquina de abajo del mensaje. Una nueva reemplaza a la
+  anterior (una por persona y mensaje) y, si la quita, desaparece. **Una reacción no es un mensaje**: no despierta a Juan,
+  no deja la conversación «esperando respuesta», no cuenta para los seguimientos ni para la ventana de 24 horas, no
+  reparte la conversación ni avisa a nadie.
+* **Palomitas** (solo WhatsApp oficial; Telegram no se las da a los bots): en los mensajes de Juan y de las vendedoras,
+  junto a la hora, en una pastilla blanca: **✓ gris** salió, **✓✓ gris** le llegó, **✓✓ azul** lo leyó (si el cliente
+  apagó la confirmación de lectura, nunca se ponen azules) y **⚠ «No llegó»** en rojo, con el motivo al pasar el mouse
+  (también en el mensaje). Llegan solas, sin recargar, con la hora de «Entregado» y «Leído» al pasar el mouse. Si Juan
+  respondió en varias burbujas, el mensaje muestra la más atrasada (y «No llegó» si alguna no llegó); como WhatsApp a veces
+  avisa «leído» solo del último, **un «leído» (o «entregado») vale también para lo anterior** de la conversación (lo
+  nuestro: nunca baja de estado ni toca un «No llegó»).
+* **Responder** a un mensaje del cliente: al pasar el mouse por su mensaje (o con Tab) aparece al lado el botón redondo
+  **↩** («Responder citando este mensaje» al pasar el mouse; solo el ícono, para que el chat no se corra de lado en una
+  tableta o con la ficha abierta); en el celular, deja el dedo apretado sobre el mensaje (un temblor del dedo no lo
+  cancela; arrastrar sí) y sale **«Responder»** dentro de la burbuja. Arriba de la caja queda **«Respondes a
+  Cliente»** con su mensaje (la **X** la quita) y lo que envíes le llega al cliente con la cita, como en WhatsApp. Si el
+  canal no sabe citar ese mensaje, sale igual, sin la cita. Una nota interna no lleva cita.
+* Mientras el asistente trabaja se ve debajo del último mensaje. Primero, unos segundos de **«El asistente está preparando la
+  respuesta…»** (espera a que el cliente termine de escribir; es una estimación) y, cuando el Worker avisa que de verdad empezó,
+  **«El asistente está escribiendo…»**, que se apaga cuando termina o cuando llega su respuesta (y sola al minuto si el aviso
+  de «terminó» se pierde). Si el asistente no contesta (pausa, apagado, una persona atendiendo), no aparece nada.
+
+### La caja de respuesta
+
+La caja es de **dos líneas**. En la de arriba, una franja dice **quién atiende** y, a la derecha, **Respuesta / Nota interna**:
+
+* **Atiende el asistente** → botón **Atender**: la conversación pasa a ti y Juan se calla.
+* **Atiendes tú. El asistente vuelve a las 4:30 p. m. (en 1 h 20 min)** → botón **Devolver al asistente**. Puedes dejarle una nota
+  corta («ya quedó la visita del sábado»); la lee hasta que otra persona tome la conversación. Cada mensaje tuyo renueva la pausa.
+* **Cerrada** → si escribes, se reabre y la atiendes tú.
+
+En la de abajo están las herramientas (**solo íconos**; al pasar el mouse sale su nombre), la caja de texto y **Enviar**. La caja de
+texto es de **una línea y crece hasta unas 4 líneas**; si escribes más, se desplaza por dentro. Lo que es solo de a ratos (archivos
+por enviar, la hora de programar, la nota al devolver, las respuestas rápidas) aparece cuando hace falta y vuelve a desaparecer.
+
+| Botón | Qué hace |
+|---|---|
+| **Respuesta / Nota interna** | Cambia entre hablarle al cliente y escribir una nota que el cliente no ve. La nota tiene otro color y su botón dice **Guardar nota**. |
+| **Adjuntar** (📎) | Elige fotos o documentos (también puedes **arrastrarlos y soltarlos** sobre la conversación o **pegar** una imagen). Se ven en miniatura antes de enviar y se pueden quitar. Hasta 10 MB cada uno. Aceptados: fotos (JPG, PNG, WebP, GIF), PDF, Word, Excel, texto y CSV. |
+| **Foto del catálogo** (🖼) | Busca un producto por **nombre o código** y manda su foto. Ver abajo. |
+| **Cotización** (PDF) | Manda la cotización del cliente en PDF. Ver abajo. |
+| **Rápidas** (⚡) | Abre tus respuestas rápidas. También sirve escribir **/** en la caja: salen las que empiezan con lo que escribas; **↑ ↓** eligen, **Enter** o **Tab** usan la elegida y **Esc** cierra. El texto ya sale con el nombre del cliente. |
+| **Más** (···) → **Programar el envío** | Está en el menú **Más** (lo menos usado; ahí también se recuerdan las teclas: Enter envía, Mayús + Enter salta de línea, / abre las rápidas). Deja el mensaje escrito para que **salga solo** el día y la hora que elijas (de 1 minuto a 30 días; atajos «En 1 hora» y «Mañana 8:00 a. m.»). Con el selector abierto, el botón dice **Programar** y no deja enviar sin hora (no se manda «ya» por descuido). Lo programado se ve **aparte, arriba de la caja** («Se envía mañana 8:00 a. m.»), no en el hilo, con **Cancelar** (quien lo programó o Gerencia). Hasta su hora **no pasa nada**: el asistente sigue atendiendo y la conversación no cambia de dueña. A la hora (la revisión corre cada 5 minutos) sale como un mensaje nuevo, al final del hilo, la conversación pasa a quien lo programó y queda un aviso. Si el Worker no responde en ese momento, queda «por enviar» y se reintenta. |
+| **Sugerir** (✨) | Le pide a Juan **un borrador** de respuesta. Lo deja escrito en la caja para que lo leas, lo cambies y lo envíes tú; **nunca se envía solo**. Si quitó algo que no debía (una foto, por ejemplo) o dejó algo por confirmar, te lo avisa. Mientras escribe, la caja dice «Juan está escribiendo un borrador…» (puede tardar hasta un minuto). Si no llega, la caja dice **por qué** en corto («La IA tardó demasiado», «La IA no está disponible», «El borrador no pasó la revisión de la marca»…) y ofrece **Reintentar**; el aviso no se va solo. El borrador es de **esa** conversación: si cambias de chat mientras Juan escribe, queda en la caja del chat para el que lo pediste, y si escribiste algo mientras tanto no se pisa (el borrador va debajo). |
+| **Enviar** (✈) | Manda el mensaje. **Enter** envía; **Mayús + Enter** salta de línea; **Ctrl + Enter** también envía. En el celular solo envía el botón. |
+
+**Foto del catálogo.** Escribe lo que buscas («cama queen» o el código). Cada producto muestra su foto, el precio con **«+ ITBMS»**,
+las medidas y si está **DISPONIBLE**, con **POCAS** unidades o **AGOTADO**. La pantalla **nunca** muestra cuántas unidades hay ni lo
+que costó. Con **Enviar foto** sale la foto y, debajo, el pie ya armado (nombre, precio + ITBMS, medidas y enlace al producto).
+**Galería** deja elegir varias fotos del mismo producto y **Revisar antes de enviar** no manda nada: deja las fotos y el pie en la
+caja para que los edites. **Varias de distintos productos** (2026-11-03): toca **Elegir** en cada producto (de una búsqueda o de
+otras; desde la galería, «Agregar a lo elegido»); abajo se ve lo elegido y **Enviar N fotos** las manda juntas, un mensaje por
+producto con su pie, en el orden en que se eligieron (hasta 10 productos). La ventana **no se cierra sola**: dice «Enviada» en
+cada producto y se cierra con «Listo», la X o Esc. Solo salen productos **publicados**. Las fotos se mandan reducidas (1024 px) y con una dirección que
+**vence a los 15 minutos**.
+
+**Cotización.** Busca la **cotización abierta más reciente** de ese cliente y la muestra (productos, subtotal, ITBMS, total y hasta
+cuándo vale). **Enviar el PDF** la manda con un mensaje que puedes cambiar. Si el cliente no tiene ninguna abierta, puedes **crear
+un borrador** eligiendo productos del catálogo; el borrador **nunca se confirma**: eso lo decide una persona en Ventas. **Abrir en
+Odoo** la abre completa. Cada vendedora ve las cotizaciones que ya podía ver en Ventas.
+
+### La ficha del cliente
+
+* **Socios D'CASA**: si es Socio y cuántos puntos tiene. **Solo lectura**: los puntos se mueven desde el programa de Socios, no desde
+  aquí.
+* **Atiende**: asigna la conversación a otra vendedora. Queda un aviso en el hilo.
+* **Etiquetas**: pon o quita (un clic cada una).
+* **Oportunidades**, **Compras recientes** y **Seguimiento** (con el botón para **cancelar** el seguimiento automático).
+* **Crear oportunidad**: deja la venta anotada en CRM, ligada al cliente y a la conversación.
+* **Notas internas** y **Qué sabe el asistente de esta persona**: nombre, productos por los que preguntó, etiquetas y la última vez
+  que habló.
+
+### En el celular
+
+La pantalla se vuelve **una columna a la vez**: primero la lista; al tocar una conversación se ve solo el chat, con la **caja de
+respuesta fija abajo**; el botón **Volver** regresa a la lista y **Cliente** (el ícono de la tarjeta) abre la ficha a pantalla
+completa, con su flecha para volver. Todos los botones miden al menos 44 píxeles (cabe el pulgar); el menú **Más** se abre hacia
+arriba, dentro de la pantalla. El catálogo y la cotización suben desde abajo como una hoja.
+
+### Tamaños probados
+
+Medido en Chrome (altura del contenedor de los mensajes, con una conversación de ~90 mensajes, el aviso «Falta conectar el bot»
+encendido y la ficha **abierta**; «% útil» = sobre el alto bajo la barra de Odoo). Antes → ahora:
+
+| Pantalla (ventana) | Mensajes antes | Mensajes ahora | % útil ahora | Caja vacía (antes → ahora) |
+|---|---|---|---|---|
+| 1366 × 768 | 307 px | **508 px** | 71 % | 250 → 93 px |
+| 1366 × 640 (con barra de tareas y del navegador) | 179 px | **380 px** | 65 % | 250 → 93 px |
+| 1280 × 720 | 240 px | **460 px** | 69 % | 269 → 93 px |
+| 1440 × 900 | 452 px | **640 px** | 76 % | 236 → 93 px |
+| 1536 × 864 | 416 px | **604 px** | 75 % | 236 → 93 px |
+| 1024 × 768 | 286 px | **508 px** | 71 % | 250 → 93 px |
+| 1920 × 1080 | 672 px | **820 px** | 80 % | 196 → 93 px |
+| 390 × 844 (celular) | 245 px | **435 px** | 55 % | 298 → 215 px |
+
+Con la caja **a tope** (dos archivos por enviar, la hora de programar abierta y un texto de 4 líneas) en 1366 × 768 los mensajes
+miden 362 px (antes, 113 px): es el peor caso y sigue siendo más de la mitad del alto útil. Las pruebas
+(`tests/test_panel_disposicion.py`) exigen que los mensajes ocupen **al menos 55 % del alto útil** con la ficha abierta en todos
+estos tamaños, que la barra del hilo y los avisos no se partan, que el hilo se desplace con la rueda del ratón con la ficha, la caja
+y el menú abiertos, y que en celular nada baje de 44 px.
+
+**Celular, desde el 2026-11-11 (la caja de dos renglones, aprobada por la dueña):** la caja vacía pasó de 215 a **111 px** en
+360 × 740 y 390 × 844 (los mensajes ganan 104 px: 480 y 584 px con una conversación corta). Renglón 1: quién atiende, «Devolver» o
+«Atender» y Respuesta / Nota. Renglón 2: «+», «Sugerir», el texto y Enviar. Dentro del «+»: Adjuntar, Foto del catálogo,
+Cotización, Rápidas y Programar; se cierra al elegir, con Esc, tocando fuera y con el «atrás» del teléfono. Todo sigue en 44 px y en
+tableta y computadora la caja queda igual (93 px). Pruebas: `tests/test_panel_caja_celular.py`. En tableta (hasta 1100 px) la lista
+de chats se ve entera mientras no hay ninguno abierto y se reduce a las fotos al abrir uno (`TestDisposicionDeTableta`). Y el
+«atrás» del teléfono cierra lo de más arriba (foto → ventana → ficha → chat → lista) en vez de sacar de la pantalla
+(`static/src/js/atras.js`, `tests/test_panel_atras.py`).
+
+### Teclado: resumen
+
+| Tecla | Dónde | Qué hace |
+|---|---|---|
+| **↑ ↓** | Lista | Pasa de una conversación a otra |
+| **Enter** | Caja | Envía (en el celular, no) |
+| **Mayús + Enter** | Caja | Salta de línea |
+| **Ctrl + Enter** | Caja | Envía siempre |
+| **/** | Caja | Abre las respuestas rápidas |
+| **↑ ↓ · Enter · Tab · Esc** | Respuestas rápidas | Elegir · usar la elegida · cerrar |
+| **← →** | Foto ampliada | Foto anterior o siguiente |
+| **Esc** | Foto ampliada, catálogo y cotización | Cierra |
+| **Tab** | Todas | Recorre los botones; el que tiene el foco se ve con un contorno azul |
+
+### Resumen, Costos de IA y Conexiones
+
+Tres pantallas hermanas, con la misma barra de arriba para pasar de una a otra.
+
+* **Resumen** (todo el equipo de ventas). Los números de **Hoy**, **7**, **30** o **90 días** o **12 meses** (hora de Panamá):
+  **mensajes** (de clientes, del asistente y de vendedoras), **clientes únicos**, **resueltas sin una persona** (las que el
+  asistente cerró solo), **oportunidades creadas**, **ventas atribuidas** y **primera respuesta** (en cuánto tiempo, la mitad de
+  los clientes recibe respuesta). Lo que no se puede calcular se muestra como «—»: no se inventa. Si hay conversaciones
+  esperando respuesta, un aviso lleva directo a ellas.
+  * **Ventas atribuidas** (2026-11-03): facturas **pagadas** del periodo, sin ITBMS, de clientes con quienes el asistente habló
+    en los **30 días antes de la factura**, partidas en tres: **solo el asistente**, **el asistente y una persona** y, de
+    referencia, **solo personas**. Una factura que salió de una cotización del asistente (origen «Chatbot») cuenta siempre
+    como suya. Es una atribución aproximada, no una prueba de que el asistente vendió.
+  * **Tasa de cierre** (2026-11-05): ventas atribuidas ÷ conversaciones del periodo × 100, para el asistente con una persona,
+    solo el asistente y el total; la tarjeta del periodo elegido y una tabla con hoy, 7, 30 y 90 días y 12 meses.
+  * **Por persona** (solo Gerencia): mensajes escritos, conversaciones, cuánto tarda en contestar y cuántas le esperan.
+* **Costos de IA** (**solo Gerencia**). El **gasto del mes** frente al **tope** (30 USD por defecto), con una barra que dice «Vas
+  bien», «Vas a pasar el tope» o «Tope alcanzado» (con ícono y palabra). Debajo, la frase **«Si sigues a este ritmo, terminarás el mes
+  en…»**, el gasto **por día** (un botón lo pasa a tabla) y **por modelo**. Al llegar al tope, el asistente baja al modelo económico;
+  **nunca se queda sin contestar**. Si un modelo no tiene precio cargado en *Ajustes de Juan*, el gasto de ese modelo es una
+  estimación alta y la pantalla lo dice. El **gasto por día** lo lleva el propio Worker, día a día (hora de Panamá), desde que se
+  desplegó esta versión: no depende de que alguien abra la pantalla. Los días anteriores se arman con la foto del gasto que Odoo
+  guarda cada noche; un día sin foto ni dato del Worker sale como «sin dato» y no se adivina.
+  * **Por pagar a Meta y el botón «Pagar»** (pedido de la dueña, 2026-11-12: «un botón diga pagar y que el saldo que ya
+    había ¡fuap! ya salga como pago y que la cuenta empiece de nuevo»). Arriba, **«Por pagar a Meta: $X»**: lo consumido
+    desde el último pago (sin pagos, lo del mes). «Pagar» pregunta una sola vez («¿Ya le pagaste $X a Meta? El saldo vuelve a
+    $0 y empieza a contar de nuevo.») y, con el sí, guarda el pago **en ese momento** con el corte exacto que da el Worker
+    (si el Worker no responde, no guarda nada y lo dice). No pide tarjeta, fecha ni monto: el monto es el saldo que se
+    mostró; si el saldo cambió desde que se abrió la pantalla (más de $0.05 o del 1 %), no guarda nada, dice «El saldo
+    cambió: vuelve a abrir la pantalla» y trae la cifra de ahora. Dos «Pagar» a la vez (dos pestañas o dos personas) dejan
+    un solo pago (cerrojo en la base). Debajo, «Último pago: $X, fecha · **Deshacer**» (solo el último; pregunta antes:
+    «¿Deshacer el pago de $X del 12 nov? El saldo vuelve a $Y.»). El corte usa el **mes que dice el Worker** (`mes` de
+    `/odoo/salud`), no el reloj de Odoo. Si el Worker no pudo leer su contador (`gasto_ia_mes_usd: null`), no se guarda la
+    foto ni se paga, y la pantalla dice «No pude leer el gasto de IA» en vez de $0; si el contador volvió a empezar después
+    del último pago, la cifra sale con «aprox.» y lo explica. Lo consumido no se borra: el pago es un corte
+    en el libro `dcasa.juan.pago.ia`, que no se edita ni se borra (deshacer lo anula con motivo). Si a un mes le faltan
+    fotos, junto a la cifra sale «aprox.». Solo Gerencia y administradores pagan o deshacen; Brian lo consulta
+    (`costos_de_juan`) pero no paga.
+* **Conexiones** (**solo Gerencia**). El estado **en vivo** de cada canal (Conectado, Desconectado, Faltan claves, Apagado), con
+  ícono y palabra. Lo de abajo es del **WhatsApp por QR** (el puente), que **no se usa en producción**: WhatsApp va por la API
+  oficial desde el 2026-11-02 ([JUAN_CANALES.md](JUAN_CANALES.md)). En **WhatsApp (QR)**:
+  * **Mostrar el QR para vincular**: aparece el código para escanearlo desde el teléfono de la tienda (*WhatsApp › Ajustes ›
+    Dispositivos vinculados › Vincular un dispositivo*). Se renueva solo y se avisa cuando WhatsApp queda conectado. El código
+    **no se guarda ni se escribe en ningún registro**.
+  * **Reiniciar**: apaga y vuelve a prender el puente en menos de un minuto; la sesión se conserva (no pide QR). Antes pregunta.
+  * **Desvincular**: cierra la sesión de WhatsApp; para volver hay que escanear un QR nuevo. Es el botón rojo y siempre pregunta.
+  Quién reinició o desvinculó, y cuándo, queda en el historial de *Ajustes de Juan*. Además se ve qué **claves faltan en el Worker**
+  (**solo sus nombres**, nunca su valor: la dueña las pega en el panel de Cloudflare) y lo que Odoo sabe de sí mismo.
+
+**Si ves «Falta conectar el bot».** Odoo todavía no sabe dónde está el Worker de Juan o no tiene su clave. Quien instala carga las
+variables `JUAN_URL` y `JUAN_WORKER_TOKEN` (ver «Para quien instala»). Mientras tanto, la lista y los chats funcionan igual con lo
+que ya hay en Odoo; **Sugerir**, **Costos de IA** y **Conexiones** avisan que falta conectar el bot y el **Resumen** muestra los
+números que sí tiene Odoo.
+
+### Lo que todavía no hace
+
+* El gasto de IA **por día** de antes de esta versión solo existe donde Odoo guardó su foto diaria.
+* Las citas, reacciones y palomitas son de **WhatsApp oficial** y **Telegram** (en Telegram, citas y reenviados; las
+  reacciones solo si el webhook las pide, ver [JUAN_CANALES.md](JUAN_CANALES.md) §2; palomitas, no). El puente QR y
+  Messenger/Instagram no las traen. Lo que se escribió antes del 2026-11-07 no tiene palomitas ni se puede citar desde
+  el canal.
+
+## Atender a un cliente (en la bandeja de siempre)
+
+1. Abre la conversación: la ves **como un chat**. A la izquierda lo que dice el cliente; a la derecha el
+   asistente (azul claro) y las vendedoras (azul fuerte). Las horas son de Panamá. Las fotos y los archivos se abren con un clic.
+2. Pulsa **Atender**. El asistente se queda **en silencio** con esa persona y la conversación pasa a ti.
+3. Escribe abajo en **Tu respuesta** y pulsa **Enviar**. Puedes **adjuntar** una foto o un PDF (por ejemplo, una cotización).
+   Si escribes sin haber pulsado «Atender», Odoo la toma por ti.
+4. Cada mensaje tuyo **renueva la pausa** (por defecto 2 horas). Si te olvidas, cuando la pausa vence el asistente
+   vuelve a contestar solo.
+5. Cuando termines, pulsa **Devolver al asistente** (o **Cerrar** si ya no hay nada más). Si el cliente escribe
+   de nuevo a una conversación cerrada, se reabre con el asistente.
+
+Si escribes **desde el teléfono** (la app de WhatsApp), el asistente también se calla solo.
+
+Otros botones: **Crear oportunidad** (deja la venta anotada en CRM, ligada al cliente y a la conversación;
+si ya hay una abierta de los últimos 30 días, no crea otra), **Reintentar envíos** y **Ya la atendí** (solo aparece cuando Juan
+la pasó a una persona y nadie del equipo le ha escrito: ver [Seguimiento](#seguimiento-decisión-de-la-dueña)).
+
+**Notas internas y avisos.** Dentro de la conversación hay dos cosas que el cliente **nunca** ve:
+
+* **Adjuntar un comprobante a una factura o a un pedido:** debajo de cada archivo que manda el cliente está el botón
+  **Adjuntar a factura o pedido**. Se abre una lista con los pedidos y facturas **de ese cliente** (los más recientes); al elegir
+  uno, el archivo se **copia** al historial de ese documento (con una nota de quién lo adjuntó) y queda un aviso en la
+  conversación. El original se queda en el hilo, adjuntarlo dos veces no lo duplica, y la IA nunca lo ve. Para facturas hace
+  falta el permiso de Facturación (el rol Vendedora lo trae). Un comprobante falso no se detecta mirando la imagen: **verifica
+  el pago en el banco** antes de entregar;
+* las **notas internas** que escribimos entre vendedoras (borde punteado), que además quedan en la ficha del cliente.
+  **Mencionar con @:** en una nota, escribe `@` y elige a una compañera del equipo de ventas (con las flechas y Enter, o con
+  un clic). Al guardar, a ella le llega un aviso en Odoo (su bandeja) y por Telegram (si vinculó el suyo con Brian); la nota
+  muestra «Mencionó a…». Si pones una **fecha** en «Tarea para el…», además le queda una **tarea** con esa fecha en la
+  conversación. Se puede mencionar hasta a 8 personas por nota, no a ti misma, y solo a gente de ventas;
+* los **avisos del sistema**, una línea gris por cada cosa que pasó: «Ana tomó la conversación», «El asistente pasó la
+  conversación a una vendedora. Motivo…», «Se creó la oportunidad…», «Seguimiento n.º 1 enviado», «Ana cerró la conversación».
+
+**Nota para el asistente.** Al **devolver** la conversación puedes dejarle una nota corta (hasta 500 letras): «ya
+quedó la visita del sábado». El asistente la lee en cada respuesta hasta que otra persona tome la conversación.
+
+**Esperan respuesta.** El contador «N esperan» y el filtro **Esperan respuesta** de la pantalla de Conversaciones muestran
+las conversaciones que atiende una persona y en las que el cliente escribió y nadie le ha contestado (ver «La lista»).
+
+Todo lo que se dice queda también en la **ficha del cliente** (Contactos), en el chatter, como nota interna. Los
+**comprobantes de pago** y **documentos de identidad** se guardan ahí para que los revise una vendedora; **no se le muestran a la IA**
+(un adjunto se marca como *sensible* y la burbuja lo dice).
+
+## Trabajo en equipo y reparto
+
+* **Cliente esperando.** Si una persona tiene la conversación y el cliente lleva más de *Avisar si un cliente espera* (10 minutos
+  por defecto; 0 = apagado) sin respuesta, la lista dice «Espera N min» (en la pastilla salvia con letra navy pasado el umbral) y el
+  mantenimiento de cada 5 minutos avisa **una vez por espera** por Telegram a quien la atiende (si nadie, o no tiene Telegram, a
+  las personas de siempre). Solo en horario laboral (se puede cambiar) y no avisa de esperas de más de un día. Si el cliente
+  vuelve a escribir y nadie contesta, avisa otra vez.
+* **«Ana está viendo» / «Ana está escribiéndole al cliente…».** Cada pantalla da un pulso cada 20 s con la conversación que
+  tiene abierta (y cada 4 s mientras teclea una respuesta). En la lista sale un chip con el nombre y en el hilo una franja;
+  desaparece a los ~55 s sin pulso. Una nota interna no cuenta como «escribiendo».
+* **Resumir.** Botón «Resumir lo que pasó» en conversaciones con 4 mensajes o más: unas viñetas hechas por la IA (modelo
+  económico) con los mensajes que viajaron por el canal; las notas internas nunca. Se guarda en la conversación y se vuelve a
+  pedir solo con «Actualizar».
+
+### Reparto de conversaciones
+
+*Ajustes de Juan › Reparto de conversaciones*, o la pantalla **Reparto** (Gerencia). **Viene apagado** («Nadie»), también en
+instalaciones nuevas: lo enciende Gerencia. Cuando el asistente pasa una conversación a una persona y nadie la tenía:
+
+* **Nadie** (`manual`): no se asigna; la toma quien quiera y la tarea queda con el responsable por defecto.
+* **Parejo** (`parejo`, el recomendado): entre las **vendedoras disponibles**, (1) si el cliente habló con una de ellas (o se la
+  asignaron) en los últimos **14 días** (*Días que un cliente sigue con su vendedora*; 0 = sin memoria), vuelve con ella; (2) si
+  no, le toca a quien **lleva menos conversaciones recibidas hoy** (día de Panamá); con empate, a quien **menos clientes tiene
+  esperándole**; con empate, a quien **lleva más tiempo sin recibir una**. Una conversación cuenta una sola vez por día.
+* **Por turnos** (`turnos`): a quien lleva más tiempo sin recibir una, sin mirar cuántas lleva.
+
+En los dos últimos se le asigna, se le deja la actividad, el aviso de Telegram va a ella («Te tocó a ti» o «Es un cliente
+tuyo») y en el hilo queda por qué le tocó. **Si nadie está disponible**, la conversación queda sin dueña, la tarea va al
+responsable por defecto y el aviso sale a todo el equipo («Nadie estaba disponible»). Cada decisión queda en el libro
+`dcasa.reparto` (no se edita).
+
+* **Quiénes reciben (decisión de la dueña):** solo las **vendedoras**: personas internas del equipo de ventas que **no** son
+  Gerencia de ventas ni administradoras. Gerencia y las administradoras ven todo, pueden tomar cualquier conversación y escribir,
+  pero el reparto nunca se las pasa; en la pantalla «Reparto» salen aparte, en «No reciben». Una persona con el rol de vendedora
+  que además tenga el de Gerencia **deja de recibir**.
+* **Disponible / No disponible.** Cada vendedora se marca arriba de la lista (almuerzo, fin del día). **Gerencia saca a una
+  vendedora del reparto** (vacaciones, ausencia) desde «Reparto», sin quitarle permisos ni conversaciones, con un día de regreso
+  opcional. **«No disponible» se reinicia cada mañana**: dos horas antes de abrir (6:00 a. m. con el horario de 8:00), la acción
+  planificada la vuelve a poner «Disponible»; no toca a quien Gerencia sacó del reparto ni lo que se marcó después del corte.
+* **Solo reciben las que están activas** (decisión de la dueña, 2026-11-03: los turnos rotan y quien no vino no se marca). Con
+  el reparto encendido, no recibe la vendedora que no usó Odoo (teclado o ratón en cualquier pantalla, no una pestaña olvidada)
+  **ni le escribió a un cliente** (también desde Telegram) en los últimos **30 minutos** (*Recibe solo quien usó el sistema hace
+  poco*; 0 = no mirarlo; máximo 480). La pantalla «Reparto» la muestra como «Sin actividad».
+* **Si a quien le tocó no contesta, pasa a otra.** Cada 5 minutos, **solo dentro del horario**, la acción planificada «Juan: pasar
+  a otra vendedora el cliente que nadie contesta» mira las conversaciones que el reparto le dio a alguien (o dejó sin dueña) y que
+  nadie del equipo ha tocado desde entonces. Pasados **15 minutos** (*Pasar a otra si no contesta*; 0 = nunca; de 5 a 240),
+  contados desde la apertura de hoy, se la da a otra vendedora **activa** que no la haya tenido en las últimas 12 horas, lo dice
+  en el hilo («Ana no le contestó al cliente en 15 minutos: pasó a Beto»), avisa a la nueva por Telegram y le cuenta a Gerencia.
+  Si no queda nadie, se queda con quien la tiene. En cuanto alguien del equipo le escribe al cliente, la toma, la asigna o la
+  devuelve, la conversación es de esa persona y no se mueve más.
+* **Nadie acapara los chats de la noche** (decisión de la dueña, 2026-11-12). *Máximo de clientes esperándole a la vez*
+  (3 por defecto; 0 = sin límite; máximo 50): «esperándole» = clientes que el reparto le dio en los últimos 7 días y que nadie
+  ha contestado. Los que esperan **desde antes de abrir** no se le dan a quien ya tiene N esperándole: se reparten de a pocos
+  entre las que van llegando, siempre a la que lleva menos ese día. «Pasar a otra» tampoco le pasa un cliente a quien está
+  llena (se queda con quien lo tenía). Un cliente que quedó sin dueña **dentro del horario** se da aunque todas estén llenas,
+  a la que lleva menos. Vale con «Parejo» y «Por turnos». Al repartir un cliente nuevo, «Parejo» salta a quien está llena si
+  hay otra activa con lugar (si todas lo están, se asigna igual; «su vendedora de siempre» lo recibe aunque esté llena); «Por
+  turnos» no lo mira. Cuando una contesta o toma un cliente del reparto y hay chats sin dueña esperando, la siguiente vuelta
+  se adelanta. «Ya la atendí» saca la conversación del reparto (deja de contar para el tope y no pasa a otra).
+* **El cliente de otra vendedora** (decisión de la dueña, 2026-11-12: «solamente es para las vendedoras»). Todas ven todos
+  los chats. La regla vale **solo entre vendedoras de piso** (vendedoras sin Caja ni Contabilidad, que cuentan como
+  administrativas, igual que Gerencia y las administradoras: entran, responden, delegan y cambian chats como siempre). Si
+  una vendedora de piso le escribe (texto, adjunto, programado, foto del catálogo, cotización), toca «Atender» o se elige a
+  sí misma en «Atiende» en un chat que atiende **otra vendedora de piso activa** (la misma definición de «activa» del
+  reparto, aunque el reparto esté apagado), antes le sale «Este cliente lo atiende Ana. ¿Lo tomas tú?»: **Sí, lo tomo**
+  (el cliente queda con ella), **Dejarle una nota a Ana** (la caja pasa a nota interna con «@Ana»; al cliente no le sale
+  nada) o **Cancelar** (el foco empieza ahí). El servidor lo exige igual: `tomar_de` = el id de la dueña por la que se
+  preguntó; si mientras tanto la tomó otra, se vuelve a preguntar con el nombre nuevo. Si lo toma, queda «Beto tomó el
+  cliente que atendía Ana.» en el hilo, una línea `tomada` en el libro y a Ana le llega un Telegram. Con el cliente de otra
+  vendedora activa, una vendedora **no** puede pasárselo a una tercera, dejarlo sin dueña, devolverlo al asistente ni
+  cerrarlo ni cambiar cuándo vuelve el asistente (la pausa) («pídeselo a Ana o a Gerencia»); la barra le ofrece «Atender» en
+  vez de «Devolver». Si Ana **no** estaba activa
+  (faltó, almuerzo, de noche), no se pregunta: queda el aviso en el hilo y el libro (cubrir a una compañera es ayudar). Un
+  **mensaje programado** al cliente de otra vendedora guarda quién lo tenía al programarlo (con su confirmación si estaba
+  activa); si a la hora el cliente sigue con ella, sale y lo toma; si lo atiende otra distinta, o si quien lo programó ya
+  no está en el equipo (usuario archivado), **no sale**: queda en el hilo como nota interna con su texto completo y sus
+  archivos («No salió este mensaje que Beto dejó programado: … si hace falta, cópialo y envíalo.») y se avisa a quien lo
+  programó (o a quien atiende, si la autora ya no está). Por Telegram no se puede confirmar: con el cliente de otra activa, no se toma y se le
+  dice que lo confirme en la pantalla. Un chat devuelto al asistente o cerrado ya no es de nadie: se toma como siempre.
+* **Pantalla «Reparto».** Cada vendedora ve **solo lo suyo** («Mis conversaciones de hoy»). Gerencia ve además «Clientes que
+  cambiaron de mano» del periodo (los 20 más recientes: cliente, cuándo, de quién, a quién y cómo: «Lo tomó al escribirle»,
+  «Lo tomó con «Atender»», «Se lo asignaron», «Pasó porque no contestó») y a todo el equipo:
+  estado, recibidas en el periodo, clientes esperando, la última que le tocó y cuántas esperan sin dueña; desde ahí saca o vuelve
+  a meter a alguien y enciende o apaga el reparto.
+
+* **De noche nadie recibe clientes** (decisión de la dueña, 2026-11-13: «que se pueda activar o desactivar»). *Ajustes de
+  Juan › De noche nadie recibe clientes*, **encendido** de fábrica y por la migración 19.0.1.5.0 (queda en el historial de
+  Ajustes). Fuera del horario de *Ajustes de Juan* el asistente atiende y anota, pero **nadie recibe clientes ni avisos de
+  clientes**: el que ya era de una vendedora sigue siéndolo, el nuevo queda sin dueña esperando turno, y lo que mandó
+  (comprobante, cédula, archivo) queda anotado para la mañana. **Al abrir**, el reparto de siempre los da de a pocos y a cada
+  vendedora le llega **un solo Telegram con su lista** (un botón «Atender» por cliente; si le toca uno solo, el aviso normal con
+  «Escribió de noche»). La vendedora de siempre lo recibe solo si **entró al sistema** (activa) y está dentro de los días de
+  «su vendedora»; si no aparece en *Recibe solo quien usó el sistema hace poco* desde la apertura, se reparte como de día. Los
+  15 minutos de «pasar a otra» cuentan desde que le llegó el aviso. Si pasada esa media hora no hay **ninguna** vendedora
+  activa, avisa una vez a las de siempre. Lo **asignado a mano** no lo mueve el reparto. Los comprobantes, cédulas y archivos de
+  la noche les llegan **también** a las de siempre al abrir (a quién le llega un comprobante no cambia). Ningún cliente de la
+  noche se pierde aunque la tienda cierre días. **Siguen llegando de noche:** menciones en una nota, «Tomaron a tu cliente», un
+  mensaje programado que no salió y los avisos de Gerencia. **Apagado**, de noche todo es como de día.
+
+Lo de «activas» y «pasar a otra» **solo corre con el reparto encendido** («Parejo» o «Por turnos»).
+
+## Qué hace el asistente por su cuenta
+
+Consulta el catálogo real (solo productos **publicados**), dice el precio **«+ ITBMS»** y la disponibilidad solo como
+*disponible*, *pocas* o *agotado* (nunca el número). Explica Socios con las cifras reales de `puntos.json` y,
+si el cliente da su PIN, le dice su saldo. Busca en el **conocimiento del bot** lo que el equipo escribió. Deja anotada
+la oportunidad. **Puede poner una etiqueta** a la conversación, pero solo de las que tú creaste. **No inventa**
+precios, plazos ni promesas; entregas, flete, financiamiento, apartados y descuentos **siempre** los confirma una
+vendedora. No puede tocar puntos, precios, existencias, facturas ni pagos.
+
+Cuando el cliente escribe *persona* (o el asistente decide pasarlo), Odoo crea una **actividad** para la vendedora
+responsable y avisa por **Telegram** a quienes tengan su Telegram vinculado con Brian. Dentro del horario el cliente
+recibe «ya avisé a una vendedora»; fuera del horario, «te escribe mañana a primera hora, desde las 8:00 a. m.».
+
+## Seguimiento (decisión de la dueña)
+
+El seguimiento es **solo para quien quiso comprar y nunca compró**. «Quiso comprar» quiere decir que hay una
+**oportunidad viva** en el CRM ligada a la conversación (ni ganada ni perdida): el asistente la crea solo cuando el
+cliente muestra interés concreto (un mueble puntual, un presupuesto, quiere ir a la tienda) y tú puedes crearla con el
+botón *Crear oportunidad*. Una persona que solo preguntó la hora o la dirección no recibe seguimiento. Si marcas la
+oportunidad como **perdida** (o **ganada**), el seguimiento se cancela.
+
+A quien tiene esa oportunidad y **no volvió a escribir**, el asistente le escribe **como máximo dos veces**:
+
+* la **primera**, 5 horas después del último mensaje, **solo en horario laboral** (8:00 a. m. a 5:00 p. m., todos los
+  días, hora de Panamá; si cae fuera, espera al siguiente horario laboral);
+* la **segunda**, 5 días después de la primera, también en horario laboral;
+* **ninguna** si la persona **ya es cliente** (tiene alguna factura pagada, de antes o de después de la
+  conversación: a quien ya compra no se le hace seguimiento) o si
+  **pidió que no la contacten** (se marca sola cuando lo escribe, y también la puedes marcar tú en la ficha:
+  pestaña *Conversaciones › No contactar*);
+* tampoco si la atiende una persona, si la conversación está cerrada o si el asistente está apagado.
+
+Si el cliente vuelve a escribir, el conteo empieza de nuevo. En cada conversación, la pestaña **Seguimiento** muestra
+cuántos se enviaron y cuándo toca el próximo. **Odoo decide quién y cuándo; el Worker redacta y envía.**
+
+Además (issue #25, aprobado por la dueña el 2026-11-07):
+
+* **Es por persona, no por conversación.** Quien escribe por WhatsApp y por Telegram (la misma ficha) recibe como máximo dos
+  en total: solo hace el seguimiento la conversación por donde escribió **último** (de las que **podrían** hacerlo: abiertas,
+  con su canal encendido y con oportunidad viva; un «hola» por otro canal sin oportunidad no deja a la persona sin ninguno),
+  si otro canal ya tiene uno en camino este **espera** (se pospone 15 minutos, no se borra), y los que le salieron por sus
+  otros canales después de su último mensaje cuentan. Si una conversación pasa a otra
+  ficha de la misma persona (Telegram da después su celular, o una vendedora elige la ficha correcta de una provisional de
+  Juan), **«No contactar» va con ella** (antes se quedaba en la ficha vieja).
+* **A quien espera a una persona no se le pregunta «¿sigues interesado?».** Cuando Juan pasa la conversación a una persona,
+  queda marcada «Espera a una persona desde…» hasta que alguien del equipo **le escriba** (desde la pantalla, el teléfono o
+  Telegram), la devuelva al asistente o la cierre. Mientras tanto no hay seguimiento automático, aunque la pausa de 2 horas
+  venza y la conversación vuelva al asistente, y Sofía la pone en **«Contéstale: espera respuesta»** pasada una hora. Que el
+  cliente vuelva a escribir no la borra (sigue esperando). La marca se ve en la conversación (aviso amarillo «Espera a una
+  persona desde…») y frena el seguimiento **una semana como mucho** (el mismo plazo de «Contéstale»). Si ya la atendiste por
+  otro lado (una llamada, en la tienda), el botón **«Ya la atendí»** la quita y Juan vuelve a programar su seguimiento desde
+  ese momento (antes no había cómo: «Devolver al asistente» desaparece al vencer la pausa). Si descartas ese «Contéstale» en
+  Sofía, no vuelve con cada mensaje nuevo del cliente mientras siga marcada; vuelve con el siguiente traspaso.
+* **Lo atrasado no sale de golpe.** Si un seguimiento se atrasa más de *Ajustes de Juan › No enviar seguimientos atrasados más
+  de (horas)* (**6** por defecto; 0 = mandarlo igual; máximo 72), ya no se manda tarde: se da por pasado **sin enviarse**,
+  queda una nota en la conversación (cuándo le tocaba) y se programa el siguiente (que también se salta, en la misma vuelta,
+  si ya venció). Pasa tras una caída, un despliegue largo o si el asistente estuvo apagado. **Solo es atraso lo que ya estaba
+  programado**: un seguimiento que se calcula tarde (*Crear oportunidad* al día siguiente, una oportunidad perdida que se
+  restaura) sale en ese momento, en horario laboral; Odoo guarda cuándo lo programó (`seguimiento_programado_en`) y volver a
+  calcular la misma hora no borra un atraso de verdad. Por qué 6 h: el cron corre cada 15 minutos (lo normal es llegar con
+  minutos de atraso), un despliegue toma de 15 a 45 minutos, y un «¿pudiste ver la cama?» de hace días, mandado de 50 en 50
+  desde el número de la tienda, molesta y puede hacer que WhatsApp marque el número.
+* **Un aviso tardío del Worker no cierra el ciclo nuevo.** Si el Worker descarta un seguimiento («el cliente ya volvió a
+  escribir») y su aviso llega después de que el cliente reinició el ciclo, ya no deja el conteo en 2 (el ciclo nuevo se
+  quedaba sin seguimientos). Un «no contactar» se honra igual (Odoo reconoce el texto que manda el Worker, «el cliente pidió
+  que no lo contacten», además de `no_contactar`). El Worker vuelve a mirar si el cliente escribió **justo antes
+  de enviar** y no manda dos veces el mismo seguimiento aunque se lo pidan dos veces a la vez.
+
+## Origen y cotizaciones que vencen solas
+
+* **Origen** (2026-11-03): cada cotización y factura dice de dónde vino: **Chatbot** (la armó Juan), **Web** (la tienda en
+  línea) o **Vendedora**. Hay columna, filtros y agrupar en Ventas y Facturación, y el Inicio lo separa (tienda, chatbot y web,
+  entregas). Lo que una vendedora le cambie después a una cotización del chatbot no le quita el origen.
+* **Las cotizaciones del chatbot y de la web vencen solas** (decisión de la dueña, 2026-11-03): *Ajustes de Juan › Días que
+  queda abierta una cotización del chatbot o de la web* (**3** por defecto; 0 = nunca; máximo 60). Al crearse quedan «válidas
+  hasta» esa fecha (lo dice el PDF) y una acción planificada de cada hora **cancela** (nunca borra) las que pasaron la fecha,
+  con una nota. No toca las de las vendedoras, las bloqueadas, las que tienen factura o un pago en curso, los apartados de la
+  web (tienen su propio vencimiento) ni las que alguien tocó en las últimas 12 horas. Si una vendedora mueve la fecha, manda la
+  fecha. Al reabrirla con «Establecer como cotización» toma días nuevos.
+
+## El CRM se ajusta solo
+
+Pedido de la dueña (2026-10-10): «me gustaría pensar que el CRM no depende de las vendedoras». Las oportunidades que nacen
+de una conversación se mueven solas, **con hechos que Odoo ya sabe** (no con lo que la IA opine). Sofía, la asistente del
+CRM, se apoya en esto para proponer a quién escribirle ([SOFIA.md](SOFIA.md)).
+
+* **Cotizada.** Al enviar una cotización (Juan o el botón *Cotización* de la pantalla) la oportunidad pasa a «Propuesta». Juan
+  y el botón ligan la cotización a la oportunidad (la crean si no había: pedir una cotización es interés concreto).
+* **Ganada.** Cuando una cotización ligada tiene una **factura pagada**. Una venta confirmada sin pagar (un apartado) sigue
+  en «Propuesta».
+* **Temperatura** (frío, tibio, caliente) con puntos por hechos: cotización enviada, para cuándo lo quiere, zona de entrega,
+  si escribió hace poco o seguido, si lo atiende una persona. Se enfría con el tiempo. La causa queda escrita en la ficha.
+* **Datos que dijo el cliente.** Juan anota la **zona de entrega** (distrito o corregimiento) y **para cuándo** lo quiere,
+  solo si el cliente lo dijo, y nunca pisa lo que escribió una persona. Una zona con número de casa, apartamento, piso, lote,
+  manzana o «#» es una dirección exacta y **no se anota** en la oportunidad (ni en la ficha ni en una nota) ni queda en la
+  auditoría de las herramientas de Brian (issue #25). Lo que el cliente escribió sí sigue en el chat, como todo lo que
+  escribe. «Calle 50» o «Vía España» sí se anotan (son zonas).
+* **Notas sin repetir.** Una nota igual a una de las 5 últimas de la oportunidad no se vuelve a poner (cada «crear
+  oportunidad» con el mismo resumen y la temperatura que va y viene dejaban la misma nota una y otra vez).
+* **Sin respuesta.** Si la conversación no tiene mensajes en *Ajustes de Juan › Días sin respuesta* (30 por defecto; 0 =
+  nunca; mínimo 14) y ninguna vendedora tiene algo pendiente, la oportunidad se archiva con el motivo «Sin respuesta
+  (automático)». Se restaura desde el CRM.
+* **La persona manda.** Solo avanzan, nunca retroceden. Si alguien cambia a mano la etapa o la temperatura de una oportunidad
+  (o restaura una archivada), esa oportunidad queda marcada «Una persona tomó el control» y nada vuelve a moverla hasta que
+  alguien use el botón **Que Juan la maneje de nuevo**.
+* **Oportunidades** (*Conversaciones › Oportunidades* y el acceso del Inicio): de la más caliente a la más fría, con el filtro
+  **A quién escribirle hoy** (tibias y calientes a las que ninguna vendedora les ha escrito en las últimas 24 horas).
+* **Brian** lo lee: «¿a quién le escribo hoy?» (`oportunidades_abiertas`) y «¿cómo va el CRM?» (`resumen_del_crm`). Solo lectura.
+* **Apagarlo:** *Ajustes de Juan › El CRM se ajusta solo*. Lo ya anotado queda como estaba. Corre cada 15 minutos (acción
+  planificada «Juan: ajustar el CRM»). Para una sola oportunidad: moverla de etapa a mano (la apaga en ella).
+
+### Las reglas (fijas y con prueba: `models/crm_reglas.py`, `tests/test_crm_automatico.py`)
+
+**Etapas** (solo avanzan; solo con la oportunidad activa y pendiente; solo si nadie tomó el control):
+
+- **Cotizada** → etapa «Propuesta» (`crm.stage_lead3`) cuando hay una cotización ligada **enviada** o confirmada. La de Juan
+  pasa a *Enviada* cuando el PDF ya está en el hilo; si el PDF falla, queda en borrador y nada avanza.
+- **Ganada** → etapa ganada (`is_won`) cuando una cotización ligada tiene una factura **pagada** (`paid` / `in_payment`).
+  Confirmar no es vender: un apartado web confirmado sin pagar sigue en «Propuesta».
+- **Perdida** → archivada con el motivo «Sin respuesta (automático)», solo por hechos: N días sin ningún mensaje y sin nada
+  pendiente de una vendedora (tarea, conversación en sus manos o pedido confirmado sin pagar). Nunca por lo que la IA interprete.
+
+**Temperatura** (`1` frío · `2` tibio · `3` caliente), por puntos:
+
+| Hecho | Puntos |
+|---|---|
+| Hay una cotización enviada o confirmada | +3 |
+| El cliente dijo para cuándo lo quiere | +2 |
+| El cliente dijo su zona de entrega | +1 |
+| Escribió en las últimas 48 horas | +1 |
+| Escribió 4 o más veces en la última semana | +1 |
+| Lo atiende una persona | +1 |
+
+5 o más = caliente · 3 o 4 = tibio · menos de 3 = frío. Sin mensajes del cliente en más de 7 días, como mucho tibio; en más de
+14, frío. Se recalcula cada 15 minutos y al cotizar; la causa queda en la ficha («pidió cotización, dijo para cuándo»). Es un
+campo propio (`dcasa_temperatura`): las estrellas de prioridad de Odoo no se tocan.
+
+**A quién escribirle hoy:** oportunidades pendientes, tibias o calientes, de una conversación, a las que **ninguna vendedora les
+ha escrito en las últimas 24 horas** (solo cuentan mensajes que sí le llegaron al cliente; no notas, ni programados, ni fallidos).
+La misma regla sirve al filtro, al Inicio, a Brian (`para_hoy`) y a Sofía.
+
+### Por qué así
+
+El diseño salió de las fallas que se encontraron en el plan original leyendo el código: ninguna cotización estaba ligada a la
+oportunidad (ahora Juan y el botón la ligan, y la crean si no había); «ganada» no la marcaba Odoo (confirmar no es pagar);
+enganchar la lógica a facturas o ventas podía romperlas (**cero overrides**: un cron lee los hechos, cada oportunidad en su
+propio savepoint, un fallo nunca llega a quien llamó); la automatización podía pelear con la vendedora («la persona manda»);
+las etapas se buscan por id externo, no por nombre; la zona de entrega es dato personal (solo distrito o corregimiento). Lo que
+ya existía antes de esta versión y las oportunidades abiertas a mano quedan «en manos de una persona».
+
+**No lo hace (issues del repositorio):** seguimiento específico de cotizaciones sin respuesta, invitar a la tienda, posventa,
+que Brian cierre o gane oportunidades, y «perdida» cuando el cliente dice que compró en otro lado.
+
+## El asistente aprende: conocimiento, preguntas sin respuesta y lecciones
+
+**Conocimiento del bot** (*Conversaciones › Conocimiento del bot*). Es lo único que el asistente puede decir sobre
+horario, ubicación, Socios, garantía, cómo comprar… cuando se lo preguntan. Cada entrada tiene un título, palabras
+con las que la gente la pregunta y su texto.
+
+**Una instalación nueva arranca en cero** (pedido del dueño, 2026-11-18): ninguna entrada de fábrica y ninguna pregunta
+sin respuesta; cada negocio escribe las suyas. Hasta entonces el asistente no sabe nada de la tienda fuera de sus
+herramientas (productos, horario y dirección de `horario_y_tienda`, reglas de Socios) y lo demás lo anota como pregunta
+sin respuesta. Una entrada puede ser **automática** para no repetir datos que ya viven en Odoo: con el origen *Datos
+de la tienda (automático)* se arma con la dirección de la empresa (calle, ciudad, provincia y, si la empresa tiene su
+latitud y longitud, la ruta en Google Maps), el WhatsApp del sitio y el horario de Ajustes; con *Reglas de Socios
+(automático)*, sale de `puntos.json`. Así no se quedan viejas ni repiten una cifra. Ningún texto de política (garantía,
+cambios, entregas, flete, financiamiento, apartados) viene de fábrica: lo escribe el negocio y, hasta que lo escriba,
+lo confirma una vendedora. Cada cambio queda en el historial. Las bases instaladas antes del 2026-11-18 conservan las
+cuatro entradas que traía la semilla de entonces (`noupdate`). Hoy las entradas se escriben en la pantalla: no hay
+herramienta de Brian ni MCP para escribirlas.
+
+**Preguntas sin respuesta** (*Conversaciones › Preguntas sin respuesta*). Cuando el asistente no sabe, anota la pregunta
+y le dice al cliente que una vendedora se la confirma. Las parecidas se **agrupan** y cuentan cuántas veces se
+repitieron. Desde el 2026-11-09 las ven **vendedoras y Gerencia** (pedido de la dueña: ellas saben esos temas). Con
+**Contestar** se escribe el tema y la respuesta como se le diría al cliente:
+
+- Si ni el tema ni la respuesta mencionan **dinero, números** (también en palabras: «quince», «por ciento», «mitad») ni un
+  **tema de política** (garantía, devoluciones, cambios, entregas, envío, crédito, cuotas, apartados, descuentos, precio,
+  plazos u horarios; también con el verbo: «te lo enviamos», «lo financiamos»), la
+  entrada nace **activa** y el asistente la usa desde ese momento; la pregunta queda *atendida*.
+- Si los mencionan y la escribe una vendedora, **no** se activa: queda en la pregunta como «Lo que ya contestó una
+  vendedora» (y en su historial, con el texto) para que Gerencia la revise con **Convertir en conocimiento**, que la
+  abre como **borrador inactivo**. Gerencia contesta directo: es quien confirma las cifras.
+- El tema nace de la pregunta del cliente y se puede corregir (sin correos ni números largos): si la pregunta traía un
+  precio («¿me la dejan en $750?»), también la revisa Gerencia, aunque la respuesta sea un «sí».
+
+**Convertir en conocimiento**, **Descartar** y **Volver a «nueva»** siguen siendo de Gerencia, y solo Gerencia edita,
+activa o apaga las entradas de *Conocimiento del bot*.
+
+*Lo que ya contestó una vendedora.* Cada noche (03:10 de Panamá) Odoo busca, para cada pregunta *nueva*, lo que una vendedora le
+escribió después al cliente en esa conversación (hasta 7 días, el mensaje que comparte más palabras con la pregunta; un saludo suelto
+o un mensaje de otro tema no cuenta). Lo guarda en la pregunta, con **quién** lo escribió y **cuándo**, sin correos ni números largos
+(celulares, cédulas, cuentas) y avisando si menciona **dinero o números** (hay que confirmarlos). Al apretar **Convertir en conocimiento**
+la entrada nace con ese texto como **borrador inactivo**: el asistente no sabe nada de eso hasta que Gerencia lo revisa y lo **activa**.
+No lo redacta ninguna IA: son las palabras de la vendedora, y por eso no inventa nada.
+
+*Buscar por significado* (opcional, **apagado**; *Ajustes de Juan › Buscar en el conocimiento por significado*). Las palabras no
+encuentran «¿Se llevan el colchón viejo?» si la entrada dice «Retiro de lo usado». Con esto encendido, cada hora Odoo le pide al Worker
+(`POST /odoo/embeber`, modelo `@cf/baai/bge-m3` de Workers AI, dentro de la cuenta de Cloudflare de D'CASA) una «huella de
+significado» de cada entrada **activa** nueva o editada (se guarda en `dcasa.conocimiento.vector`; solo la ve Gerencia) y, al buscar,
+las **palabras mandan** y el significado solo **completa los lugares que quedaron vacíos** (de las 3 que devuelve la herramienta), con
+las entradas cuya huella se parece lo suficiente a la pregunta (coseno ≥ 0.6). Si el Worker no tiene el binding `AI`, tarda más de 4
+segundos o falla, se sigue por palabras y no se vuelve a intentar durante 5 minutos. Una huella cuyo texto cambió no cuenta hasta que
+se recalcula. Nada de esto manda datos de clientes: viaja la pregunta del cliente recortada a 300 letras y los textos del equipo.
+
+**Lecciones aprendidas** (*Ajustes de Juan*, campo «Lecciones aprendidas»). Una frase por línea (hasta 20, de 300 letras): normas cortas
+como «si preguntan por Yappy, di que una vendedora lo confirma». El asistente las recibe junto con su configuración.
+
+## Comentarios de Instagram y Facebook
+
+Juan puede contestar los comentarios de las publicaciones (decisiones de la dueña, 2026-11-12: «Solo los que preguntan»,
+«Corto y lo demás por privado», «Apagado hasta que lo pruebes»). Viene **apagado**; se enciende en *Ajustes de Juan ›
+Comentarios de Instagram y Facebook › Responder comentarios* (Gerencia y administradores).
+
+* **A quién contesta:** solo a quien pregunta algo (precio, medidas, colores, si hay, envío, ganas de comprar). No a
+  etiquetas de amigos, emojis, saludos ni elogios.
+* **Cómo:** primero le escribe **por privado** la respuesta completa (como un mensaje normal: mismas herramientas, mismas
+  reglas); solo si eso salió, pone debajo del comentario la frase pública de Ajustes, **igual para todos y sin el nombre
+  de nadie**.
+* **Quejas:** no las contesta. Quedan en la conversación de esa persona y avisan a Gerencia por Telegram (una vez al día
+  por persona).
+* **Si ya lo atiende una persona del equipo**, Juan no se mete: el comentario queda anotado en la conversación con
+  «contéstale tú».
+* **Dónde se ve:** cada comentario atendido queda en la conversación de esa persona, con «Ver la publicación». Brian
+  (`resumen_de_conversaciones`) dice cuántos respondió y cuántas quejas hubo.
+* **Topes** (en Ajustes): respuestas públicas por hora (30) y, por persona en 24 h, 1 pública y 3 privadas. Lo de más
+  queda anotado sin responder.
+* **Ojo:** igual que Messenger, Meta solo manda los comentarios de cuentas con papel en la app hasta que la app tenga la
+  aprobación (acceso avanzado). Ver [JUAN_CANALES.md](JUAN_CANALES.md) §3c.
+
+## Etiquetas y respuestas rápidas
+
+**Etiquetas** (*Configuración › Etiquetas*). Las creas tú con el color que quieras («Pidió precio», «Comprobante
+recibido»…). Vienen cuatro de ejemplo: *Pidió precio*, *Comprobante recibido*, *Socios* y *Reclamo*; edítalas o bórralas.
+Las vendedoras las ponen a mano y el asistente puede ponerlas solo, **pero únicamente las que existen** (si pide una
+que no existe, Odoo le dice cuáles hay; no inventa etiquetas). Una etiqueta que desactivas deja de poder ponerse, pero
+se queda en las conversaciones que ya la tenían.
+
+**Respuestas rápidas** (*Configuración › Respuestas rápidas*). Atajos que empiezan con «/» y que la pantalla
+nueva de conversaciones convierte, al escribirlos en la caja de respuesta, en un texto completo (el formulario de hoy
+todavía no los usa). Vienen `/ubicacion`, `/horario` y `/socios`. En el texto puedes usar
+`{nombre}` (el nombre del cliente; si solo tenemos su número, la palabra se quita sola), `{horario}`, `{direccion}` y
+`{whatsapp}`: se llenan con los datos de la tienda, así que si cambias el horario en Ajustes, la respuesta cambia sola.
+Las de ejemplo no llevan cifras ni políticas.
+
+## Ajustes de Juan (solo Gerencia)
+
+*Conversaciones › Configuración › Ajustes de Juan.* Todo tiene ya el valor que decidiste:
+
+| Ajuste | Valor ahora |
+|---|---|
+| Nombre público | el equipo de D'CASA |
+| Asistente encendido (general y por canal) | Encendido. De fábrica: WhatsApp (QR) y Telegram encendidos; WhatsApp oficial, Messenger e Instagram apagados. **En producción, WhatsApp oficial encendido** desde el 2026-11-02 |
+| Horario laboral | 8:00 a. m. a 5:00 p. m., todos los días (hora de Panamá) |
+| Seguimiento | 1.º a las 5 h, 2.º a los 5 días, máximo 2, solo en horario laboral; no se mandan atrasados más de 6 h (0 = mandarlo igual) |
+| Proveedor de IA | De fábrica Anthropic (también **Meta** u **OpenAI**), con otro de respaldo opcional. **En producción: Meta** con el modelo «contributor» (decisión de la dueña, 2026-11-02; [JUAN.md §8](JUAN.md#8-cambiar-de-ia-desde-odoo-sin-tocar-código)) |
+| Modelos | rápido: `claude-haiku-4-5` · inteligente: `claude-sonnet-5-5` (Meta: `muse-spark-1.3`; **OpenAI: sin modelo por defecto, lo escribes tú**) |
+| Precios de la IA | **vacíos** a propósito: no se inventa ningún precio. Si los llenas (dólares por millón de tokens, por nivel: entrada, salida y caché), el Worker calcula el gasto con ellos |
+| Tope de IA al mes | 30 USD (al llegar, baja al modelo barato; nunca se queda sin contestar) |
+| Pausa al atender | 120 minutos (0 = hasta que la devuelvas) |
+| Juan envía las cotizaciones solo | **Encendido** (decisión de la dueña, 2026-10-10). El administrador lo apaga en *Ajustes de Juan*; la vendedora siempre puede mandarlas a mano con el botón «Cotización» |
+| Mensaje de bienvenida y aviso de privacidad | Bienvenida **corta** («Hola, soy Juan de D'CASA.»: sin anunciarse como asistente; el límite de honestidad está en `docs/JUAN.md`). El aviso de privacidad **no se manda por el chat** (queda vacío); el aviso completo va en la política del sitio y, para Telegram, en la descripción del bot (BotFather → `/setdescription`) |
+| Palabras prohibidas | remate, corre, ¡¡, !! |
+| Responsable por defecto / avisos por Telegram | Administrador / todas las vendedoras con Telegram vinculado |
+| Guardar la foto de perfil del cliente | **Encendido** (decisión de la dueña, 2026-10-09). Se apaga en *Privacidad de los clientes* |
+| Días que queda abierta una cotización del chatbot o de la web | 3 (0 = nunca; máximo 60). Ver «Origen y cotizaciones que vencen solas» |
+| Reparto de conversaciones | Nadie (apagado). Días que un cliente sigue con su vendedora: 14 · Recibe solo quien usó el sistema hace poco: 30 min · Pasar a otra si no contesta: 15 min · Máximo de clientes esperándole a la vez: 3. Ver «Trabajo en equipo y reparto» |
+| Comentarios de Instagram y Facebook | **Apagado** (decisión de la dueña, 2026-11-12: «Apagado hasta que lo pruebes»). Al encenderlo: Facebook e Instagram marcados · frase pública «¡Hola! Te escribimos por mensaje directo con los detalles.» · 30 públicas por hora · por persona en 24 h: 1 pública y 3 privadas. Ver «Comentarios de Instagram y Facebook» |
+| Avisar si un cliente espera | 10 minutos |
+| De noche nadie recibe clientes | **Encendido** (2026-11-13). Fuera del horario nadie recibe clientes ni avisos de clientes; al abrir, una lista por vendedora. Ver «Reparto de conversaciones» |
+| Avisar de comprobantes y documentos | Encendido: comprobantes de un pago hecho, cédulas, PDF y las imágenes que Juan no pudo leer |
+| Avisar de fotos y archivos | **Apagado** (2026-11-13; antes encendido): las fotos comunes ya no avisan |
+| El CRM se ajusta solo | Encendido · Días sin respuesta para archivarla: 30 |
+| Sofía | Revisar cada mañana y resumen por Telegram encendidos ([SOFIA.md](SOFIA.md)) |
+
+**Aviso importante sobre los modelos «contributor».** Si el nombre de un modelo lleva la palabra *contributor*, ese
+modelo **entrena con las conversaciones de tus clientes**. Odoo te lo avisa en rojo al elegirlo, y entonces la
+**política de privacidad del sitio tiene que decirlo**. Los modelos por defecto no son de ese tipo; producción usa uno desde
+el 2026-11-02 (decisión de la dueña) y la política del sitio lo dice.
+
+**Las claves de acceso a la IA no se guardan en Odoo**: viven solo en el Worker de Juan. Odoo solo guarda qué
+proveedor y qué modelo usar.
+
+Cada cambio queda en el historial de la pantalla (quién y cuándo). Si apagas **Asistente encendido**, nadie
+recibe respuestas automáticas y las vendedoras siguen atendiendo.
+
+## Si algo falla
+
+* **El Worker no responde al enviar:** tu mensaje queda **«por enviar»** (se ve en la conversación y en *Mensajes por
+  enviar*) y Odoo lo **reintenta solo cada 5 minutos durante una hora**. Nunca se pierde. Si no sale, queda en rojo
+  con el motivo y un botón **Reintentar**.
+* **El Worker no se entera de que tomaste la conversación:** no pasa nada grave. El Worker pregunta a Odoo justo antes de
+  cada respuesta si puede hablar, y Odoo dice que no.
+* **Odoo estaba dormido o reiniciando:** el Worker espera y reintenta; la API responde «arrancando» y no pierde mensajes.
+* **Una foto o un archivo no se pudo traer:** el mensaje se guarda igual y la burbuja lo dice.
+* **Probar la conexión:** en *Ajustes de Juan*, botón **Probar conexión**.
+
+## Avisos en paralelo: comprobantes, documentos y fotos
+
+Cuando un cliente manda un **comprobante de pago**, un **documento de identidad** o **un archivo que el asistente no puede
+leer**, a las personas elegidas en *Ajustes de Juan › Avisar por Telegram a* les llega un aviso por Telegram **al mismo
+tiempo**: el asistente **sigue atendiendo** y esa persona decide si interviene (si lo hace, toma la conversación y el
+asistente calla). Desde 2026-11-13 (pedido de la dueña: «las fotos de Instagram se toman como factura») solo avisa lo que
+importa:
+
+* **Comprobante:** solo la **prueba de un pago hecho** (transferencia, Yappy, ACH, depósito, recibo). **El precio de una
+  publicación o de un producto no es un pago**: una captura de Instagram con «$299» se ve en el chat, sin aviso ni etiqueta
+  «Comprobante recibido» (el lector de imágenes y `esComprobante` en `juan/src/motor/vision.ts`). Riesgo aceptado: un recibo
+  fotografiado encima de un mueble que el lector llame «producto» no avisa.
+* **Cédula u otro documento de identidad:** avisa siempre y recuerda que el asistente no lo ve.
+* **Un PDF u otro archivo** (Juan no lo lee): «📎 Mandó un archivo… puede ser un comprobante», a lo más uno cada 10 minutos por
+  conversación (depende de *Avisar de comprobantes y documentos*).
+* **Una imagen que Juan no pudo leer** (llega como `sin_leer` con su motivo):
+  * si **falló** o era **ilegible**: avisa como el archivo, uno cada 10 minutos;
+  * si **no la intentó** (pasó el tope de imágenes del mensaje o del día, sin cupo de IA, descanso del antispam, lector
+    apagado): avisa solo si el cliente habla de pago (pago, pagué, Yappy, transferencia, depósito, abono, comprobante, ACH);
+    si no, a lo más una vez al día por conversación;
+  * si el lector está apagado o falla en 3 mensajes dentro de una hora: **un** aviso al día a Gerencia («Juan no está leyendo
+    las fotos»), que de noche espera a que abra la tienda.
+* **Cualquier otra foto:** **sin aviso** (*Avisar de fotos y archivos* viene apagado de fábrica y por la migración); se ve en el
+  chat. Si se enciende, avisa a lo más una vez cada 10 minutos.
+* Con varios archivos en el mismo envío manda el más importante: comprobante > cédula > lo que Juan no leyó > foto.
+* Si la conversación ya la atiende una persona, no se avisa. Las notas de voz no avisan.
+* Quién recibe: las personas elegidas; si no eliges a nadie, todas las de ventas con su Telegram vinculado con Brian.
+
+**Forma de todos los avisos** (decisión de la dueña, «E»): emoji y título (lo urgente va en el título), quién y por dónde, qué
+pasó, qué hacer, y el pie para responder desde Telegram. Los textos viven en `models/conversacion_avisos.py`; el antes y
+después que vio la dueña está en la bitácora del 2026-11-13.
+
+**Orden de despliegue de esta entrega:** **Juan antes que Odoo.** Un Odoo viejo ve `sin_leer` como «sin clase» y avisa como
+hoy; un Odoo nuevo con el Juan viejo trataría cada sticker y cada imagen del tope como «falló» (como mucho un aviso cada 10
+minutos por conversación).
+
+## Atender y contestar desde Telegram (sin abrir Odoo)
+
+Los avisos de **un cliente que espera** (el asistente lo pasó a una vendedora, lleva rato sin respuesta, mandó un comprobante o un
+archivo) traen un botón **Atender** y, al final, «Conversación n.º N». Los avisos de menciones en una nota **no** (esos son para ti,
+no para el cliente). Para esto hay que tener el Telegram vinculado con Brian (*Mis preferencias › Vincular Telegram*).
+
+* **Atender:** toma la conversación igual que el botón de la pantalla (el asistente calla y queda a tu nombre).
+* **Responder al aviso** (en Telegram: mantén el dedo sobre el aviso › *Responder*, y escribe): el bot **no manda nada todavía**.
+  Te enseña el texto tal cual, «Le voy a escribir a Karen por WhatsApp…», con los botones **Enviar** y **Cancelar**. Solo al pulsar
+  *Enviar* sale por el canal del cliente, a tu nombre, por la misma ruta de la pantalla (si el canal no lo entrega, el mensaje queda
+  «por enviar» y se reintenta; el bot te lo dice con la verdad, no dice «Enviado» si no salió).
+
+Reglas (probadas en `tests/test_telegram_consola.py`): solo **texto** (una foto o un archivo se rechazan y se te manda a la pantalla);
+solo en el **chat privado** con el bot y vinculado a tu usuario (no funciona en grupos); todo corre **como tú**: quien no es del equipo
+de ventas, o ya no tiene permiso cuando pulsa *Enviar*, no manda nada; el borrador sirve **una sola vez**, **vence a los 15 minutos**
+y **solo tú** puedes enviarlo o cancelarlo (aunque otra persona vea el botón; el mantenimiento de cada 5 minutos borra los
+vencidos); un doble toque no manda dos veces; el límite de
+velocidad de Brian (20 mensajes por minuto) aplica igual. No se tocó Brian: la consola solo se engancha a dos puntos de su bot
+(`_conversar` y `_procesar_callback`) y todo lo que no sea de Juan (botones `brian:…`, mensajes normales) sigue en manos de Brian.
+
+## Privacidad (Ley 81 de 2019)
+
+Las conversaciones se guardan en Odoo mientras la persona sea cliente. Para atender un pedido de **borrado de datos**,
+Gerencia puede borrar la conversación (se van sus mensajes y adjuntos). El aviso completo vive en la política del sitio
+(`/privacidad`); por decisión de la dueña el chat no lo repite en el primer mensaje. Si se quisiera mandar uno corto, se
+escribe en *Ajustes de Juan › Aviso de privacidad (corto)* y debe coincidir con esa política.
+
+**Oportunidades y borrado de datos.** Borrar la conversación **no** borra la oportunidad del CRM (es un registro del negocio, con
+el nombre, el celular y las notas del cliente). Para un pedido de borrado, Gerencia también **elimina la oportunidad** (CRM ›
+la oportunidad › Acciones › Eliminar). Lo nuevo que Juan anota en ella (zona de entrega, para cuándo) es dato personal: solo
+distrito o corregimiento, nunca la dirección exacta, y se va con la oportunidad. **La política de privacidad del sitio debe
+mencionar la zona de entrega** (issue #22).
+
+**Foto de perfil.** Es un dato personal. El Worker la pide al canal (Telegram, WhatsApp por QR a través del puente, Messenger e
+Instagram; WhatsApp oficial no la da) **a lo más una vez por semana por conversación** (una hora después si algo falló) y solo si
+*Ajustes de Juan › Guardar la foto de perfil del cliente* está encendido. Odoo la valida (solo JPEG, PNG o WebP de verdad, hasta 300
+KB y un número normal de píxeles), la reduce a 256 px en JPEG y la guarda **en la conversación, no en el contacto** (no pisa la foto
+que una persona del equipo haya puesto). La ve quien atiende conversaciones; un cliente del portal o alguien sin sesión recibe solo
+la imagen vacía de siempre. **Nunca viaja a la IA** y se borra con la conversación. Al apagar el ajuste se deja de pedir; las ya
+guardadas se quedan hasta que se elimine la conversación. **La política de privacidad del sitio debe mencionarla.**
+
+**Borrar un solo mensaje y las citas** (revisión 2026-11-07). Si se borra un mensaje, se van también su copia en el chatter y
+lo que de él se veía en las respuestas que lo citaban: el hilo y el chatter de esas respuestas quedan «Responde a un mensaje que
+no está en el historial». Odoo no copia lo citado cuando el original está en el historial (lo lee de ahí); solo guarda el texto
+que manda el canal (Telegram) si el citado no está en Odoo. **La memoria de Juan (el Durable Object) es aparte**: guarda su
+copia de trabajo de la conversación (los últimos 30 días y, como mínimo, los 200 mensajes más recientes) y una cita guarda
+copia del texto solo si lo citado no estaba en esa memoria (lo que mandó Telegram o lo que contestó Odoo), con los PIN tapados.
+Borrar un solo mensaje en Odoo **no** llega a esa memoria: para un pedido de borrado completo se elimina la conversación, que
+le pide a Juan olvidar la suya (`POST /odoo/olvidar`).
+
+---
+
+## Para quien instala (parte técnica)
+
+**Secretos** (los carga la dueña en el panel de Cloudflare del Worker `dcasa`; **no** pasan por GitHub y los
+despliegues no los borran): `JUAN_ODOO_TOKEN` y `JUAN_WORKER_TOKEN` (32 caracteres o más cada uno, distintos entre sí).
+**Variable no secreta:** `JUAN_URL` (dirección del Worker `juan`; también sirve el parámetro de Odoo
+`dcasa_conversaciones.juan_url`, ver abajo). Son opcionales: sin ellos Odoo arranca normal y toda la API
+de Juan responde **503** («falta JUAN_ODOO_TOKEN»). El borde los pasa al contenedor (`VARIABLES_DEL_CONTENEDOR`) y Odoo los
+lee de su entorno; el arranque (`docker/entrypoint.sh`) no los imprime y la pantalla de ajustes solo muestra si están puestos.
+
+> Parámetro de Odoo equivalente a `JUAN_URL`: `dcasa_conversaciones.juan_url` (Ajustes › Técnico › Parámetros del sistema,
+> o el campo «Dirección del Worker de Juan» de *Ajustes de Juan*). La variable de entorno manda sobre el parámetro.
+
+**Entrada para el service binding** (para el agente del Worker `juan`). El Worker `dcasa` exporta una clase
+`WorkerEntrypoint` con nombre, **`JuanEntrada`** (`edge/src/index.ts`). El Worker `juan` declara en su `wrangler`:
+
+```jsonc
+"services": [
+  { "binding": "DCASA", "service": "dcasa-staging", "entrypoint": "JuanEntrada" }   // producción: "service": "dcasa"
+]
+```
+
+y llama `env.DCASA.fetch(new Request("https://dcasa/dcasa/juan/v1/mensaje", { method: "POST", headers: { Authorization: "Bearer " + env.JUAN_ODOO_TOKEN, "Content-Type": "application/json" }, body }))`.
+Solo se reenvían `GET`/`POST` a `/dcasa/juan/**` (cualquier otra ruta, 404); el host da igual (el borde usa el dominio
+canónico). Desde internet esas mismas rutas dan **404** (`edge/src/routing.ts`). Mientras Odoo arranca, la respuesta es
+JSON `503 {ok:false, error:"Odoo está arrancando.", reintentar_en:15}` con `Retry-After`.
+
+**Rutas** (todas con `Authorization: Bearer <JUAN_ODOO_TOKEN>`, JSON UTF-8, errores `{ok:false, error}`):
+
+| Ruta | Para qué | Notas |
+|---|---|---|
+| `POST /dcasa/juan/v1/mensaje` | registrar un mensaje | idempotente por `id_mensaje`; acepta `adjuntos[].sensible` y `base64` además de `url`. Desde el 2026-11-07, opcionales: `cita:{id_canal, texto?}` y `reenviado:"una"\|"muchas"` en un mensaje del cliente (la respuesta trae `cita:{id_canal, autor, texto}` si Odoo tiene lo citado), y `partes:[{id_canal, tipo, texto?}]` en uno nuestro (el id que el canal dio a cada burbuja); mal formados se ignoran y el mensaje entra igual. Responde también `nota_para_el_bot` y, si el cliente llegó por una campaña de correo en los últimos 3 días, `campana_correo` (texto de Odoo: asunto, fecha y productos, sin precios; `dcasa_camila`, ver [CAMILA.md](CAMILA.md) §3.9); con Camila, `permiso_correo` («activo», «sin_correo» o «sin_permiso», §3.11) |
+| `GET /dcasa/juan/v1/estado?canal=&id_externo=` | ¿puede contestar el bot? | sin conversación: valores de los ajustes. Incluye `nota_para_el_bot` (`null` si no hay) y `campana_correo` cuando aplica (si no, la clave no va) |
+| `GET /dcasa/juan/v1/config` | ajustes de la dueña | `dias`: `0 = domingo … 6 = sábado`. Incluye `proveedor_ia`, `proveedor_respaldo_ia`, `modelo_rapido`, `modelo_inteligente`, `modelos_por_defecto`, `precios` por nivel (`null` donde no hay precio), `precios_ia` por modelo (lo que lee el Worker) y `lecciones` |
+| `GET /dcasa/juan/v1/herramientas` | definición de las 13 herramientas (15 con `dcasa_camila`: `guardar_correo` y `no_quiere_novedades`) | cada una con `nombre/descripcion/parametros` y también `name/description/input_schema` |
+| `POST /dcasa/juan/v1/herramienta` | ejecutar una herramienta | `422` = error de uso (el texto sirve para corregir); `404` = no existe |
+| `POST /dcasa/juan/v1/seguimiento/hecho` | confirmar un seguimiento | `descartado` cierra el ciclo |
+| `POST /dcasa/juan/v1/escribiendo` | «el asistente está escribiendo» | `{canal, id_externo, activo}`; solo avisa a las pantallas por el bus |
+| `POST /dcasa/juan/v1/foto-perfil` | la foto de perfil de quien escribe | `{canal, id_externo, mime, base64}` → `{ok, guardada, motivo?}`; `guardada:false` si el ajuste está apagado o no es una foto válida; `404` si no existe la conversación |
+| `POST /dcasa/juan/v1/eventos` | palomitas y reacciones (2026-11-07) | `{eventos:[{tipo:"estado", canal, id_externo, id_mensaje, estado:"enviado"\|"entregado"\|"leido"\|"fallido", ts, error?} \| {tipo:"reaccion", canal, id_externo, id_mensaje, emoji, ts}]}` (hasta 100; `emoji:""` = la quitó) → `{ok, aplicados, desconocidos:[id_mensaje], invalidos}`. Un evento mal formado se ignora (cuenta en `invalidos`) sin tumbar a los demás. Nunca toca la actividad del cliente. `id_mensaje` es el id que el canal dio al mensaje (el `wamid`) |
+
+Las 13 herramientas, por su nombre público (en Brian llevan el prefijo `juan_` para no chocar con las de uso interno):
+`buscar_productos`, `ver_producto`, `listar_categorias`, `reglas_socios`, `saldo_puntos`, `horario_y_tienda`,
+`buscar_conocimiento`, `registrar_pregunta_sin_respuesta`, `crear_oportunidad` (con `zona` y `cuando` opcionales), `anotar_conversacion`,
+`etiquetar_conversacion`, `pasar_a_vendedora` y `cotizar`. Las de lectura leen con `sudo()` y filtros (publicados) y devuelven una lista
+blanca de campos; el cliente sale **siempre** de la conversación (`juan_conversacion_id`), nunca de un argumento.
+
+**`cotizar`** (`models/herramientas_juan_cotizacion.py`): `lineas: [{codigo, cantidad?, opcion?}]` (1 a 10; `opcion` solo para elegir
+tamaño o color). Con *Juan envía las cotizaciones solo* apagado contesta `{creada:false, motivo:'apagada'}` sin tocar nada. Si no:
+resuelve cada código entre los productos **publicados** (comparación exacta, sin comodines; un producto con varias opciones devuelve
+`motivo:'elegir_opcion'` con las opciones; uno que no existe, `producto_no_encontrado`), crea (o reutiliza, si hay una igual de las
+últimas 2 h) un `sale.order` **sin vendedor fijo**, sin descuentos y a precio de lista, lo deja «Enviada» (nunca confirmada), arma el
+PDF con el informe de cotización de Ventas y lo guarda como adjunto de un **aviso** del hilo (`res_model = dcasa.mensaje`). Devuelve
+`{creada:true, cotizacion:{numero, lineas, subtotal, itbms, total y sus *_texto}, documento:{tipo, url, nombre, mime}}`: la `url` es la
+firmada de 15 minutos de siempre (`firma.py`) y la herramienta **no habla con el canal**: el Worker manda el documento junto con la
+respuesta. Si el PDF no sale: `motivo:'sin_pdf'` y un aviso para las vendedoras. Tope: 5 cotizaciones nuevas por cliente por día
+(`motivo:'tope_diario'`). Un rechazo de negocio con un texto pensado para el modelo viaja como `422 {ok:false, error}`; el Worker lo
+lee (`rechazo`) en vez del genérico «no pude consultar».
+
+Códigos: `400` datos inválidos · `401` token · `404` no existe · `413` demasiado grande · `422` herramienta · `429` demasiados
+intentos fallidos · `503` sin token configurado o Odoo arrancando · `500` error interno (sin detalles).
+
+**Odoo → Worker** (`JUAN_WORKER_TOKEN`): `POST /odoo/enviar` (los adjuntos van con URL **firmada de 15 minutos**, ver más
+abajo), `POST /odoo/estado` (al devolver con nota, trae `nota_para_el_bot`), `POST /odoo/seguimiento`, `GET /odoo/salud` y, para la pantalla, `POST /odoo/sugerir`, `GET /odoo/costos`, `GET /odoo/qr`,
+`POST /odoo/reiniciar` y `POST /odoo/desvincular` (ver «Lo que añadió la pantalla OWL»).
+
+**Usuario técnico:** `juan.asistente`, de portal, con el grupo `Juan (asistente de clientes)` y sin ningún grupo interno ni
+contraseña. Solo ve y ejecuta las herramientas de Juan (todas auditadas en *Brian › Acciones* con canal «Juan (clientes)» y la
+conversación). Su tope es de 240 acciones por minuto (parámetro `dcasa_conversaciones.herramientas_por_minuto`) porque es un
+solo usuario para todos los clientes.
+
+**Datos para el agente del Worker:** `saldo_puntos` devuelve `verificado:false` con `motivo` cuando el PIN no sirve (sigue siendo
+HTTP 200); el PIN nunca se guarda en la auditoría (queda como `***`). `buscar_conocimiento` devuelve las 3 mejores entradas
+activas; si no hay ninguna, el asistente debe llamar a `registrar_pregunta_sin_respuesta` y decir que una vendedora lo confirma.
+
+### Adjuntos: URL firmada de vida corta
+
+Cuando una vendedora manda una foto o un PDF desde Odoo, el archivo viaja al canal con una URL
+`/dcasa/adjunto/<id>/<vence>/<firma>/<nombre>`: la firma (HMAC-SHA256 con `database.secret`) amarra el adjunto, la hora de
+vencimiento y el **contenido** (su checksum). Vale **15 minutos** (parámetro `dcasa_conversaciones.url_adjunto_minutos`, tope 24 h)
+y deja de valer si el archivo cambia. Solo sirve adjuntos de mensajes de conversaciones; todo lo demás da 404. No empieza por
+`/dcasa/juan`, porque esa zona la bloquea el borde. Los tipos que un navegador podría ejecutar (HTML, SVG…) salen como descarga.
+
+### API de la pantalla «Conversaciones» (panel)
+
+Métodos públicos de `dcasa.conversacion` (RPC normal de Odoo, `call_kw`) para la pantalla OWL de
+Conversaciones (el código OWL está en `addons/dcasa_conversaciones/static/src`). Todos exigen ser del equipo de ventas
+**en el servidor** y devuelven diccionarios JSON.
+
+| Método | Qué hace |
+|---|---|
+| `lista(filtros, offset, limite)` | La bandeja: `{conversaciones, total, hay_mas, sin_leer_total}`, las más recientes primero, 30 por página (máx. 100). Filtros: `canal`, `estado` (`bot`/`humano`/`cerrada`/`necesita_atencion`), `etiqueta_id`, `asignada_a_mi`, `sin_leer`, `con_oportunidad`, `busqueda` (nombre, celular o texto de cualquier mensaje). Un filtro desconocido es error. |
+| `hilo(conversacion_id, antes_de_id, limite)` | Un tramo de mensajes (50 por defecto) del más viejo al más nuevo; `antes_de_id` pide el tramo anterior; `hay_mas` dice si quedan. Incluye notas y avisos. |
+| `enviar_respuesta(conversacion_id, texto, adjuntos_ids, programar_para=None, responde_a=None)` | Contesta (toma la conversación si hace falta). `responde_a`: id de un mensaje **del cliente** de esa conversación («Responder»): el Worker recibe su id del canal en `responde_a` y lo manda citado (si no hay id del canal, sale sin cita; un mensaje de otra conversación, una nota o un aviso es error). Hasta 5 adjuntos propios, de 10 MB. Si el Worker no responde queda «por enviar». Con `programar_para` (fecha y hora ISO, entre 1 minuto y 30 días) queda «programado» y devuelve `programado: true`; no toca la conversación hasta su hora. `tomar_de` (también en `tomar`, `asignar`, `enviar_foto_catalogo` y `enviar_cotizacion`): si quien llama es vendedora de piso y el cliente lo atiende otra vendedora de piso activa, sin `tomar_de=<id de esa vendedora>` contesta `ClienteDeOtraVendedora` (un `UserError` con el nombre y el id de la otra en `context`), que la pantalla convierte en la pregunta. |
+| `cancelar_programado(mensaje_id)` | Borra un mensaje programado (y sus archivos) que aún no salió. Solo quien lo programó o Gerencia. `hilo()` devuelve los programados aparte, en `programados`. |
+| `tomar(conversacion_id, minutos)` · `devolver(conversacion_id, nota)` · `cerrar(conversacion_id)` | Lo mismo que los botones (una sola ruta de código). |
+| `asignar(conversacion_id, usuario_id)` | Asigna a alguien de ventas (`null` = sin asignar). |
+| `documentos_del_cliente(conversacion_id)` · `adjuntar_a_documento(conversacion_id, adjunto_id, modelo, registro_id)` | Pedidos y facturas del cliente, y copia de un archivo suyo al chatter de uno de ellos (`sale.order` o `account.move`). |
+| `poner_etiquetas(conversacion_id, etiqueta_ids)` · `agregar_nota(conversacion_id, texto, menciones=None, tarea_para=None)` | Etiquetas (solo activas) y nota interna; `menciones` (ids de compañeras del equipo) las avisa por Odoo y Telegram y `tarea_para` (`AAAA-MM-DD`) les deja una tarea. |
+| `marcar_leida(conversacion_ids)` | Marca como leídas, para quien llama. |
+| `ficha(conversacion_id)` | Cliente, si es Socio y su saldo (solo lectura), oportunidades abiertas, compras recientes, notas, seguimiento y **qué sabe el bot** (nombre, productos por los que preguntó, etiquetas, última vez que habló). |
+| `dcasa.mensaje.marcar_sensible(adjunto_ids, valor)` | Marca o desmarca comprobantes y documentos de identidad. |
+| `dcasa.conversacion.etiqueta.lista()` · `dcasa.respuesta.rapida.lista()` · `.texto_para(conversacion_id, atajo)` | Etiquetas activas; atajos con `/`; el texto del atajo ya armado para ese cliente. |
+
+**Tiempo real.** Cada mensaje nuevo, cambio de estado, asignación o etiqueta se avisa por el bus de Odoo a todas las personas del
+equipo de ventas con la notificación `dcasa_conversaciones/evento` y la carga `{evento, conversacion_id, estado, asignada_a,
+ultima_actividad, mensaje_id, autor}`. **Nunca viaja el texto del mensaje** (el bus guarda lo que se envía): la pantalla pide el
+detalle con `hilo`. Un fallo del bus nunca tumba el mensaje. Las **palomitas y reacciones** van en un aviso aparte, uno por tanda y
+persona: `{evento:"recibos", cambios:[{conversacion_id, mensaje_id, estado_canal, canal_entregado_en, canal_leido_en, reaccion:bool}]}`
+(ni texto ni emoji; un «leído» que sube los mensajes anteriores avisa de todos). La pantalla
+que tiene abierta esa conversación pone la palomita al día ahí mismo, sin pedir nada; una reacción o un «no llegó» traen el hilo (una
+vez por tanda). No suena, no mueve la lista ni sube «sin leer».
+
+**Citas, reenviados, reacciones y palomitas en los datos** (2026-11-07). En `dcasa.mensaje`: `cita_id` (el mensaje citado),
+`cita_id_canal` (su id del canal, aunque no esté en el historial), `cita_parte_id` (la burbuja exacta, si lo citado es
+nuestro), `cita_texto` (**solo si lo citado NO está en el historial**: lo que mandó el canal, recortado; si está, se lee del
+original, así borrarlo lo borra también de las respuestas; revisión 2026-11-07), `reenviado`
+(`una`/`muchas`), `reaccion` y `reaccion_en`, `estado_canal` (`enviado`/`fallido`/`entregado`/`leido`) con
+`canal_enviado_en`/`canal_entregado_en`/`canal_leido_en` (la primera vez que el mensaje llegó a cada estado) y el motivo de un «no
+llegó» en `error_envio`. En `dcasa.mensaje.parte` (nuevo): una fila por burbuja o archivo de un mensaje NUESTRO con el id que le dio
+el canal (`id_canal`, único por conversación), su texto, su estado y su reacción; el mensaje muestra el estado de la más atrasada
+(«no llegó» si alguna no llegó) y la última reacción; un «leído» o «entregado» de una parte sube también las partes
+anteriores de lo nuestro en la conversación (`_subir_anteriores`: nunca baja, no toca un «no llegó» ni algo avisado después).
+`/eventos` aplica cada aviso en su propio *savepoint* (uno raro no tumba la tanda; vuelve en `fallidos`) y rechaza textos y
+emojis con sustitutos UTF-16 sueltos o controles bidi. Todo lo escribe el sistema (nadie tiene permiso de escritura). `hilo()` trae por
+mensaje `cita` (`{id, autor, usuario, texto, en_historial}`), `reenviado`, `reaccion`, `estado_canal`, `canal_entregado_en`,
+`canal_leido_en` y `se_puede_citar`.
+
+**Rendimiento.** Índices para la lista (`ultima_actividad DESC NULLS LAST, id DESC`; `estado, ultima_actividad`; asignada a) y para
+el hilo (`conversacion_id, id`). Las consultas no dependen de cuántas filas se piden (probado), y con 5.000 conversaciones la lista
+tarda bien por debajo de 1 s (probado en las pruebas del módulo).
+
+**Lo que añadió la pantalla OWL** (más métodos de `dcasa.conversacion`, mismos permisos):
+
+| Método | Qué hace |
+|---|---|
+| `iniciar_panel()` | Todo lo que la pantalla necesita al abrir: usuario, si el bot está configurado y encendido, límites (texto, nota, tamaño y número de adjuntos), canales, etiquetas, respuestas rápidas y equipo. |
+| `subir_adjunto(conversacion_id, nombre, datos, mimetype)` · `descartar_adjunto(adjunto_id)` | Sube (base64, máx. 10 MB, máx. 10 pendientes por persona) o descarta un archivo antes de enviarlo. Se valida el **contenido** y la extensión (JPG, PNG, WebP, GIF, PDF, Word, Excel, TXT, CSV); el cron `Juan: limpiar archivos subidos y no enviados` borra a las 48 h los que nadie envió. |
+| `equipo()` · `nueva_oportunidad(conversacion_id)` · `reintentar_envios_panel(conversacion_id)` | El equipo de ventas (para asignar), la oportunidad y los reintentos desde la ficha. |
+| `resumir_conversacion(conversacion_id, regenerar=False)` | «Resumir»: unas viñetas de lo que pasó, para quien recibe la conversación (`POST /odoo/resumir`, mismos mensajes que «Sugerir» pero hasta 60). Se guarda en la conversación (`resumen_ia`) y **no gasta IA** si ya cubre el último mensaje o se pidió hace menos de un minuto. El hilo trae el guardado y si sigue al día (`resumen_ia.vigente`). Se apaga en Ajustes (`resumen_ia_activo`). |
+| `refrescar(filtros, limite, conversacion_id, tramo)` | Lo que la pantalla pide cuando le avisan que algo cambió: `{lista, hilo}` en UNA llamada (antes eran dos). |
+| `presencia(conversacion_id, escribiendo)` | El pulso de la pantalla (cada 20 s y al teclear): qué conversación tiene abierta esta persona. Devuelve quiénes más están viendo cuáles (`{presencia: {conversacion_id: [{usuario_id, escribiendo}]}}`) y avisa a las demás pantallas por el bus (solo ids). Una fila por persona en `dcasa.presencia`, que se borra a las 24 h. |
+| `fijar_disponible(disponible)` | «Disponible / No disponible» de quien llama: con el reparto encendido (parejo o por turnos), solo a quien está disponible le tocan conversaciones nuevas. |
+| `sugerir_respuesta(conversacion_id)` | Pide un **borrador** al Worker (`POST /odoo/sugerir`). Manda los últimos 14 mensajes sin notas internas ni avisos; los adjuntos sensibles viajan sin texto ni contenido. Nunca envía nada. Devuelve `{ok: true, texto, avisos}` o, si no llegó, `{ok: false, causa, error, reintentar, detalle}` (no lanza error: la caja lo muestra con «Reintentar»). `causa`: `tardo`, `no_disponible`, `vacio`, `revision`, `sin_conexion`, `sin_clave`, `sin_configurar`, `sin_cliente` o `error`; `detalle` dice si falta la clave de la IA de respaldo. Espera al Worker hasta 55 s (`TIMEOUT_SUGERIR`; el Worker contesta antes de 42 s) y, si la red se cortó antes de hablar con él, reintenta una vez. Deja en el registro la causa, el tiempo y el modelo (nunca el texto ni el teléfono del cliente). |
+| `buscar_catalogo(consulta, limite)` · `fotos_catalogo(producto_id)` | Productos **publicados** por nombre o código: miniatura WebP, precio «+ ITBMS», `DISPONIBLE`/`POCAS`/`AGOTADO` (nunca la cantidad ni el costo), medidas. |
+| `preparar_foto_catalogo(...)` · `enviar_foto_catalogo(conversacion_id, producto_id, fotos, texto)` | Arma el pie (nombre, precio + ITBMS, medidas, enlace) y manda las fotos como JPEG de 1024 px con URL firmada de 15 minutos. |
+| `cotizaciones_abiertas(conversacion_id)` · `crear_cotizacion(conversacion_id, lineas)` · `enviar_cotizacion(conversacion_id, orden_id, texto)` | La cotización abierta más reciente (con los permisos de Ventas de quien llama); un **borrador** nuevo con líneas del catálogo, sin confirmar; el PDF de `sale.action_report_saleorder` enviado como adjunto (la orden queda «enviada»). |
+| `dcasa.juan.panel.por_persona(periodo)` | **Solo Gerencia.** Por cada persona: mensajes escritos en Odoo, conversaciones en que habló, mediana de cuánto tardó en contestar (desde que el cliente quedó sin respuesta, de quien fuera, hasta su primer mensaje) y cuántas le esperan ahora; más las que esperan y nadie tiene. Lo escrito desde el teléfono no dice quién lo escribió y no cuenta. |
+| `dcasa.juan.panel.reparto(periodo)` | La pantalla «Reparto» (`hoy`, `7_dias`, `30_dias`, hora de Panamá). Cada vendedora recibe **solo lo suyo** (`yo`, `mis_conversaciones`); `equipo`, `sin_dueno`, `diferencia` y `cambios_de_mano` solo viajan si quien llama es de Gerencia. Las cuentas salen del libro `dcasa.reparto`. |
+| `dcasa.juan.panel.fijar_fuera_del_reparto(usuario_id, fuera, vuelve=None)` · `fijar_modo_reparto(modo)` | **Solo Gerencia** (se exige en el servidor). Saca a una persona del reparto (o la vuelve a meter; `vuelve`: «AAAA-MM-DD», opcional, después de hoy) sin tocar sus permisos, y enciende o apaga el reparto (`manual`, `parejo`, `turnos`). El primero deja nota en el historial de los ajustes; el segundo, el seguimiento del campo. |
+| `dcasa.juan.panel.resumen(periodo)` | Los seis números del Resumen (`hoy`, `7_dias`, `30_dias`, en la hora de Panamá). |
+| `dcasa.juan.panel.costos()` · `conexiones()` · `qr()` · `reiniciar_puente()` · `desvincular_puente()` | **Solo Gerencia** (se exige en el servidor). Hablan con el Worker por `GET /odoo/salud`, `GET /odoo/costos`, `GET /odoo/qr`, `POST /odoo/reiniciar` y `POST /odoo/desvincular`. Sin `JUAN_URL`/`JUAN_WORKER_TOKEN` contestan `configurado: false` («Falta conectar el bot») sin salir a ninguna parte. `qr()` solo deja pasar un PNG en base64 de hasta 200 KB, y **ni el QR ni las claves se escriben en ningún registro**. Reiniciar y desvincular dejan una nota en el historial de los ajustes. |
+
+**Rutas nuevas del Worker `juan`** (`juan/src/odoo-panel*.ts`; todas con `Authorization: Bearer <JUAN_WORKER_TOKEN>` comparado en tiempo
+constante, respuestas `Cache-Control: no-store`, errores genéricos sin detalles internos):
+
+| Ruta | Qué hace |
+|---|---|
+| `POST /odoo/sugerir` | Recibe la conversación recortada y devuelve `{ok, texto, avisos, modelo}` o `{ok: false, causa, error}` (`tardo` 504, `no_disponible` 502, `vacio` 502, `revision` 502, `sin_clave` 503; con `respaldo_sin_clave` si la IA de respaldo no tiene clave). Usa solo herramientas de **lectura** (`buscar_productos`, `ver_producto`, `listar_categorias`, `reglas_socios`, `horario_y_tienda`, `buscar_conocimiento`), nivel inteligente (baja al rápido si se llegó al tope), registra el gasto y avisa de lo que quitó (fotos, enlaces) y de los `[CONFIRMAR…]`. **Contesta siempre antes de 42 s** (`PLAZO_TOTAL_MS`): el primer intento usa hasta el 60 % del plazo y el resto queda para el modelo rápido; una falla pasajera (red, 429, 5xx) se reintenta una vez; si el modelo gasta sus pasos consultando, se le pide que escriba con lo que consultó; si la revisión de la marca no deja nada con sentido, el modelo lo corrige una vez con el motivo. Una cifra que ya dijo la tienda en la conversación (el asistente o una vendedora) no cuenta como invento; lo que escribe el cliente, sí. Cada pedido deja una línea `[juan] sugerir {…}` con la causa, los tiempos y los modelos (sin textos ni teléfonos). |
+| `POST /odoo/embeber` | `{textos:[…]}` (1 a 8, hasta 2000 letras cada uno) → `{ok, vectores:[[1024 números]], dimensiones, modelo}`. Lo usa la búsqueda por significado. Sin binding `AI`: 503 con `faltan:["AI"]`. No envía ni escribe nada y no pasa por el tope de gasto (cuesta centavos por millón de palabras). |
+| `GET /odoo/costos` | Gasto del mes por modelo, turnos, tope y modelos sin precio cargado (desde el contador del Worker). |
+| `POST /odoo/buscar-foto` | «Busca con una foto» de la tienda web (`dcasa_buscar_foto`, no la usa esta pantalla): `{mime, base64, tope_mes_usd}` → solo el registro cerrado del lector de imágenes. Su gasto se ve aquí, en Costos de IA, en su propio renglón «Cloudflare: lector de fotos» (con cuántas fotos): lo cobra Cloudflare, así que no suma en «Por pagar a Meta», en el botón «Pagar», en la diferencia con lo que cobró Meta ni en las respuestas (`GET /odoo/costos` lo manda aparte, en `cloudflare`). Ver [CATALOGO.md › Busca con una foto](CATALOGO.md#busca-con-una-foto). |
+| `GET /odoo/qr` | El QR del puente de WhatsApp (data URL PNG) y su estado: `necesita_qr`, `conectado`, `desconectado`, `desvinculada`, `arrancando`, `apagado`. No imprime el QR en logs. |
+| `POST /odoo/reiniciar` · `POST /odoo/desvincular` | Reinicia o cierra la sesión del puente. |
+
+**Tareas programadas** (`data/ir_cron_panel.xml`): «Juan: foto diaria del gasto de IA» (04:50 UTC; si el Worker no responde no pasa nada) y «Juan: limpiar archivos subidos y no
+enviados» (07:10 UTC).
+
+**Si un día se usara el puente QR:** el puente solo baja archivos de `https://tommalo.example` y `https://SUBDOMINIO-PENDIENTE.workers.dev`
+(`DOMINIOS_DEL_PUENTE` en `models/panel_calculos.py`). Si `web.base.url` de Odoo es otra dirección, *Conexiones* lo marca en rojo («Dirección de Odoo para las
+fotos y documentos: no sirve»).
+
+**Pruebas.** `tests/test_panel_extra.py`, `test_panel_catalogo.py`, `test_panel_juan.py` (modelos y controladores, con Worker falso);
+`test_panel_interfaz.py` (Chrome de verdad: abrir la lista y un hilo, atender y devolver, enviar con Enter, adjuntar con botón y
+arrastrando, documentos, notas, rápidas, sugerir, filtros, ficha, foto del catálogo, cotización, tiempo real, celular de 390 px, Resumen,
+Costos y Conexiones), `test_panel_disposicion.py` (**la disposición compacta**: los mensajes ocupan al menos 55 % del alto útil en
+1366 × 768, 1366 × 640, 1280 × 720, 1440 × 900, 1536 × 864, 1024 × 768 y 1920 × 1080; la ficha nace cerrada y se recuerda; la lista se
+reduce a las fotos; el menú «Más» con teclado; avisos de una línea; sin `localStorage` todo funciona; y el contrato de los archivos) y `test_panel_visual.py` (**contrato visual**: sistema plano, amarillo solo sobre azul marino, contraste, foco visible
+con Tab y capturas de referencia en `tests/referencia/panel-*.webp`, a 1440 y 390 px). Para regenerar las referencias a propósito:
+`scripts/actualizar_referencias_visuales_juan.sh` (ver `docs/OPERACION.md`). Las capturas para la dueña se generan con
+`DCASA_CAPTURAS_JUAN=<carpeta> scripts/test.sh dcasa_conversaciones` (se guardan en `docs/auditoria/ronda7/capturas/`).
+
+### Cambios sobre el contrato `JUAN.md`
+
+Todo lo del contrato se cumple. Se añadió, sin quitar nada: `ok: true` en las respuestas, `adjuntos` en la respuesta de `/mensaje`,
+`adjuntos[].sensible`/`base64` aceptados, `nota_para_el_bot` en `/mensaje`, `/estado` y `POST /odoo/estado`, los campos de IA en
+`/config` (con `precios` por nivel **y** `precios_ia` por modelo, que es el que lee el Worker), claves duales en `/herramientas` y cuatro herramientas más (`buscar_conocimiento`, `registrar_pregunta_sin_respuesta`,
+`etiquetar_conversacion` y `cotizar`; el contrato tenía 9, ahora son 13). Decisiones donde el contrato dejaba margen: días `0 = domingo`; el
+2.º seguimiento cuenta 5 días desde el primero y también espera al horario laboral; `descartado` cierra el ciclo; el catálogo se lee
+directo de los productos publicados (`/dcasa/tienda/feed` no existe en este repositorio); tras `pasar_a_vendedora` la pausa es la de
+los ajustes y luego el asistente retoma.

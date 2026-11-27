@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- «Brian de la tienda» nace ENCENDIDO (la dueña lo aprobó, 2026-11-13). noupdate: un despliegue nunca lo vuelve a
+         encender si Gerencia lo apagó en Sitio web › Brian de la tienda. El presupuesto y los topes no se escriben
+         aquí: sin parámetro valen los de fábrica (models/pase.py, DE_FABRICA). -->
+    <data noupdate="1">
+        <record id="parametro_activo" model="ir.config_parameter">
+            <field name="key">dcasa_brian_tienda.activo</field>
+            <field name="value">True</field>
+        </record>
+        <!-- Pedido de la dueña (2026-11-15): Brian «siempre activo». Fuera del horario NO avisa de fábrica que la tienda
+             está cerrada (saluda como de día). El parámetro «dormir_de_noche» (el robot de la burbuja dormía de noche)
+             se fue con el robot de Tommalo (marca Tommalo, 2026-11-19). -->
+        <record id="parametro_avisar_cerrado" model="ir.config_parameter">
+            <field name="key">dcasa_brian_tienda.avisar_cerrado</field>
+            <field name="value">False</field>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,197 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tommalo",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+
+  // Fase 1 (opción A, docs/auditoria/DECISION_Y_PLAN.md): Odoo + PostgreSQL en UN
+  // contenedor que restaura la base desde R2 al arrancar y archiva el WAL en R2.
+  // La imagen se construye desde docker/Dockerfile. Contrato Worker ↔ imagen:
+  // edge/CONTRATO_CONTENEDOR.md.
+  "containers": [
+    {
+      "class_name": "OdooContainer",
+      "image": "../docker/Dockerfile",
+      "image_build_context": "..",
+      // Política "default", decidida a propósito (es INMUTABLE: cambiarla después exige
+      // otra app y otra clase de Durable Object). "durable_object" (beta) es la única
+      // que admite snapshots, pero rechaza instance_type, max_instances y constraints, y
+      // no sirve con la clase Container. Ver CONTRATO_CONTENEDOR.md → «Política».
+      "scheduling_policy": "default",
+      // Caja de producción: «standard-1» (½ vCPU, 4 GiB), la de la plantilla. Es una decisión de costo de Tommalo
+      // (docs/PENDIENTES_DEL_CLIENTE.md): se cambia con una línea y un despliegue. `basic` (la de staging) es más lenta.
+      "instance_type": "standard-1",
+      // Singleton: nunca dos PostgreSQL escribiendo al mismo repositorio de R2.
+      "max_instances": 1,
+      // Este de Norteamérica: lo más cercano a Panamá (y al bucket de R2, que debe crearse
+      // con la pista de ubicación ENAM).
+      "constraints": { "regions": ["ENAM"] }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "ODOO", "class_name": "OdooContainer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["OdooContainer"] }],
+
+  // Caché de páginas: el HTML que dibuja Odoo para anónimos, guardado tal cual (src/tienda/paginas.ts).
+  // Sin "id": Wrangler crea el namespace en el primer deploy («automatic provisioning», wrangler
+  // ≥ 4.45) y lo deja enlazado; el token de CI necesita permiso «Workers KV Storage: Edit». Uno por
+  // entorno. Por qué KV y no Cache API: edge/CONTRATO_CONTENEDOR.md → «Caché de páginas».
+  "kv_namespaces": [{ "binding": "TIENDA" }],
+
+  // UTC. "7 * * * *": cada hora, si Odoo está apagado lo despierta (runScheduled), solo
+  // en 24/7: con ODOO_DORMIR_TRAS de duración (staging) lo deja dormido.
+  // "17 8 * * *": 03:17 en Panamá (UTC-5), respaldo lógico diario dentro del contenedor.
+  // Deben coincidir con CRON_HORARIO y CRON_RESPALDO de src/handler.ts (hay test).
+  "triggers": { "crons": ["7 * * * *", "17 8 * * *"] },
+
+  // Valores no secretos. Los secretos se cargan con `wrangler secret put` o desde
+  // GitHub Actions (ver docs/DESPLIEGUE.md y edge/CONTRATO_CONTENEDOR.md):
+  //   obligatorios para arrancar: ADMIN_PASSWORD, R2_ENDPOINT, R2_ACCESS_KEY_ID,
+  //     R2_SECRET_ACCESS_KEY, PGBACKREST_CIPHER_PASS (si falta uno, el Worker no
+  //     enciende el contenedor y /__edge/health lo dice);
+  //   recomendados: DCASA_PIN_PEPPER, ODOO_MASTER_PASSWORD, RESPALDO_TOKEN.
+  // No se usa `secrets.required`: el CI despliega antes de cargar secretos y fallaría.
+  "vars": {
+    // Vacío hasta tener dominio propio: el despliegue toma el anfitrión de URL_SITIO (.github/workflows/desplegar.yml).
+    "CANONICAL_HOST": "",
+    "DCASA_ENTORNO": "produccion",
+    // Existencias de prueba: en producción SIEMPRE 0 (el entrypoint lo fuerza igual).
+    "DCASA_STOCK_PRUEBA": "0",
+    // Sin ITBMS, sin tienda física y el conocimiento inicial del bot NO van aquí: son la identidad del negocio y viajan
+    // en la imagen (docker/negocio.env), porque Cloudflare puede encender la imagen nueva con las variables del
+    // arranque anterior (staging, 2026-11-25).
+    // Black Weekend (addons/website_dcasa/models/black_weekend.py): en producción solo dentro de la
+    // ventana que fijó la dueña (lunes 5 a domingo 11 de octubre de 2026, hora de Panamá,
+    // inclusive); pasada la fecha se apaga sola. "1" la mostraría sin mirar fechas.
+    "DCASA_BLACK_WEEKEND": "0",
+    "DCASA_BLACK_WEEKEND_INICIO": "",
+    "DCASA_BLACK_WEEKEND_FIN": "",
+    "R2_BUCKET": "tommalo-production",
+    // Vacío = 24/7 (el contenedor no se duerme nunca).
+    "ODOO_DORMIR_TRAS": "",
+    // Caché de páginas: "off" en producción hasta que la dueña la apruebe en staging (todo lo
+    // sirve Odoo).
+    "TIENDA_ESTATICA": "off",
+    // Doble factor obligatorio (addons/dcasa_seguridad): "1" desde el 2026-10-13, igual que en staging. Todo
+    // administrador que aún no tenga la app la enrola al entrar (docs/SEGURIDAD_ACCESO.md, paso 2).
+    // Rescate si alguien queda fuera: "0" y desplegar.
+    "DCASA_2FA_OBLIGATORIO": "1",
+    "DCASA_2FA_ALCANCE": "admins",
+    // La puerta del equipo (docs/SEGURIDAD_ACCESO.md §8): el personal entra al panel solo después de pasar por
+    // Cloudflare Access (PIN al correo). Se prepara con cuatro secretos de GitHub (DCASA_PUERTA_RUTA,
+    // DCASA_PUERTA_SECRETO, DCASA_ACCESS_EQUIPO, DCASA_ACCESS_AUD); sin ellos no hace nada. Este interruptor
+    // es el último paso: "0" apagada · "avisar" anota a quien entra sin la puerta pero lo deja entrar ·
+    // "1" el personal solo entra por la puerta. Rescate si la puerta no abre: ponerlo en "0" y desplegar.
+    // De vuelta a "0" el 2026-10-13: con "1" en producción, /master respondía «Not Found» (el borde rechaza el pase de
+    // Access) y el personal se quedó sin entrada al panel. Pendiente de diagnosticar el motivo (log `puerta_token_rechazado`,
+    // docs/SEGURIDAD_ACCESO.md §8.6) antes de volver a «avisar» o «1».
+    "DCASA_PUERTA_OBLIGATORIA": "0",
+    // "1" = el correo con que se pasó la puerta debe ser el correo (o usuario) de la cuenta de Odoo.
+    "DCASA_PUERTA_EXIGIR_CORREO": "0"
+    // Turnstile: "TURNSTILE_SITE_KEY": "<clave pública del widget>" aquí y TURNSTILE_SECRET como
+    // secreto. Sin las dos, Turnstile queda apagado (docs/SEGURIDAD_ACCESO.md → Turnstile).
+    // Alertas del Worker por Telegram (docs/OPERACION.md «Alertas por Telegram»): el chat_id de la
+    // dueña, "DCASA_ALERTA_TELEGRAM_CHAT": "<chat_id>", con el bot de Brian (TELEGRAM_BOT_TOKEN).
+    // Sin él, las caídas del contenedor quedan solo en los logs. Umbrales de Odoo (opcionales):
+    // DCASA_ALERTA_DISCO_PCT (80), DCASA_ALERTA_MEMORIA_PCT (90), DCASA_ALERTA_BASE_GB (0.7).
+  },
+
+  // Límite de intentos por IP en los POST sensibles (edge/src/bots.ts). Rate Limiting de Workers:
+  // no es un recurso que se cree aparte (namespace_id es un número que elegimos, único en la
+  // cuenta) y no tiene costo propio; se activa al desplegar con estas líneas. Mientras sigan
+  // comentadas, el Worker usa un contador en memoria (aproximado). period solo admite 10 o 60.
+  // "ratelimits": [
+  //   { "name": "LIMITE_ACCESO", "namespace_id": "1101", "simple": { "limit": 10, "period": 60 } },
+  //   { "name": "LIMITE_FORMULARIOS", "namespace_id": "1102", "simple": { "limit": 10, "period": 60 } },
+  //   { "name": "LIMITE_CARRITO", "namespace_id": "1103", "simple": { "limit": 120, "period": 60 } },
+  //   { "name": "LIMITE_FOTO", "namespace_id": "1104", "simple": { "limit": 6, "period": 60 } },
+  //   { "name": "LIMITE_PDF", "namespace_id": "1105", "simple": { "limit": 6, "period": 60 } }
+  // ],
+
+  // Sin dominio propio todavía: `routes` vacío (docs/REPLICAR.md §6.2). Cuando el dominio de Tommalo esté en su cuenta de
+  // Cloudflare se agrega aquí (docs/DOMINIO.md) y se cambia edge/test/fase1.test.ts en el mismo commit.
+  "routes": [],
+  // workers.dev SIGUE respondiendo: con `routes` y sin esto, wrangler lo apaga en el siguiente despliegue, y ahí
+  // viven el webhook de Telegram de Brian, la entrada /master de siempre y lo que Juan y el puente ya conocen.
+  "workers_dev": true,
+
+  "env": {
+    // Entorno de prueba para los simulacros de caída y restauración (Fase 1, punto 3).
+    // `wrangler deploy --env staging`: otro Worker (tommalo-staging), por tanto otro
+    // Durable Object, otra app de contenedor y otra instancia; otro bucket de R2 y sus
+    // propios secretos (`wrangler secret put … --env staging`). Nunca comparte R2 con
+    // producción: dos PostgreSQL en el mismo repositorio = contabilidad corrupta.
+    "staging": {
+      "name": "tommalo-staging",
+      "containers": [
+        {
+          "class_name": "OdooContainer",
+          "image": "../docker/Dockerfile",
+          "image_build_context": "..",
+          "scheduling_policy": "default",
+          "instance_type": "basic",
+          "max_instances": 1,
+          "constraints": { "regions": ["ENAM"] }
+        }
+      ],
+      "durable_objects": {
+        "bindings": [{ "name": "ODOO", "class_name": "OdooContainer" }]
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["OdooContainer"] }],
+      "kv_namespaces": [{ "binding": "TIENDA" }],
+      "triggers": { "crons": ["7 * * * *", "17 8 * * *"] },
+      "vars": {
+        "CANONICAL_HOST": "tommalo-staging.subdominio-pendiente.workers.dev",
+        "DCASA_ENTORNO": "staging",
+        // Tilopay (docs/TILOPAY.md): staging SIEMPRE en prueba (su cuenta es la de pruebas de desarrollador). Va fijado aquí
+        // a propósito: lo que está en este archivo manda sobre el panel, así que ni un descuido deja a staging aceptando
+        // pagos reales. En producción NO se fija: el dueño lo cambia a "produccion" en el panel cuando llega el momento.
+        "TILOPAY_ENTORNO": "prueba",
+        // Yappy directo (docs/YAPPY.md): igual que Tilopay, staging SIEMPRE en prueba (el servidor de pruebas de Yappy, no
+        // el real). Fijado aquí para que ni un descuido deje a staging cobrando de verdad. En producción NO se fija: la
+        // dueño lo pone en "produccion" en el panel de Cloudflare cuando Yappy aprueba el botón.
+        "YAPPY_ENTORNO": "prueba",
+        // Yappy avisa de cada pago con un GET a esta dirección + /payment/yappy/ipn. Es la misma dirección workers.dev de
+        // CANONICAL_HOST y de TIENDA_AVISO_URL (más abajo): hoy repite lo que ya dice web.base.url, y se deja fijada (como
+        // en D'CASA) para que el aviso de Yappy no dependa de que staging cambie de dirección. Si algún día staging tiene
+        // un dominio propio que no apunte al Worker, esta línea sigue llevando el aviso al Worker. Producción NO la lleva
+        // (y Odoo la ignoraría).
+        "YAPPY_URL_BASE": "https://tommalo-staging.subdominio-pendiente.workers.dev",
+        // 10 unidades a cada producto sin existencias ni movimientos, para probar ventas
+        // (addons/dcasa_catalogo: aplicar_stock_prueba; nunca pisa un conteo real).
+        "DCASA_STOCK_PRUEBA": "10",
+        // ITBMS, tienda física y conocimiento inicial: en la imagen (docker/negocio.env), igual que producción.
+        // Black Weekend apagado: es una campaña de otro negocio; Tommalo no tiene campaña cargada.
+        "DCASA_BLACK_WEEKEND": "0",
+        "DCASA_BLACK_WEEKEND_INICIO": "",
+        "DCASA_BLACK_WEEKEND_FIN": "",
+        "R2_BUCKET": "tommalo-staging",
+        // 24/7 como producción (decisión de la dueña, 2026-10-02): dormido, la página cacheada
+        // en el borde salía sin estilos (los assets los sirve Odoo) y /socios tardaba ~1 min en
+        // despertar y restaurar desde R2. Para abaratar una pausa larga, poner "1h".
+        "ODOO_DORMIR_TRAS": "",
+        // Caché de páginas encendida: el borde sirve a los anónimos el MISMO HTML que dibuja Odoo
+        // (navbar píldora, héroe, footer; probado idéntico byte a byte salvo el token CSRF, que el
+        // JS refresca). La plantilla propia de antes (apagada el 2026-10-02) ya no existe.
+        // Staging vive en workers.dev: el aviso de invalidación va ahí.
+        "TIENDA_AVISO_URL": "https://tommalo-staging.subdominio-pendiente.workers.dev/__edge/tienda/regenerar",
+        "TIENDA_ESTATICA": "on",
+        // Doble factor OBLIGATORIO en staging (pedido de la dueña, 2026-10-10: «blindar el acceso»):
+        // cada administrador enrola la app de códigos la primera vez que entra después de la clave
+        // (docs/SEGURIDAD_ACCESO.md §2 y §3). Rescate si se pierde el teléfono: §4. Producción sigue en "0"
+        // hasta que la dueña pruebe aquí el flujo completo.
+        "DCASA_2FA_OBLIGATORIO": "1",
+        "DCASA_2FA_ALCANCE": "admins",
+        // La puerta del equipo (ver arriba) arranca APAGADA en la instalación nueva: sin la aplicación de Access y sus
+        // cuatro secretos, "1" deja a todo el equipo afuera (incidente 4 de D'CASA). Se enciende por pasos:
+        // "0" → "avisar" unos días → "1" (docs/REPLICAR.md §6.9).
+        "DCASA_PUERTA_OBLIGATORIA": "0",
+        "DCASA_PUERTA_EXIGIR_CORREO": "0"
+      },
+      // `routes` se HEREDA de arriba: staging nunca se lleva el dominio de producción. Siempre [] aquí.
+      "routes": []
+    }
+  }
+}

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hr_employee_form_nomina" model="ir.ui.view">
+        <field name="name">hr.employee.form.dcasa.nomina</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='payroll_information']" position="inside">
+                <group string="Nómina" groups="dcasa_nomina.group_nomina">
+                    <group>
+                        <field name="dcasa_en_planilla"/>
+                        <field name="dcasa_forma_pago"/>
+                        <field name="dcasa_deduccion_isr_anual"/>
+                    </group>
+                    <group>
+                        <field name="dcasa_vac_ganadas"/>
+                        <field name="dcasa_vac_tomadas"/>
+                        <field name="dcasa_vac_saldo"/>
+                        <field name="dcasa_vac_valor"/>
+                        <field name="dcasa_prima_acumulada"/>
+                        <label for="dcasa_prestamos_saldo"/>
+                        <div class="o_row">
+                            <field name="dcasa_prestamos_saldo"/>
+                            <button name="%(dcasa_nomina.accion_prestamos)d" type="action" class="btn-link"
+                                    string="Ver adelantos" icon="fa-list"
+                                    context="{'search_default_empleado_id': id, 'default_empleado_id': id}"/>
+                        </div>
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

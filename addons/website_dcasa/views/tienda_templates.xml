@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Entrega a domicilio: el costo se cotiza por WhatsApp. El precio lo escribe el JavaScript
+         de Odoo («Gratis» si es 0); la clase lo reemplaza por «Por cotizar» (ver dcasa.scss). -->
+    <template id="entrega_por_cotizar" inherit_id="website_sale.delivery_method" name="Tommalo: entrega por cotizar">
+        <xpath expr="//span[hasclass('o_wsale_delivery_price_badge')]" position="attributes">
+            <attribute name="t-attf-class">o_wsale_delivery_price_badge text-muted fw-bold text-end {{'o_dcasa_por_cotizar' if dm.dcasa_por_cotizar else ''}}</attribute>
+        </xpath>
+    </template>
+
+    <!-- Precio público: la cifra del catálogo es SIN ITBMS y se dice al lado: «$39.99 + ITBMS».
+         El carrito, la cotización y la factura muestran subtotal, ITBMS y total. -->
+    <template id="mas_itbms" name="Tommalo: + ITBMS junto al precio">
+        <small t-if="website._dcasa_mas_itbms(producto_itbms)" class="o_dcasa_mas_itbms">+ ITBMS</small>
+    </template>
+
+    <template id="ficha_precio_mas_itbms" inherit_id="website_sale.product_price" name="Tommalo: precio de la ficha + ITBMS">
+        <xpath expr="//div[@name='product_price_container']/span[hasclass('oe_price')]" position="after">
+            <t t-call="website_dcasa.mas_itbms"><t t-set="producto_itbms" t-value="product"/></t>
+        </xpath>
+    </template>
+
+    <template id="tienda_precio_mas_itbms" inherit_id="website_sale.products_item" name="Tommalo: precio de la tienda + ITBMS">
+        <xpath expr="//div[hasclass('product_price')]/span[1]" position="after">
+            <t t-if="template_price_vals['price_reduce'] or not website.prevent_zero_price_sale" t-call="website_dcasa.mas_itbms">
+                <t t-set="producto_itbms" t-value="product"/>
+            </t>
+        </xpath>
+    </template>
+
+    <template id="resumen_entrega_por_cotizar" inherit_id="website_sale.total" name="Tommalo: resumen con entrega por cotizar">
+        <xpath expr="//tr[@name='o_order_delivery']/td[2]" position="inside">
+            <small t-if="website_sale_order.carrier_id.dcasa_por_cotizar" class="d-block text-muted fw-normal">por cotizar</small>
+        </xpath>
+    </template>
+
+    <!-- Rendimiento de /shop (auditoría ronda 4): la tarjeta pedía image_1024 (~59 KB) para una
+         foto de ~180 px. Ahora el navegador elige entre 256/512/1024 según `sizes` (en WebP desde
+         /dcasa/img si lo acepta; si no, el JPEG/PNG de Odoo), la foto lleva
+         width/height y solo las dos primeras (la fila visible en el celular, donde está la LCP)
+         van «eager» con prioridad alta. -->
+    <template id="tarjeta_tienda_imagen" inherit_id="website_sale.products_item" name="Tommalo: foto de la tarjeta a su tamaño">
+        <xpath expr="//span[hasclass('oe_product_image_img_wrapper_primary')]" position="attributes">
+            <attribute name="t-options">{
+                'widget': 'image', 'preview_image': 'image_512',
+                'class': 'oe_product_image_img h-100 w-100', 'width': 512, 'height': 512,
+                'dcasa_srcset': ('image_256', 'image_512', 'image_1024'),
+                'dcasa_webp': True,
+                'dcasa_sizes': dcasa_img_sizes or '(min-width: 1200px) 300px, (min-width: 992px) 25vw, (min-width: 768px) 33vw, 46vw',
+                'dcasa_prioridad': dcasa_img_prioridad or False,
+            }</attribute>
+        </xpath>
+        <xpath expr="//span[hasclass('oe_product_image_img_wrapper_secondary')]" position="attributes">
+            <attribute name="t-options">{
+                'widget': 'image', 'preview_image': 'image_512',
+                'class': 'oe_product_image_img_secondary h-100 w-100', 'width': 512, 'height': 512,
+                'dcasa_srcset': ('image_256', 'image_512', 'image_1024'),
+                'dcasa_webp': True,
+                'dcasa_sizes': dcasa_img_sizes or '(min-width: 1200px) 300px, (min-width: 992px) 25vw, (min-width: 768px) 33vw, 46vw',
+                'dcasa_prioridad': False,
+            }</attribute>
+        </xpath>
+    </template>
+
+    <!-- Ficha (ronda 6): la foto principal es la LCP y Odoo la pedía tarde (loading="lazy" del
+         sitio: 2,1 s de espera en 4G lenta) y en JPEG/PNG de 1024. Ahora la primera va «eager» con
+         prioridad alta, en WebP al ancho justo (/dcasa/img) y con srcset; las demás, perezosas. -->
+    <template id="ficha_foto_prioritaria" inherit_id="website_sale.shop_product_image" name="Tommalo: foto de la ficha a tiempo">
+        <xpath expr="//span[@t-field='product_image.image_1920']" position="attributes">
+            <attribute name="t-options">{
+                'widget': 'image', 'preview_image': 'image_1024',
+                'class': 'oe_unmovable product_detail_img h-100 w-100', 'alt-field': 'name',
+                'zoom': product_image.can_image_1024_be_zoomed and 'image_1920',
+                'dcasa_srcset': ('image_512', 'image_1024'), 'dcasa_webp': True,
+                'dcasa_sizes': '(min-width: 992px) 50vw, 100vw',
+                'dcasa_prioridad': bool(product_images) and product_image == product_images[0],
+            }</attribute>
+        </xpath>
+        <xpath expr="//div[@t-field='product_image.image_1920']" position="attributes">
+            <attribute name="t-options">{
+                'widget': 'image', 'preview_image': 'image_1024',
+                'class': 'oe_unmovable product_detail_img w-100 h-100', 'alt-field': 'name',
+                'zoom': product_image.can_image_1024_be_zoomed and 'image_1920',
+                'dcasa_srcset': ('image_512', 'image_1024'), 'dcasa_webp': True,
+                'dcasa_sizes': '(min-width: 992px) 50vw, 100vw',
+                'dcasa_prioridad': bool(product_images) and product_image == product_images[0],
+            }</attribute>
+        </xpath>
+    </template>
+
+    <!-- La imagen LCP de /shop está en la primera fila del celular (2 columnas): cuál de las
+         dos gana depende de la foto (área pintada), así que las dos van con prioridad. -->
+    <template id="tienda_primera_imagen_prioritaria" inherit_id="website_sale.products" name="Tommalo: imagen LCP de la tienda">
+        <xpath expr="//t[@t-call='website_sale.products_item']" position="inside">
+            <t t-set="dcasa_img_prioridad" t-value="tr_product_first and td_product_index &lt; 2"/>
+        </xpath>
+    </template>
+
+    <!-- Código público (DC-K7M4PX) en la ficha, debajo del nombre: es el que el cliente le dice a la vendedora.
+         La referencia del proveedor no se muestra en ningún lado del sitio (models/producto.py). -->
+    <template id="ficha_codigo_publico" inherit_id="website_sale.product_title" name="Tommalo: código público en la ficha">
+        <xpath expr="//h1[@t-field='product.name']" position="after">
+            <p t-if="product.dcasa_codigo_publico" class="o_dcasa_codigo_publico">
+                Código: <strong t-out="product.dcasa_codigo_publico"/>
+            </p>
+        </xpath>
+    </template>
+
+    <!-- La página de «pedido hecho» en la voz de la marca (tuteo), no la de Odoo («Gracias por su orden.»). El título
+         se ubica por el botón de imprimir y no por su texto: el texto llega traducido y el xpath no lo encontraría. -->
+    <template id="confirmacion_tuteo" inherit_id="website_sale.confirmation" name="Tommalo: gracias por tu compra">
+        <xpath expr="//a[@href='/shop/print']/preceding-sibling::h3[1]" position="replace">
+            <h3>¡Gracias por tu compra!</h3>
+        </xpath>
+    </template>
+    <!-- El checkout de quien compra sin cuenta, de tú: «¿Ya tienes cuenta?», no «¿Ya tiene una cuenta?» de Odoo. -->
+    <template id="checkout_tuteo_cuenta" inherit_id="website_sale.address" name="Tommalo: ¿ya tienes cuenta?">
+        <xpath expr="//div[hasclass('o_address_signin')]/span" position="replace">
+            <span class="align-middle">¿Ya tienes cuenta?</span>
+        </xpath>
+    </template>
+</odoo>

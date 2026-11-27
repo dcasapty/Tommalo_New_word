@@ -1,0 +1,574 @@
+// Configuración editable por la dueña en Odoo (`GET /dcasa/juan/v1/config`), con caché de 60 s.
+// Si Odoo no contesta se usa la última buena; si nunca hubo una, los valores por defecto
+// de abajo (los mismos del contrato, docs/JUAN.md). El bot nunca se queda mudo por esto.
+
+import type { CanalId, Entrante } from "./canales/tipos";
+
+/** Quién pone la IA. Se elige en Odoo (`proveedor_ia`); cambiar de uno a otro no toca código. */
+export type ProveedorIa = "anthropic" | "meta" | "openai";
+export const PROVEEDORES_IA: readonly ProveedorIa[] = ["anthropic", "meta", "openai"];
+
+/**
+ * Modelos de cada proveedor cuando Odoo no dice cuál. Meta: SIEMPRE el estándar (`muse-spark-1.3`); el nivel «contributor»
+ * entrena con los mensajes y solo se usa si la dueña lo escribe a propósito en Odoo. OpenAI: sin modelo por defecto (hay que elegirlo).
+ */
+export const MODELOS_POR_DEFECTO: Record<ProveedorIa, { rapido: string; inteligente: string }> = {
+  anthropic: { rapido: "claude-haiku-4-5", inteligente: "claude-sonnet-5-5" },
+  meta: { rapido: "muse-spark-1.3", inteligente: "muse-spark-1.3" },
+  openai: { rapido: "", inteligente: "" },
+};
+
+/** Qué forma debe tener el identificador de modelo de cada proveedor: Odoo no puede mandar al Worker a cualquier parte. */
+const FORMA_DE_MODELO: Record<ProveedorIa, RegExp> = {
+  anthropic: /^claude-[a-z0-9.-]{3,60}$/,
+  meta: /^muse-[a-z0-9.-]{3,60}$/,
+  openai: /^(?:gpt|chatgpt|o\d)[a-z0-9.-]{0,60}$/,
+};
+
+/** Dólares por millón de tokens. `entrada_cache` y `escritura_cache` son opcionales (si faltan: 10 % y 125 % de la entrada). */
+export interface PrecioModelo {
+  entrada: number;
+  salida: number;
+  entrada_cache?: number;
+  escritura_cache?: number;
+}
+
+export interface Horario {
+  /** "HH:MM" */
+  inicio: string;
+  fin: string;
+  /**
+   * 0 = domingo ... 6 = sábado: la convención de `Date.getDay()` y la que publica Odoo en `GET /config`
+   * (addons/dcasa_conversaciones/models/horario.py → `dia_js`). NO es el `weekday()` de Python (lunes = 0).
+   */
+  dias: number[];
+  zona: string;
+  /** "HH:MM": el domingo cierra a otra hora (decisión de la dueña, 2026-10-16: hasta las 17:00). Sin él, la de `fin`. */
+  fin_domingo?: string;
+}
+
+export interface Config {
+  nombre_publico: string;
+  /** ¿El negocio cobra ITBMS? Tommalo no (Odoo: DCASA_COBRA_ITBMS=0): entonces ningún precio lleva «+ ITBMS». */
+  cobra_itbms: boolean;
+  bot_activo_global: boolean;
+  canales_activos: Partial<Record<CanalId, boolean>>;
+  horario: Horario;
+  seguimiento: {
+    primero_horas: number;
+    segundo_dias: number;
+    solo_horario_laboral: boolean;
+    maximo: number;
+  };
+  presupuesto_ia_mensual_usd: number;
+  proveedor_ia: ProveedorIa;
+  /** Si el principal falla o no tiene clave, contesta este. null = sin respaldo. */
+  proveedor_respaldo_ia: ProveedorIa | null;
+  modelo_rapido: string;
+  modelo_inteligente: string;
+  /** Modelos del proveedor de respaldo; vacío = los de siempre de ese proveedor. */
+  modelo_rapido_respaldo: string;
+  modelo_inteligente_respaldo: string;
+  /** Precio por modelo (USD por millón de tokens). Un modelo sin precio no cuenta como gratis: ver motor/precios.ts. */
+  precios_ia: Record<string, PrecioModelo>;
+  /** Lo que las vendedoras han aprendido de casos reales (máx. 20 líneas). Va al prompt; NO es fuente de datos. */
+  lecciones: string[];
+  mensaje_bienvenida: string;
+  texto_privacidad_corto: string;
+  palabras_prohibidas: string[];
+  pausa_por_defecto_minutos: number;
+  /** Guardar en Odoo la foto de perfil de quien escribe (la dueña lo apaga en Ajustes de Juan). Nunca va a la IA. */
+  guardar_foto_perfil: boolean;
+  /** Chats de Telegram que pueden hablar con Juan (el canal de pruebas). Lista vacía = nadie: Telegram no es un canal abierto al público. */
+  telegram_chats: string[];
+  /** Interruptor de la dueña: Telegram abierto a cualquiera (apagado de fábrica). Encendido, la lista de arriba no se mira. */
+  telegram_abierto: boolean;
+  /** Los comentarios de Instagram y Facebook (2026-11-12): apagados de fábrica («Apagado hasta que lo pruebes»). */
+  comentarios: ConfigComentarios;
+  /** Brian de la tienda, el chat de ventas de tommalo.example (2026-11-13, «sí» de la dueña): su interruptor, sus topes y su presupuesto. */
+  tienda: ConfigTienda;
+}
+
+/**
+ * «Sitio web › Brian de la tienda» en Odoo (Gerencia y administradores), en `GET /config` → `brian_tienda` (los nombres los fija el
+ * módulo `dcasa_brian_tienda`; docs/JUAN.md › «Brian de la tienda»). Sin la clave (un Odoo sin el módulo, o Odoo dormido sin copia
+ * reciente): APAGADO, porque nadie puede dar pases.
+ */
+export interface ConfigTienda {
+  /** El interruptor (con la clave presente, encendido salvo un `false` de verdad). */
+  activo: boolean;
+  /** El presupuesto propio del mes, aparte del de Juan y del de la foto. 0 = no se gasta nada. */
+  presupuesto_mes_usd: number;
+  /** Mensajes por hora por sesión (`sid` del pase). */
+  tope_sesion_hora: number;
+  /** Mensajes por hora por red de la conexión (la IPv4 entera o la /64 de una IPv6, como el borde). */
+  tope_red_hora: number;
+  /** Mensajes por día (de Panamá) entre todos. */
+  tope_dia: number;
+  /**
+   * Mensajes por día por red de la conexión (revisión adversarial, 2026-11-14): con solo el tope por hora, una sola IP llegaba a 1440
+   * al día y se llevaba el tope del día de todos. De fábrica, el 5 % del tope del día. Odoo todavía no lo manda: opcional.
+   */
+  tope_red_dia: number;
+  /** Mensajes por hora por /48 de IPv6 (muchas /64 de una misma /48 no saltan el tope por red). De fábrica, 3 × el tope por red. Opcional. */
+  tope_red48_hora: number;
+  /** Mensajes por día por /48 de IPv6. De fábrica, 3 × el tope por red y por día. Opcional. */
+  tope_red48_dia: number;
+  /** Turnos con IA a la vez, entre todos: el resto recibe un «hay mucha gente, inténtalo en un momento» amable. Opcional. */
+  tope_en_vuelo: number;
+  /** La parte justa de cada red en esos turnos a la vez: lo que pase de ahí nunca deja fuera a otra red. De fábrica, 2. Opcional. */
+  tope_en_vuelo_red: number;
+  /**
+   * Fuera del horario de las vendedoras, ¿Brian lo dice? true (como hasta el 2026-11-15): la línea de «la tienda está cerrada, te
+   * responden al abrir», la pose dormida y el aviso al modelo. false (la dueña: «que siempre esté activo»): atiende igual que de día y
+   * solo si piden una persona o el horario dice con amabilidad cuándo responden las vendedoras. Opcional: sin la clave, true.
+   */
+  avisar_cerrado: boolean;
+  /** Los orígenes que pueden llamar al Worker desde el navegador (CORS). Opcional en Odoo. */
+  origenes: string[];
+  /** La clave `brian_tienda` llegó de Odoo (y no son los valores de fábrica): lo dice `/salud`. */
+  desde_odoo: boolean;
+}
+
+export const ORIGENES_DE_LA_TIENDA_POR_DEFECTO: readonly string[] = ["https://tommalo.example", "https://www.tommalo.example", "https://tommalo.subdominio-pendiente.workers.dev", "https://tommalo-staging.subdominio-pendiente.workers.dev"];
+export const TIENDA_POR_DEFECTO: ConfigTienda = {
+  activo: false,
+  presupuesto_mes_usd: 30,
+  tope_sesion_hora: 20,
+  tope_red_hora: 60,
+  tope_dia: 1000,
+  tope_red_dia: 50,
+  tope_red48_hora: 180,
+  tope_red48_dia: 150,
+  tope_en_vuelo: 8,
+  tope_en_vuelo_red: 2,
+  avisar_cerrado: true,
+  origenes: [...ORIGENES_DE_LA_TIENDA_POR_DEFECTO],
+  desde_odoo: false,
+};
+
+/** Ajustes de Juan › «Comentarios de Instagram y Facebook». Solo Gerencia y los administradores los cambian. */
+export interface ConfigComentarios {
+  /** El interruptor de la dueña. Apagado: Juan no hace nada con los comentarios (ni los registra). */
+  activo: boolean;
+  facebook: boolean;
+  instagram: boolean;
+  /**
+   * La respuesta pública, corta y SIN nada que escriba quien comenta (ni su nombre: decisión del coordinador, 2026-11-13). Un
+   * `{nombre}` de antes se quita limpio.
+   */
+  texto_publico: string;
+  /** Lo más de respuestas públicas en una hora, entre todas las publicaciones (para no parecer spam). 0 = ninguna en público. */
+  tope_por_hora: number;
+  /** Por persona (quien comenta), en 24 horas y en comentarios distintos: lo de más se anota y no se contesta. 0 = ninguna en público. */
+  publicas_por_persona: number;
+  /** Lo mismo con las respuestas privadas (al menos 1: sin privada no hay respuesta). */
+  privadas_por_persona: number;
+  /**
+   * Lo más de respuestas privadas en una hora entre TODAS las cuentas (cada una es un turno completo de IA): que muchas cuentas a la vez
+   * no disparen el gasto. Una constante (60); Odoo no lo manda hoy, pero el contrato lo acepta.
+   */
+  privadas_por_hora: number;
+}
+
+/** La respuesta pública de fábrica (la dueña: «Corto y lo demás por privado»). */
+export const TEXTO_PUBLICO_POR_DEFECTO = "¡Hola! Te escribimos por mensaje directo con los detalles.";
+export const TOPE_POR_HORA_POR_DEFECTO = 30;
+/** Por persona y por 24 horas (el coordinador, 2026-11-13): 1 respuesta pública y 3 privadas, en comentarios distintos. */
+export const PUBLICAS_POR_PERSONA_POR_DEFECTO = 1;
+export const PRIVADAS_POR_PERSONA_POR_DEFECTO = 3;
+export const MAX_POR_PERSONA = 10;
+export const PRIVADAS_POR_HORA_POR_DEFECTO = 60;
+const MAX_TEXTO_PUBLICO = 300;
+
+export const CONFIG_POR_DEFECTO: Config = {
+  // Sin Odoo, un nombre neutro («Buenas, un gusto atenderle. Somos la tienda.»): el de la empresa lo pone la dueña en Ajustes de Juan.
+  nombre_publico: "el equipo de la tienda",
+  cobra_itbms: true,
+  bot_activo_global: true,
+  canales_activos: {},
+  horario: { inicio: "08:00", fin: "17:00", dias: [0, 1, 2, 3, 4, 5, 6], zona: "America/Panama" },
+  seguimiento: { primero_horas: 5, segundo_dias: 5, solo_horario_laboral: true, maximo: 2 },
+  presupuesto_ia_mensual_usd: 30,
+  proveedor_ia: "anthropic",
+  proveedor_respaldo_ia: null,
+  modelo_rapido: "claude-haiku-4-5",
+  modelo_inteligente: "claude-sonnet-5-5",
+  modelo_rapido_respaldo: "",
+  modelo_inteligente_respaldo: "",
+  precios_ia: {},
+  lecciones: [],
+  mensaje_bienvenida: "",
+  texto_privacidad_corto: "",
+  palabras_prohibidas: [],
+  pausa_por_defecto_minutos: 120,
+  guardar_foto_perfil: true,
+  telegram_chats: [],
+  telegram_abierto: false,
+  comentarios: {
+    activo: false,
+    facebook: true,
+    instagram: true,
+    texto_publico: TEXTO_PUBLICO_POR_DEFECTO,
+    tope_por_hora: TOPE_POR_HORA_POR_DEFECTO,
+    publicas_por_persona: PUBLICAS_POR_PERSONA_POR_DEFECTO,
+    privadas_por_persona: PRIVADAS_POR_PERSONA_POR_DEFECTO,
+    privadas_por_hora: PRIVADAS_POR_HORA_POR_DEFECTO,
+  },
+  tienda: TIENDA_POR_DEFECTO,
+};
+
+/** Canales que arrancan encendidos si Odoo no dice nada. La Cloud API y Meta empiezan APAGADOS. */
+const ENCENDIDOS_POR_DEFECTO: Record<CanalId, boolean> = {
+  telegram: true,
+  whatsapp_qr: true,
+  whatsapp_cloud: false,
+  messenger: false,
+  instagram: false,
+};
+
+export function canalActivo(cfg: Config, canal: CanalId): boolean {
+  const v = cfg.canales_activos[canal];
+  return typeof v === "boolean" ? v : ENCENDIDOS_POR_DEFECTO[canal];
+}
+
+/**
+ * ¿Juan contesta los comentarios de esa red? El interruptor de la dueña, el de la red, el asistente encendido y el canal por el que
+ * va la respuesta privada (Facebook → Messenger, Instagram → Instagram): si ese canal está apagado, cuando la persona contestara el
+ * mensaje privado nadie la atendería.
+ */
+export function comentariosActivos(cfg: Config, red: "facebook" | "instagram"): boolean {
+  return porQueNoContesta(cfg, red) === null;
+}
+
+/** Por qué Juan no contesta los comentarios de esa red, en palabras para el aviso de Odoo; null = sí los contesta. */
+export function porQueNoContesta(cfg: Config, red: "facebook" | "instagram"): string | null {
+  if (!cfg.bot_activo_global) return "se apagó el asistente";
+  if (!cfg.comentarios.activo) return "se apagó «Responder comentarios»";
+  if (!cfg.comentarios[red]) return `se apagaron los comentarios de ${red === "facebook" ? "Facebook" : "Instagram"}`;
+  if (!canalActivo(cfg, red === "facebook" ? "messenger" : "instagram")) return `se apagó el canal ${red === "facebook" ? "Messenger" : "Instagram"}`;
+  return null;
+}
+
+/** ¿Se atiende lo que llegó? Un comentario, con sus interruptores; un mensaje, si su canal está encendido. */
+export function atiendeEntrante(cfg: Config, e: Pick<Entrante, "canal" | "comentario">): boolean {
+  return e.comentario ? comentariosActivos(cfg, e.comentario.red) : canalActivo(cfg, e.canal);
+}
+
+/**
+ * Una dirección web dentro de un texto, con esquema o sin él («https://…», «www.…», «bit.ly/x», «tommalo.example/ofertas», un correo):
+ * algo con forma de dominio (palabra, punto y 2 a 24 letras) que no esté pegado a otra letra. Igual que Odoo (ajustes.py).
+ */
+const DIRECCION_WEB = /https?:\/\/|www\.|(?<![\p{L}\p{N}_.-])[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.[A-Za-z]{2,24}(?![\p{L}\p{N}_-])/iu;
+
+/**
+ * ¿Sirve como respuesta pública? Sin direcciones web (Meta la marcaría como spam y nadie la revisaría en cada comentario), sin llaves
+ * (ya no hay marcas: lo público no lleva nada que escriba quien comenta) y que «quede bien»: empieza con una letra o una cifra (o con
+ * «¡», «¿», «"», «(» delante), sin pares vacíos como «¡!» y con al menos dos letras. Odoo valida lo mismo al guardar (ajustes.py).
+ */
+export function textoPublicoValido(t: string): boolean {
+  return (
+    !DIRECCION_WEB.test(t) &&
+    !/[{}]/.test(t) &&
+    /^[¡¿«"(]?[\p{L}\p{N}]/u.test(t) &&
+    !/¡\s*!|¿\s*\?|\(\s*\)|«\s*»/.test(t) &&
+    (t.match(/\p{L}/gu) ?? []).length >= 2
+  );
+}
+
+/**
+ * Quita un `{nombre}` de antes (cuando la frase podía llevar el nombre) sin dejarla rota: con su coma o su espacio, los pares que
+ * quedan vacíos («¡{nombre}!») y los signos sueltos al principio («{nombre}: te escribimos» → «Te escribimos»).
+ */
+export function quitarNombre(t: string): string {
+  if (!t.includes("{nombre}")) return t;
+  const s = t
+    .replace(/(\p{L})\s+\{nombre\}\s*,/gu, "$1,")
+    .replace(/,\s*\{nombre\}/g, "")
+    .replace(/\{nombre\}\s*,\s*/g, "")
+    .replace(/\s*\{nombre\}/g, "")
+    .replace(/¡\s*!|¿\s*\?|\(\s*\)|«\s*»/g, " ")
+    .replace(/\s+([!?.,:;])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^[\s:;,.!?\-–—]+/, "")
+    .replace(/^([¡¿«"(]?)\s+/, "$1");
+  return s.replace(/\p{L}/u, (c) => c.toLocaleUpperCase("es"));
+}
+
+/** La respuesta pública de Ajustes, sin controles ni saltos, sin `{nombre}` y de 300 letras como mucho (vacía o inválida = la de fábrica). */
+export function normalizarTextoPublico(v: unknown): string {
+  const t = typeof v === "string" ? quitarNombre(v.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim()).slice(0, MAX_TEXTO_PUBLICO) : "";
+  return t && textoPublicoValido(t) ? t : TEXTO_PUBLICO_POR_DEFECTO;
+}
+
+const esObjeto = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const texto = (v: unknown, defecto: string) => (typeof v === "string" && v.trim() ? v.trim() : defecto);
+const numero = (v: unknown, defecto: number, min: number, max: number) => {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : defecto;
+};
+const hora = (v: unknown, defecto: string) => (typeof v === "string" && /^\d{1,2}:\d{2}$/.test(v.trim()) ? v.trim() : defecto);
+const proveedor = (v: unknown): ProveedorIa | null => (typeof v === "string" && (PROVEEDORES_IA as readonly string[]).includes(v.trim().toLowerCase()) ? (v.trim().toLowerCase() as ProveedorIa) : null);
+
+/** El identificador de modelo, solo si tiene la forma del proveedor elegido; lo demás se descarta. */
+export function modeloValido(p: ProveedorIa, v: unknown): string {
+  return typeof v === "string" && FORMA_DE_MODELO[p].test(v.trim()) ? v.trim() : "";
+}
+
+const MAX_CHATS_DE_TELEGRAM = 500;
+
+/** Los chats de Telegram permitidos: solo cifras (un chat privado es el id numérico de la persona), sin repetir. */
+export function normalizarChats(v: unknown): string[] {
+  const crudos = Array.isArray(v) ? v : [];
+  const chats = crudos.map((x) => (typeof x === "number" ? String(x) : typeof x === "string" ? x.trim() : "")).filter((x) => /^\d{3,20}$/.test(x));
+  return [...new Set(chats)].slice(0, MAX_CHATS_DE_TELEGRAM);
+}
+
+const MAX_LECCIONES = 20;
+const MAX_LARGO_LECCION = 300;
+
+/** Las lecciones llegan como texto (una por línea) o como lista. Sin ángulos: no pueden abrir ni cerrar etiquetas del prompt. */
+export function normalizarLecciones(v: unknown): string[] {
+  const crudas = typeof v === "string" ? [v] : Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  return crudas
+    .flatMap((x) => x.split(/\r?\n/))
+    .map((l) => l.replace(/[<>]/g, "").replace(/^\s*[-*•]\s*/, "").trim().slice(0, MAX_LARGO_LECCION))
+    .filter(Boolean)
+    .slice(0, MAX_LECCIONES);
+}
+
+const precioNumero = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  return Number.isFinite(n) && n >= 0 && n <= 1000 ? n : null;
+};
+
+/** `{ "muse-spark-1.3": { entrada: 1.25, salida: 4.25, entrada_cache: 0.15 } }`; también acepta input/output/cache_read. */
+export function normalizarPrecios(v: unknown): Record<string, PrecioModelo> {
+  if (!esObjeto(v)) return {};
+  const salida: Record<string, PrecioModelo> = {};
+  for (const [modelo, crudo] of Object.entries(v)) {
+    if (!/^[a-z0-9][a-z0-9._-]{2,80}$/i.test(modelo) || !esObjeto(crudo)) continue;
+    const entrada = precioNumero(crudo.entrada ?? crudo.input);
+    const salidaUsd = precioNumero(crudo.salida ?? crudo.output);
+    if (entrada === null || salidaUsd === null) continue;
+    const cache = precioNumero(crudo.entrada_cache ?? crudo.cache_read);
+    const escritura = precioNumero(crudo.escritura_cache ?? crudo.cache_write);
+    salida[modelo] = { entrada, salida: salidaUsd, ...(cache !== null ? { entrada_cache: cache } : {}), ...(escritura !== null ? { escritura_cache: escritura } : {}) };
+  }
+  return salida;
+}
+
+/** Convierte lo que conteste Odoo en una Config completa y segura. Nunca lanza. */
+export function normalizarConfig(crudo: unknown): Config {
+  const d = CONFIG_POR_DEFECTO;
+  const c = esObjeto(crudo) ? crudo : {};
+  const h = esObjeto(c.horario) ? c.horario : {};
+  const s = esObjeto(c.seguimiento) ? c.seguimiento : {};
+  const ca = esObjeto(c.canales_activos) ? c.canales_activos : {};
+  const canales: Partial<Record<CanalId, boolean>> = {};
+  for (const id of Object.keys(ENCENDIDOS_POR_DEFECTO) as CanalId[]) {
+    if (typeof ca[id] === "boolean") canales[id] = ca[id] as boolean;
+  }
+  const principal = proveedor(c.proveedor_ia) ?? d.proveedor_ia;
+  const respaldo = proveedor(c.proveedor_respaldo_ia);
+  const dias = Array.isArray(h.dias)
+    ? [...new Set(h.dias.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))]
+    : d.horario.dias;
+  return {
+    nombre_publico: texto(c.nombre_publico, d.nombre_publico),
+    cobra_itbms: typeof c.cobra_itbms === "boolean" ? c.cobra_itbms : d.cobra_itbms,
+    bot_activo_global: typeof c.bot_activo_global === "boolean" ? c.bot_activo_global : d.bot_activo_global,
+    canales_activos: canales,
+    horario: horarioCon(
+      {
+        inicio: hora(h.inicio, d.horario.inicio),
+        fin: hora(h.fin, d.horario.fin),
+        dias: dias.length ? dias : d.horario.dias,
+        zona: texto(h.zona, d.horario.zona),
+      },
+      hora(h.fin_domingo, ""),
+    ),
+    seguimiento: {
+      primero_horas: numero(s.primero_horas, d.seguimiento.primero_horas, 0, 24 * 30),
+      segundo_dias: numero(s.segundo_dias, d.seguimiento.segundo_dias, 0, 365),
+      solo_horario_laboral:
+        typeof s.solo_horario_laboral === "boolean" ? s.solo_horario_laboral : d.seguimiento.solo_horario_laboral,
+      maximo: numero(s.maximo, d.seguimiento.maximo, 0, 2),
+    },
+    presupuesto_ia_mensual_usd: numero(c.presupuesto_ia_mensual_usd, d.presupuesto_ia_mensual_usd, 0, 100000),
+    proveedor_ia: principal,
+    proveedor_respaldo_ia: respaldo && respaldo !== principal ? respaldo : null,
+    modelo_rapido: modeloValido(principal, c.modelo_rapido) || MODELOS_POR_DEFECTO[principal].rapido,
+    modelo_inteligente: modeloValido(principal, c.modelo_inteligente) || MODELOS_POR_DEFECTO[principal].inteligente,
+    modelo_rapido_respaldo: respaldo ? modeloValido(respaldo, c.modelo_rapido_respaldo) : "",
+    modelo_inteligente_respaldo: respaldo ? modeloValido(respaldo, c.modelo_inteligente_respaldo) : "",
+    precios_ia: normalizarPrecios(c.precios_ia),
+    lecciones: normalizarLecciones(c.lecciones),
+    mensaje_bienvenida: typeof c.mensaje_bienvenida === "string" ? c.mensaje_bienvenida.trim() : "",
+    texto_privacidad_corto: typeof c.texto_privacidad_corto === "string" ? c.texto_privacidad_corto.trim() : "",
+    palabras_prohibidas: Array.isArray(c.palabras_prohibidas)
+      ? c.palabras_prohibidas.filter((p): p is string => typeof p === "string" && p.trim().length > 0).map((p) => p.trim())
+      : [],
+    pausa_por_defecto_minutos: numero(c.pausa_por_defecto_minutos, d.pausa_por_defecto_minutos, 1, 60 * 24 * 14),
+    guardar_foto_perfil: typeof c.guardar_foto_perfil === "boolean" ? c.guardar_foto_perfil : d.guardar_foto_perfil,
+    telegram_chats: normalizarChats(c.telegram_chats),
+    telegram_abierto: c.telegram_abierto === true,
+    comentarios: normalizarComentarios(c.comentarios),
+    tienda: normalizarTienda(c.brian_tienda),
+  };
+}
+
+const MAX_ORIGENES = 10;
+
+/** Un origen web exacto (`https://host[:puerto]`, sin ruta), en minúsculas; o null. */
+export function origenValido(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim().toLowerCase().replace(/\/+$/, "");
+  return /^https:\/\/[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:\d{1,5})?$/.test(t) ? t : null;
+}
+
+/** Los ajustes de Brian de la tienda. Sin la clave, apagado; con ella, lo que no viene o no se entiende queda como de fábrica. */
+export function normalizarTienda(v: unknown): ConfigTienda {
+  const d = TIENDA_POR_DEFECTO;
+  if (!esObjeto(v)) return { ...d, origenes: [...d.origenes] };
+  const origenes = Array.isArray(v.origenes) ? [...new Set(v.origenes.map(origenValido).filter((o): o is string => !!o))].slice(0, MAX_ORIGENES) : [];
+  const porRed = Math.round(numero(v.tope_red_hora, d.tope_red_hora, 1, 2000));
+  const delDia = Math.round(numero(v.tope_dia, d.tope_dia, 1, 100_000));
+  const porRedDia = Math.round(numero(v.tope_red_dia, Math.max(1, Math.round(delDia * 0.05)), 1, 100_000));
+  const enVuelo = Math.round(numero(v.tope_en_vuelo, d.tope_en_vuelo, 1, 100));
+  return {
+    activo: typeof v.activo === "boolean" ? v.activo : true,
+    presupuesto_mes_usd: numero(v.presupuesto_mes_usd, d.presupuesto_mes_usd, 0, 1000),
+    tope_sesion_hora: Math.round(numero(v.tope_sesion_hora, d.tope_sesion_hora, 1, 200)),
+    tope_red_hora: porRed,
+    tope_dia: delDia,
+    // Los tres de la revisión adversarial: si Odoo no los manda, de fábrica (el del día por red sigue al tope del día que mande Odoo).
+    tope_red_dia: porRedDia,
+    tope_red48_hora: Math.round(numero(v.tope_red48_hora, porRed * 3, 1, 10_000)),
+    tope_red48_dia: Math.round(numero(v.tope_red48_dia, porRedDia * 3, 1, 100_000)),
+    tope_en_vuelo: enVuelo,
+    tope_en_vuelo_red: Math.round(numero(v.tope_en_vuelo_red, Math.min(d.tope_en_vuelo_red, enVuelo), 1, enVuelo)),
+    // Solo un false de verdad lo apaga: sin la clave (un Odoo de antes) se porta como siempre.
+    avisar_cerrado: v.avisar_cerrado !== false,
+    origenes: origenes.length ? origenes : [...d.origenes],
+    desde_odoo: true,
+  };
+}
+
+/** Los ajustes de comentarios. Lo que no viene o no se entiende queda como de fábrica: APAGADO. */
+export function normalizarComentarios(v: unknown): ConfigComentarios {
+  const d = CONFIG_POR_DEFECTO.comentarios;
+  const c = esObjeto(v) ? v : {};
+  return {
+    activo: c.activo === true,
+    facebook: typeof c.facebook === "boolean" ? c.facebook : d.facebook,
+    instagram: typeof c.instagram === "boolean" ? c.instagram : d.instagram,
+    texto_publico: normalizarTextoPublico(c.texto_publico),
+    tope_por_hora: Math.round(numero(c.tope_por_hora, d.tope_por_hora, 0, 500)),
+    publicas_por_persona: Math.round(numero(c.publicas_por_persona, d.publicas_por_persona, 0, MAX_POR_PERSONA)),
+    privadas_por_persona: Math.round(numero(c.privadas_por_persona, d.privadas_por_persona, 1, MAX_POR_PERSONA)),
+    privadas_por_hora: Math.round(numero(c.privadas_por_hora, d.privadas_por_hora, 1, 1000)),
+  };
+}
+
+export const CONFIG_TTL_MS = 60_000;
+
+/**
+ * Caché de 60 s de la configuración. Una instancia por isolate; si Odoo falla se sirve la última buena
+ * (aunque esté vencida) para que el bot siga contestando.
+ */
+export class CargadorConfig {
+  private ultima: { config: Config; en: number } | null = null;
+  private pendiente: Promise<Config> | null = null;
+
+  constructor(
+    private readonly traer: () => Promise<unknown>,
+    private readonly ahora: () => number = Date.now,
+  ) {}
+
+  async obtener(): Promise<Config> {
+    const t = this.ahora();
+    if (this.ultima && t - this.ultima.en < CONFIG_TTL_MS) return this.ultima.config;
+    // Varias conversaciones a la vez comparten una sola ida a Odoo.
+    this.pendiente ??= this.refrescar().finally(() => {
+      this.pendiente = null;
+    });
+    return this.pendiente;
+  }
+
+  private async refrescar(): Promise<Config> {
+    try {
+      const config = normalizarConfig(await this.traer());
+      this.ultima = { config, en: this.ahora() };
+      return config;
+    } catch (e) {
+      console.warn("[config] Odoo no respondió; se usa la última configuración buena:", String(e));
+      if (this.ultima) return this.ultima.config;
+      return CONFIG_POR_DEFECTO;
+    }
+  }
+}
+
+// ── Horario ────────────────────────────────────────────────────────────────
+
+/** En el orden de `Horario.dias`: 0 = domingo. */
+const DIAS_CORTOS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function minutos(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** Hora, minuto y día de la semana (0 = domingo) en la zona del negocio. */
+export function relojDelNegocio(zona: string, ms: number): { minutosDelDia: number; dia: number } {
+  let partes: Intl.DateTimeFormatPart[];
+  try {
+    partes = new Intl.DateTimeFormat("en-US", {
+      timeZone: zona,
+      hour: "numeric",
+      minute: "numeric",
+      hourCycle: "h23",
+      weekday: "short",
+    }).formatToParts(new Date(ms));
+  } catch {
+    return relojDelNegocio("America/Panama", ms);
+  }
+  const get = (t: string) => partes.find((p) => p.type === t)?.value ?? "0";
+  return { minutosDelDia: Number(get("hour")) * 60 + Number(get("minute")), dia: Math.max(0, DIAS_CORTOS.indexOf(get("weekday"))) };
+}
+
+/** La hora de cierre del domingo solo vale si el domingo se atiende y cierra después de abrir; si no, no se publica. */
+function horarioCon(base: Horario, finDomingo: string): Horario {
+  return finDomingo && base.dias.includes(0) && minutos(finDomingo) > minutos(base.inicio) ? { ...base, fin_domingo: finDomingo } : base;
+}
+
+/** La hora a la que cierra ese día (0 = domingo). */
+export function finDelDia(horario: Horario, dia: number): string {
+  return dia === 0 && horario.fin_domingo ? horario.fin_domingo : horario.fin;
+}
+
+/** ¿Estamos dentro del horario de atención de las vendedoras? */
+export function dentroDeHorario(horario: Horario, ms: number): boolean {
+  const { minutosDelDia, dia } = relojDelNegocio(horario.zona, ms);
+  return horario.dias.includes(dia) && minutosDelDia >= minutos(horario.inicio) && minutosDelDia < minutos(finDelDia(horario, dia));
+}
+
+/** "2026-10" según la zona del negocio: el mes del tope de IA. */
+/** El día del negocio («AAAA-MM-DD») en su zona horaria. */
+export function diaDelNegocio(zona: string, ms: number): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: zona, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+  } catch {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+}
+
+export function mesDelNegocio(zona: string, ms: number): string {
+  try {
+    const p = new Intl.DateTimeFormat("en-CA", { timeZone: zona, year: "numeric", month: "2-digit" }).format(new Date(ms));
+    return p.slice(0, 7);
+  } catch {
+    return new Date(ms).toISOString().slice(0, 7);
+  }
+}

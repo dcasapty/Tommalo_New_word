@@ -1,0 +1,369 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ===================================================================
+         Portada de Tommalo: hero de texto (sin foto), carrusel de productos de la tienda, la cobertura y contacto, y la
+         banda final «Ver el catálogo». Las páginas de marketing de la plantilla de origen se quitaron (Tommalo las
+         escribe cuando decida su mensaje). Los textos del hero dicen PENDIENTE: Tommalo los escribe desde el editor.
+
+         Los bloques .oe_structure con id son editables en Sitio web > Editar (textos, fotos, botones). El carrusel de
+         productos, la banda de Socios, las opiniones y la cobertura son dinámicos: salen del catálogo, de las reglas
+         del programa y de los Ajustes, y se actualizan solos.
+         =================================================================== -->
+
+    <!-- Ícono «agregar al carrito» (carrito con un +): quien compra en línea lo reconoce sin la palabra (pedido de la
+         dueña, 2026-11-15). Trazo fino; el nombre lo da el aria-label. -->
+    <template id="icono_carrito" name="Tommalo: ícono de agregar al carrito">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <path d="M3 4h2.2l2.1 10.1a1.6 1.6 0 0 0 1.6 1.3h8.2a1.6 1.6 0 0 0 1.6-1.2L20.4 8H6.1"/>
+            <circle cx="9.6" cy="19.6" r="1.35"/>
+            <circle cx="17.2" cy="19.6" r="1.35"/>
+            <path d="M13.2 9.6v3.6M11.4 11.4H15"/>
+        </svg>
+    </template>
+
+    <!-- Tarjeta de producto de los carruseles: tarjeta con un filo fino y radio de 16 px, la foto entera sobre un plato
+         neutro (las fotos traen su propio fondo), el nombre, el precio grande y abajo el carrito y WhatsApp (contorno). -->
+    <template id="tarjeta_producto" name="Tommalo: tarjeta de producto">
+        <t t-set="producto" t-value="item['producto']"/>
+        <article class="o_dcasa_pcard">
+            <a t-att-href="producto.website_url" class="o_dcasa_pcard_media" tabindex="-1" aria-hidden="true">
+                <picture>
+                    <t t-set="dcasa_webp" t-value="website._dcasa_img_srcset(producto, (256, 512))"/>
+                    <source t-if="dcasa_webp" type="image/webp" t-att-srcset="dcasa_webp"
+                            sizes="(min-width: 992px) 25vw, (min-width: 576px) 42vw, 72vw"/>
+                    <img t-att-src="website.image_url(producto, 'image_512')" alt=""
+                         t-attf-srcset="#{website.image_url(producto, 'image_256')} 256w, #{website.image_url(producto, 'image_512')} 512w"
+                         sizes="(min-width: 992px) 25vw, (min-width: 576px) 42vw, 72vw"
+                         width="512" height="512" loading="lazy" decoding="async"/>
+                </picture>
+                <t t-call="website_dcasa.etiqueta_black_weekend"><t t-set="producto_bw" t-value="producto"/></t>
+            </a>
+            <div class="o_dcasa_pcard_body">
+                <h3 class="o_dcasa_pcard_name"><a t-att-href="producto.website_url" t-out="producto._dcasa_nombre_cliente()"/></h3>
+                <div class="o_dcasa_pcard_pie">
+                    <p t-if="item['precio'] or not website.prevent_zero_price_sale" class="o_dcasa_pcard_price">
+                        <span t-out="item['precio']" t-options="{'widget': 'monetary', 'display_currency': item['moneda']}"/>
+                        <t t-call="website_dcasa.mas_itbms"><t t-set="producto_itbms" t-value="producto"/></t>
+                    </p>
+                    <div class="o_dcasa_pcard_actions">
+                        <form t-if="item['directo']" action="/dcasa/carrito/agregar" method="post">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            <input type="hidden" name="product_template_id" t-att-value="producto.id"/>
+                            <button type="submit" class="btn btn-primary o_dcasa_pcard_add" title="Agregar al carrito"
+                                    t-attf-aria-label="Agregar {{ producto._dcasa_nombre_cliente() }} al carrito">
+                                <t t-call="website_dcasa.icono_carrito"/>
+                            </button>
+                        </form>
+                        <!-- Con variantes para elegir: el mismo carrito lleva a la ficha. -->
+                        <a t-else="" t-att-href="producto.website_url" class="btn btn-primary o_dcasa_pcard_add" title="Elegir opciones"
+                           t-attf-aria-label="Elegir opciones de {{ producto._dcasa_nombre_cliente() }}">
+                            <t t-call="website_dcasa.icono_carrito"/>
+                        </a>
+                        <a t-att-href="website._dcasa_whatsapp_producto(producto)" target="_blank" rel="noopener"
+                           class="btn o_dcasa_pcard_wa" title="Preguntar por WhatsApp"
+                           t-attf-aria-label="Preguntar por {{ producto._dcasa_nombre_cliente() }} por WhatsApp (se abre en una pestaña nueva)">
+                            <i class="fa fa-whatsapp" aria-hidden="true"/>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </article>
+    </template>
+
+    <!-- Carril: UNA fila que se desliza, en el celular y en la computadora. Las flechas y la línea de avance nacen
+         escondidas y las enciende carril.js solo si hay algo que deslizar (sin JavaScript, se desliza igual). -->
+    <template id="carrusel_productos" name="Tommalo: carrusel de productos">
+        <section t-if="items" class="o_dcasa_section o_dcasa_rail" t-att-aria-label="titulo">
+            <div class="o_dcasa_container">
+                <div class="o_dcasa_section_head">
+                    <div data-anim-cascada="izquierda">
+                        <p class="o_dcasa_kicker" t-out="antetitulo"/>
+                        <h2 class="o_dcasa_h2" data-titular="" t-out="titulo"/>
+                    </div>
+                    <div class="o_dcasa_section_extra">
+                        <div class="o_dcasa_carril_flechas" hidden="">
+                            <button type="button" class="o_dcasa_carril_flecha" data-carril="-1" disabled=""
+                                    t-attf-aria-label="Anteriores de {{ titulo }}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg>
+                            </button>
+                            <button type="button" class="o_dcasa_carril_flecha" data-carril="1"
+                                    t-attf-aria-label="Más de {{ titulo }}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                     stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7"/></svg>
+                            </button>
+                        </div>
+                        <a t-att-href="enlace" class="o_dcasa_link">Ver todo<span class="visually-hidden">: <t t-out="titulo"/></span> <span aria-hidden="true">→</span></a>
+                    </div>
+                </div>
+                <div class="o_dcasa_rail_track" role="list" data-anim-cascada="">
+                    <div t-foreach="items" t-as="item" class="o_dcasa_rail_item" role="listitem">
+                        <t t-call="website_dcasa.tarjeta_producto"/>
+                    </div>
+                </div>
+                <div class="o_dcasa_carril_avance" aria-hidden="true" hidden=""><span/></div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Las dos manchas suaves de color detrás del hero (PENDIENTE: colores de Tommalo; hoy, grises neutros). -->
+    <template id="hero_manchas" name="Tommalo: manchas del hero">
+        <span class="o_dcasa_hero_mancha o_dcasa_hero_mancha_a" aria-hidden="true"/>
+        <span class="o_dcasa_hero_mancha o_dcasa_hero_mancha_b" aria-hidden="true"/>
+    </template>
+
+    <!-- El texto del hero. PENDIENTE: Tommalo escribe su titular y su subtítulo (editables desde Sitio web > Editar, o
+         aquí). Un solo botón: «Ver el catálogo». -->
+    <template id="hero_texto" name="Tommalo: texto del hero">
+        <div class="o_dcasa_hero_texto" data-anim-entrada="">
+            <p class="o_dcasa_kicker o_dcasa_kicker_pildora">Tommalo</p>
+            <h1 t-att-id="hero_id" class="o_dcasa_display">PENDIENTE: titular de la portada</h1>
+            <p class="o_dcasa_hero_sub">PENDIENTE: subtítulo de la portada.</p>
+            <div class="o_dcasa_ctas">
+                <a href="/shop" class="btn btn-primary btn-lg o_dcasa_btn_hero">Ver el catálogo</a>
+            </div>
+        </div>
+    </template>
+
+    <!-- Hero con los productos que Gerencia elige (Sitio web › Carrusel de la portada, models/portada.py; vacío = el
+         hero de solo texto). El texto va a la izquierda
+         y, a la derecha, el marco redondeado de la foto, donde las fotos de los productos se funden unas en otras con un
+         zoom lento. El visitante no maneja nada: ni nombres, ni enlaces, ni flechas, ni barras, ni pausa. Como no se
+         maneja ni aporta información, la pila de fotos es decorativa: aria-hidden y alt vacío.
+         Sin JavaScript se ve la primera, quieta; static/src/js/portada.js solo decide cuándo cambiar de foto, y con
+         movimiento reducido no cambia. La primera foto es la imagen LCP: «eager», prioridad alta y precargada desde
+         la cabecera (layout_templates.xml, layout_precarga_hero). -->
+    <template id="hero_carrusel" name="Tommalo: hero con fondo en movimiento">
+        <t t-set="dcasa_total" t-value="len(dcasa_vitrina)"/>
+        <section class="o_dcasa_hero_vitrina" aria-labelledby="dcasa-hero-titulo">
+            <t t-call="website_dcasa.hero_manchas"/>
+            <div class="o_dcasa_vitrina o_dcasa_container" t-att-data-total="dcasa_total"
+                 t-attf-style="--vitrina-tiempo: {{ website._dcasa_hero_tiempo() }};">
+                <div class="o_dcasa_vitrina_fotos" aria-hidden="true">
+                    <div t-foreach="dcasa_vitrina" t-as="diapo" t-attf-style="--i: {{ diapo_index }};"
+                         t-attf-class="o_dcasa_vitrina_foto {{ 'is-activa' if diapo_first else '' }}">
+                        <picture>
+                            <source t-if="diapo['srcset']" type="image/webp" t-att-srcset="diapo['srcset']"
+                                    t-att-sizes="diapo['sizes']"/>
+                            <img t-att-src="diapo['src']" alt="" width="1200" height="1600"
+                                 t-att-srcset="diapo['srcset_respaldo']" t-att-sizes="diapo['sizes']"
+                                 t-att-loading="'eager' if diapo_first else 'lazy'"
+                                 t-att-fetchpriority="'high' if diapo_first else 'low'"
+                                 t-att-decoding="None if diapo_first else 'async'"/>
+                        </picture>
+                    </div>
+                </div>
+
+                <div class="o_dcasa_vitrina_panel">
+                    <t t-call="website_dcasa.hero_texto"><t t-set="hero_id" t-value="'dcasa-hero-titulo'"/></t>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <template id="seccion_socios" name="Tommalo: banda de socios">
+        <!-- Socios (dinámico: las cifras salen de puntos.json; con todo en PENDIENTE no dice ninguna). En una tarjeta
+             grande (radio de 24 px), sin foto. -->
+        <t t-set="reglas" t-value="website._dcasa_reglas_socios()"/>
+        <section class="o_dcasa_socios_band" aria-labelledby="dcasa-socios-titulo">
+            <div class="o_dcasa_container">
+                <div class="o_dcasa_socios_tarjeta o_dcasa_split_grid">
+                    <div class="o_dcasa_socios_band_text" data-anim-cascada="izquierda">
+                        <p class="o_dcasa_kicker">Socios Tommalo</p>
+                        <h2 id="dcasa-socios-titulo" class="o_dcasa_h2" data-titular="">Suma puntos y gana invitando</h2>
+                        <ul class="o_dcasa_socios_facts" role="list">
+                            <t t-set="por_dolar" t-value="reglas['acumulacion'].get('puntosPorDolar')"/>
+                            <t t-set="al_padrino" t-value="reglas['referido'].get('puntosAlPadrino')"/>
+                            <t t-set="al_ahijado" t-value="reglas['referido'].get('puntosAlAhijado')"/>
+                            <li t-if="por_dolar"><strong t-out="por_dolar"/> <t t-if="por_dolar == 1">punto</t><t t-else="">puntos</t> por cada dólar que pagas.</li>
+                            <li t-if="al_padrino and al_ahijado"><strong t-out="'{:,}'.format(al_padrino)"/> puntos por cada amigo que
+                                invitas y compra; tu amigo gana <strong t-out="'{:,}'.format(al_ahijado)"/>.</li>
+                            <li>Cámbialos por descuentos y premios en la tienda.</li>
+                        </ul>
+                        <div class="o_dcasa_ctas">
+                            <a href="/socios" class="btn btn-primary btn-lg">Ver mis puntos</a>
+                            <a href="/socios/terminos" class="btn btn-lg o_dcasa_btn_contorno">Cómo funciona</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Cobertura y contacto: a la izquierda el titular y los datos (teléfono, horario y cobertura), a la derecha dos
+         tarjetas: el delivery y «Cómo pedir». El teléfono es el de los botones de WhatsApp del sitio (Sitio web ›
+         Ajustes) y el horario, el de los Ajustes de Juan (website._dcasa_horario_tienda; si no se sabe, no sale). Va fuera
+         de los bloques editables: dibuja datos. El pedido se hace en el carrito y el pago y el costo del envío se
+         coordinan por WhatsApp (models/tienda.py, PAGOS y ENTREGAS). Lleva el ancla #visitanos y la clase
+         o_dcasa_visita_franja (Brian de la tienda la reconoce: dcasa_brian_tienda). -->
+    <template id="seccion_visitanos" name="Tommalo: cobertura">
+        <t t-set="dcasa_whatsapp_visible" t-value="website.dcasa_whatsapp_number or website.company_id.phone"/>
+        <t t-set="dcasa_horario" t-value="website._dcasa_horario_tienda()"/>
+        <section id="visitanos" class="o_dcasa_section o_dcasa_visita o_dcasa_visita_franja" aria-labelledby="dcasa-cobertura-titulo">
+            <div class="o_dcasa_container o_dcasa_cobertura_grid">
+                <div class="o_dcasa_cobertura_texto" data-anim-cascada="izquierda">
+                    <div>
+                        <p class="o_dcasa_kicker">Cobertura</p>
+                        <h2 id="dcasa-cobertura-titulo" class="o_dcasa_h2" data-titular="">Vendemos en línea y te lo llevamos.</h2>
+                    </div>
+                    <ul class="o_dcasa_cobertura_datos" role="list">
+                        <li t-if="dcasa_whatsapp_visible">
+                            <i class="fa fa-phone" aria-hidden="true"/>
+                            <div>
+                                <h3>Teléfono / WhatsApp</h3>
+                                <a t-att-href="website._dcasa_whatsapp_url()" target="_blank" rel="noopener"><t t-out="dcasa_whatsapp_visible"/><span class="visually-hidden"> (WhatsApp, se abre en una pestaña nueva)</span></a>
+                            </div>
+                        </li>
+                        <li t-if="dcasa_horario">
+                            <i class="fa fa-clock-o" aria-hidden="true"/>
+                            <div>
+                                <h3>Horario</h3>
+                                <p t-foreach="dcasa_horario" t-as="fila" t-out="fila['corto']"/>
+                            </div>
+                        </li>
+                        <li>
+                            <i class="fa fa-map-marker" aria-hidden="true"/>
+                            <div>
+                                <h3>Cobertura</h3>
+                                <p>Venta 100% en línea con entrega a domicilio en Panamá. PENDIENTE: zonas de entrega.</p>
+                            </div>
+                        </li>
+                    </ul>
+                    <a href="/visitanos" class="o_dcasa_link">Horario y contacto <span aria-hidden="true">→</span></a>
+                </div>
+                <div class="o_dcasa_cobertura_tarjetas" data-anim-cascada="">
+                    <div class="o_dcasa_cobertura_tarjeta">
+                        <h3><span class="o_dcasa_icono_circulo" aria-hidden="true"><i class="fa fa-truck"/></span>Delivery</h3>
+                        <dl class="o_dcasa_cobertura_zonas">
+                            <div><dt>Zonas de entrega</dt><dd>PENDIENTE (lo decide Tommalo)</dd></div>
+                            <div><dt>Costo del envío</dt><dd>Se cotiza por WhatsApp</dd></div>
+                        </dl>
+                    </div>
+                    <div class="o_dcasa_cobertura_tarjeta">
+                        <h3><span class="o_dcasa_icono_circulo" aria-hidden="true"><i class="fa fa-comment-o"/></span>Cómo pedir</h3>
+                        <p>Vendemos únicamente en línea. Elige en el catálogo y agrégalo al carrito. Al hacer tu
+                            pedido te escribimos por WhatsApp para coordinar el pago y el costo del delivery, que depende de
+                            tu zona. Si prefieres que te ayudemos a elegir, escríbenos por WhatsApp.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Página /visitanos: el contacto de Tommalo. Vende 100% en línea y no tiene tienda: en lugar de la dirección y el
+         mapa, su cobertura, su horario (de los Ajustes de Juan) y sus canales: WhatsApp y correo (PENDIENTE: los datos
+         de contacto de Tommalo; las redes salen de Sitio web > Ajustes cuando se escriban). -->
+    <template id="pagina_visitanos" name="Contacto">
+        <t t-call="website.layout">
+            <t t-set="pageName" t-value="'visitanos'"/>
+            <t t-set="dcasa_header_overlay" t-value="True"/>
+            <t t-set="additional_title">Contacto</t>
+            <t t-set="meta_description">Tommalo: venta 100% en línea con entrega a domicilio en Panamá. Horario y cómo escribirnos.</t>
+            <t t-set="dcasa_whatsapp_visible" t-value="website.dcasa_whatsapp_number or website.company_id.phone"/>
+            <div id="wrap" class="o_dcasa_pagina_visita">
+                <t t-call="website_dcasa.cabecera_pagina">
+                    <t t-set="cabecera_kicker">Cobertura</t>
+                    <t t-set="cabecera_titulo">Vendemos en línea y te lo llevamos.</t>
+                </t>
+
+                <section class="o_dcasa_visita_detalle">
+                    <div class="o_dcasa_container o_dcasa_visita_detalle_inner">
+                        <div class="o_dcasa_visita_datos o_dcasa_cobertura_tarjeta">
+                            <h2 class="o_dcasa_kicker">Tommalo</h2>
+                            <p class="o_dcasa_visita_direccion">Venta 100% en línea con entrega a domicilio en Panamá. PENDIENTE: zonas de entrega.</p>
+                            <ul class="list-unstyled o_dcasa_visita_lista">
+                                <!-- El número abre WhatsApp (decisión de 2026-11-15): es el canal donde se atiende. Es el
+                                     mismo número de todos los botones del sitio (Sitio web › Ajustes). -->
+                                <li t-if="dcasa_whatsapp_visible"><i class="fa fa-whatsapp fa-fw me-2" aria-hidden="true"/>
+                                    <a t-att-href="website._dcasa_whatsapp_url()"
+                                       target="_blank" rel="noopener"><t t-out="dcasa_whatsapp_visible"/> <span class="o_dcasa_muted">· WhatsApp</span>
+                                        <span class="visually-hidden">(se abre en una pestaña nueva)</span></a></li>
+                                <li t-if="website.company_id.email"><i class="fa fa-envelope fa-fw me-2" aria-hidden="true"/>
+                                    <a t-att-href="'mailto:' + website.company_id.email" t-out="website.company_id.email"/></li>
+                                <li t-if="website.social_instagram"><i class="fa fa-instagram fa-fw me-2" aria-hidden="true"/>
+                                    <a t-att-href="website.social_instagram" target="_blank" rel="noopener">Instagram</a></li>
+                            </ul>
+                        </div>
+                        <div class="o_dcasa_cobertura_tarjeta">
+                            <!-- Horario: de los Ajustes de Juan (models/horario_tienda.py). Si no se sabe, no se muestra. -->
+                            <t t-set="horario" t-value="website._dcasa_horario_tienda()"/>
+                            <!-- t-ignore: sin las marcas del editor, el constructor no toca ni guarda esta tabla (si la
+                                 guardara, el horario quedaría escrito como texto fijo en la vista). -->
+                            <div t-if="horario" class="o_dcasa_visita_horario" t-ignore="true">
+                                <h2 class="o_dcasa_kicker">Horario</h2>
+                                <table class="o_dcasa_horario">
+                                    <caption class="visually-hidden">Días y horas de atención (hora de Panamá)</caption>
+                                    <tbody>
+                                        <tr t-foreach="horario" t-as="fila">
+                                            <th scope="row" t-out="fila['dias']"/>
+                                            <td t-out="fila['horas']"/>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="o_dcasa_visita_aviso">
+                                <h2 class="o_dcasa_kicker">Escríbenos</h2>
+                                <p>Si tienes dudas, escríbenos por WhatsApp.</p>
+                                <a t-att-href="website._dcasa_whatsapp_url()"
+                                   class="btn btn-lg btn-primary" target="_blank" rel="noopener">
+                                    <i class="fa fa-whatsapp me-2" aria-hidden="true"/>Escríbenos por WhatsApp
+                                    <span class="visually-hidden">(se abre en una pestaña nueva)</span></a>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </t>
+    </template>
+
+    <template id="homepage_dcasa" inherit_id="website.homepage" name="Tommalo: inicio">
+        <xpath expr="//div[@id='wrap']" position="replace">
+            <div id="wrap" class="o_dcasa_home">
+
+                <!-- 1. Hero de texto. Con productos elegidos en Sitio web › Carrusel de la portada: sus fotos en el marco
+                     (website_dcasa.hero_carrusel). Sin productos: solo el texto, sin foto. El bloque editable va dentro
+                     de su propio <t t-else>: si algún día se guardó con el editor (una vista que lo reemplaza por su id),
+                     lo guardado sigue dentro de la condición. -->
+                <t t-set="dcasa_vitrina" t-value="website._dcasa_hero_carrusel()"/>
+                <t t-if="dcasa_vitrina">
+                    <t t-call="website_dcasa.hero_carrusel"/>
+                </t>
+                <t t-else="">
+                <div class="oe_structure" id="oe_structure_dcasa_hero">
+                    <section class="o_dcasa_hero o_dcasa_hero_sin_foto" data-snippet="s_text_block" data-name="Portada">
+                        <t t-call="website_dcasa.hero_manchas"/>
+                        <div class="o_dcasa_container o_dcasa_hero_inner">
+                            <t t-call="website_dcasa.hero_texto"/>
+                        </div>
+                    </section>
+                </div>
+                </t>
+
+                <!-- 2. Los productos (dinámico: los de la tienda, con su precio de Odoo y «Agregar» de un clic). La campaña
+                     del sitio, si está activa, va justo antes (models/black_weekend.py). -->
+                <t t-call="website_dcasa.seccion_black_weekend"/>
+                <t t-call="website_dcasa.carrusel_productos">
+                    <t t-set="items" t-value="website._dcasa_productos()"/>
+                    <t t-set="antetitulo">Catálogo Tommalo</t>
+                    <t t-set="titulo">Lo más buscado</t>
+                    <t t-set="enlace" t-value="'/shop'"/>
+                </t>
+
+                <!-- 3. Opiniones reales de Google (dinámico: data/resenas.json; sin opiniones, no sale). -->
+                <t t-call="website_dcasa.resenas_google"/>
+
+                <!-- 4. Socios: solo con las cifras del programa puestas (website._dcasa_socios_con_cifras). Hoy todo está
+                     en PENDIENTE: no sale. Socios sigue en el pie y en /socios. -->
+                <t t-if="website._dcasa_socios_con_cifras()" t-call="website_dcasa.seccion_socios"/>
+
+                <!-- 5. Cobertura y contacto (dinámico: teléfono y horario de los Ajustes; fuera del bloque editable: el
+                     ancla #visitanos no debe perderse al guardar desde el editor). -->
+                <t t-call="website_dcasa.seccion_visitanos"/>
+
+                <!-- 6. La banda final, genérica: «Ver el catálogo». -->
+                <t t-call="website_dcasa.seccion_cta_final"/>
+            </div>
+        </xpath>
+    </template>
+</odoo>

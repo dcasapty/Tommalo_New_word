@@ -1,0 +1,375 @@
+// Pulido global de Odoo con la marca de Tommalo (docs/MARCA_TOMMALO.md): superficies crema sobre el crema de la
+// página, letra navy, el botón principal en naranja con letra navy, bordes finos, radio de 14 px, foco navy visible y
+// números tabulares. Montserrat para todo; los titulares en 700 y como frase (nunca en caja alta).
+
+.o_web_client {
+    background-color: var(--dc-niebla);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+
+    h1, .h1, h2, .h2 {
+        font-weight: 700;
+        letter-spacing: -.03em;
+        line-height: 1.15;
+    }
+}
+
+// --- Barra superior -------------------------------------------------------------
+.o_main_navbar {
+    backdrop-filter: saturate(180%) blur(8px);
+    border-bottom: 0 !important;
+    box-shadow: inset 0 -1px 0 var(--dc-linea);
+    > *, .o_menu_systray > * { background-color: transparent !important; }
+    .o_menu_systray { gap: 2px; }
+}
+
+// --- Mensajes sin leer: que se note -----------------------------------------------
+// El contador del chat (arriba a la derecha) era azul como todo lo demás y no llamaba la atención (la dueña,
+// 2026-10-16: «los vendedores no contestan mis chats»). Con mensajes sin leer, el ícono y el contador van en rojo de
+// alerta y el contador late suave; sin mensajes, vuelve a lo normal. Sin animación para quien la tiene apagada.
+$dcasa-alerta: #D92D20;
+
+.o_main_navbar .o-mail-MessagingMenu-counter {
+    background-color: $dcasa-alerta !important;
+    color: #fff !important;
+    text-shadow: none !important;
+    font-weight: 700;
+    min-width: 20px;
+    animation: dcasa-pulso-alerta 1.6s ease-out infinite;
+}
+
+.o_main_navbar button:has(.o-mail-MessagingMenu-counter) .fa-comments { color: $dcasa-alerta; }
+
+// Late creciendo un poco (sin sombras: el sistema de la marca es plano). Conserva el corrimiento con que Odoo pone el
+// contador sobre el ícono (navbar.scss: translate(-0.6em, -30%)).
+@keyframes dcasa-pulso-alerta {
+    0%, 60%, 100% { transform: translate(-0.6em, -30%) scale(1); }
+    30% { transform: translate(-0.6em, -30%) scale(1.25); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .o_main_navbar .o-mail-MessagingMenu-counter { animation: none; }
+}
+
+// --- Panel de control (título, botones, búsqueda) -----------------------------------
+.o_control_panel {
+    background: var(--dc-blanco);
+    border-bottom: 1px solid var(--dc-linea);
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+
+    .breadcrumb-item,
+    .o_last_breadcrumb_item {
+        font-weight: 600;
+        color: var(--dc-tinta);
+    }
+    .breadcrumb-item a { color: var(--dc-tinta-3); font-weight: 500; }
+}
+
+.o_searchview {
+    border-radius: var(--dc-r-md) !important;
+    border-color: var(--dc-linea-fuerte) !important;
+    background: var(--dc-niebla);
+    transition: border-color var(--dc-transicion), background var(--dc-transicion), box-shadow var(--dc-transicion);
+
+    &:focus-within {
+        background: var(--dc-blanco);
+        // El buscador recibe el foco solo al abrir cada lista: un filo navy de 2 px (el borde y su sombra), sin el aro
+        // doble del foco con teclado, que aquí estaría siempre encendido.
+        border-color: var(--dc-tinta) !important;
+        box-shadow: 0 0 0 1px var(--dc-tinta);
+    }
+}
+
+.o_searchview_facet {
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+// --- Botones ------------------------------------------------------------------------
+// El principal: naranja con letra navy y un resplandor suave del mismo naranja al pasar el puntero (lo único que no es
+// plano, como en la web de Tommalo). Nunca letra blanca sobre el naranja: daría 2.37 a 1.
+.o_web_client .btn {
+    border-radius: var(--dc-r-md);
+    font-weight: 600;
+
+    &:focus-visible { box-shadow: var(--dc-foco); }
+}
+
+.o_web_client .btn-primary {
+    background-color: var(--dc-naranja);
+    border-color: var(--dc-naranja);
+    color: var(--dc-en-naranja);
+    font-weight: 700;
+    &:hover { background-color: var(--dc-naranja-puntero); border-color: var(--dc-naranja-puntero);
+              color: var(--dc-en-naranja); box-shadow: 0 4px 14px -6px rgba(212, 212, 212, .7); }
+    &:active, &.active { background-color: var(--dc-naranja-pulsado); border-color: var(--dc-naranja-pulsado);
+                         color: var(--dc-en-naranja); }
+    &:focus-visible { box-shadow: var(--dc-foco); }
+}
+
+.o_web_client .btn-secondary {
+    background-color: var(--dc-blanco);
+    border-color: var(--dc-linea-fuerte);
+    color: var(--dc-tinta);
+    &:hover, &:active { background-color: var(--dc-niebla); border-color: var(--dc-linea-fuerte); color: var(--dc-tinta); }
+}
+
+.o_cp_switch_buttons .btn,
+.o_switch_view {
+    border-radius: 6px !important;
+}
+
+// --- Listas ---------------------------------------------------------------------------
+.o_list_renderer {
+    background: var(--dc-blanco);
+
+    .o_list_table {
+        font-variant-numeric: tabular-nums;
+
+        thead th {
+            background: var(--dc-blanco);
+            color: var(--dc-tinta-3);
+            font-weight: 600;
+            font-size: .8rem;
+            text-transform: none;
+            border-bottom: 1px solid var(--dc-linea) !important;
+        }
+
+        .o_data_row {
+            > td { border-color: var(--dc-perla); }
+            &:hover > td { background-color: var(--dc-crema); }
+            &.o_data_row_selected > td { background-color: var(--dc-salvia-claro); }
+        }
+
+        tfoot td { background: var(--dc-nieve); }
+    }
+}
+
+.o_list_renderer .o_group_header > th,
+.o_list_renderer .o_group_header > td {
+    background-color: var(--dc-nieve);
+    color: var(--dc-tinta);
+    font-weight: 600;
+}
+
+// --- Formularios --------------------------------------------------------------------
+.o_form_view .o_form_sheet_bg {
+    background: var(--dc-niebla);
+}
+
+.o_form_view .o_form_sheet {
+    border: 1px solid var(--dc-linea) !important;
+    border-radius: var(--dc-r-lg);
+    box-shadow: var(--dc-sombra-1) !important;
+}
+
+.o_form_view .oe_title h1,
+.o_form_view .oe_title .o_field_char input {
+    letter-spacing: -.01em;
+    font-weight: 700;
+    color: var(--dc-tinta);
+}
+
+.o_form_label {
+    color: var(--dc-tinta-2);
+    font-weight: 500;
+}
+
+.o_input:focus,
+.o_field_widget input:focus,
+.o_field_widget textarea:focus {
+    border-color: var(--dc-tinta) !important;
+}
+
+// Pestañas del formulario
+.o_notebook .nav-tabs {
+    border-bottom-color: var(--dc-linea);
+
+    .nav-link {
+        color: var(--dc-tinta-3);
+        font-weight: 500;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        &:hover { color: var(--dc-tinta); }
+        &.active {
+            color: var(--dc-tinta);
+            font-weight: 700;
+            background: transparent;
+            border-bottom-color: var(--dc-naranja-filo);
+        }
+    }
+}
+
+// Botones inteligentes (Puntos, Facturas…)
+.o_form_view .oe_button_box .oe_stat_button {
+    border-radius: var(--dc-r-sm);
+    &:hover { background: var(--dc-crema); }
+    .o_stat_value { color: var(--dc-tinta); font-variant-numeric: tabular-nums; }
+}
+
+// Barra de estado (Cotización → Orden de venta)
+.o_statusbar_status .o_arrow_button.o_arrow_button_current {
+    color: var(--dc-en-naranja) !important;
+    background-color: var(--dc-naranja) !important;
+    font-weight: 700;
+}
+
+// --- Kanban ---------------------------------------------------------------------------
+.o_kanban_renderer .o_kanban_record {
+    border: 1px solid var(--dc-linea);
+    border-radius: var(--dc-r-md);
+    box-shadow: none;
+    transition: border-color var(--dc-transicion), box-shadow var(--dc-transicion);
+
+    &:hover { border-color: var(--dc-naranja-filo); box-shadow: var(--dc-sombra-2); }
+}
+
+// --- Ajustes -------------------------------------------------------------------------
+.o_settings_container .o_setting_box,
+.o_setting_container .o_setting_box {
+    border-radius: var(--dc-r-sm);
+}
+
+// --- Menús desplegables y ventanas ----------------------------------------------------
+.o_web_client .dropdown-menu,
+.o-dropdown--menu {
+    border: 1px solid var(--dc-linea);
+    border-radius: var(--dc-r-md);
+    box-shadow: var(--dc-sombra-2);
+    padding: 6px;
+
+    .dropdown-item {
+        border-radius: 6px;
+        &:hover, &:focus { background: var(--dc-crema); }
+        &.active, &:active { background: var(--dc-salvia-claro); color: var(--dc-tinta); }
+    }
+}
+
+.modal-content {
+    border: 0;
+    border-radius: var(--dc-r-lg);
+    box-shadow: var(--dc-sombra-2), 0 0 0 1px var(--dc-linea);
+}
+
+// --- Etiquetas y estados ---------------------------------------------------------------
+.o_web_client .badge.rounded-pill,
+.o_field_badge .badge {
+    font-weight: 600;
+}
+
+// --- Barras de desplazamiento finas --------------------------------------------------
+.o_web_client * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dc-linea-fuerte) transparent;
+}
+
+// --- Celular: la cabecera de los formularios, en un renglón (auditoría visual del 2026-11-11) -------------------------
+// «Nuevo», el engranaje, el rayo, «Actividad» y las flechas no cabían juntos por unos pocos píxeles: las flechas bajaban
+// solas a otro renglón y, con el botón «Actividad» en dos líneas, la cabecera se comía 128 px de una pantalla de 664.
+// En el celular «Actividad» va solo con su ícono (actividad.xml) y nada se parte en dos líneas.
+.o_dcasa_actividad_boton { white-space: nowrap; }
+@include media-breakpoint-down(md) {
+    .o_dcasa_actividad_boton .o_dcasa_actividad_texto { display: none; }
+    .o_form_view .o_control_panel .o_control_panel_main {
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 4px;
+
+        > .o_control_panel_breadcrumbs { flex: 1 1 auto; min-width: 0; }
+        > .o_control_panel_navigation { flex: 0 0 auto; }
+    }
+}
+
+// --- Compras en el celular: el aviso de «no hay nada» debajo de las cifras, no encima (auditoría del 2026-11-11) ------
+// Odoo centra el aviso sobre todo el contenido, y en Compras el contenido empieza con el tablero de cifras (Nuevo,
+// Enviadas, Atrasadas…): en el celular el tablero ocupa media pantalla y el aviso se le montaba encima. Aquí el aviso
+// pasa a ser un renglón más, debajo del tablero.
+.o_purchase_dashboard_kanban_view .o_kanban_renderer > .o_view_nocontent {
+    position: static;
+    flex: 1 0 100%;
+    padding: 16px 0 32px;
+}
+
+// --- Tablero de Compras en el celular: las cinco cifras van de tres en tres (auditoría del 2026-11-11, lote 3) -------
+// Odoo las pone en una sola fila (unos 66 px cada una) y los nombres salían cortados: «Solicit… de cotiza… enviada»,
+// «Recep… atrasa…». De tres en tres cada nombre cabe entero. El hueco que separa cotizaciones de pedidos se quita.
+@include media-breakpoint-down(md) {
+    .o_purchase_dashboard .grid > .grid[style*="--columns"] {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: none;
+
+        > [class*="g-col-"] { grid-column: auto; }
+        > .g-col-1 { display: none; }
+    }
+}
+
+// --- Oportunidad en el celular: sin el «en» suelto (auditoría del 2026-11-11, lote 3) --------------------------------
+// En la computadora se lee de corrido «$ 0.00 en 0.00 %». En el celular la probabilidad baja a su propio renglón, con
+// su rótulo, y el «en» quedaba colgando al lado del monto. (Con ingresos recurrentes Odoo ya lo esconde él mismo.)
+@include media-breakpoint-down(sm) {
+    .o_lead_opportunity_form .o_form_sheet h2 > div:first-child
+        > .d-flex:not(:has(.o_field_widget[name="recurring_revenue"])) > span.opacity-50 {
+        display: none;
+    }
+}
+
+// --- Ficha del contacto en el celular: la foto no le quita el ancho al nombre (auditoría del 2026-11-11) -------------
+// La foto de 130 px dejaba 180 px para el nombre y el correo: «María Fernanda R», «maria.prueba@exa». Con la foto en
+// 72 px y el nombre un poco más chico, se leen.
+@include media-breakpoint-down(md) {
+    .o_form_view .o_field_contact_image {
+        flex: 0 0 auto;
+        img { width: 72px !important; height: 72px !important; object-fit: cover; }
+    }
+    .o_form_view .o_form_sheet h1 .o_field_field_partner_autocomplete .o_input { font-size: 1.25rem; }
+}
+
+// --- Barra de arriba en el celular: nada de menos de 44 px de ancho para el dedo (auditoría del 2026-11-11) ----------
+// El reloj de actividades medía 29 px, las tres rayitas 36 y Brian 38. Hay sitio de sobra a la izquierda.
+@include media-breakpoint-down(md) {
+    .o_main_navbar > .o_menu_toggle,
+    .o_main_navbar .o_menu_systray > button.dropdown-toggle,
+    .o_main_navbar .o_menu_systray .o_brian_systray_btn {
+        min-width: 44px;
+    }
+    .o_main_navbar > .o_menu_toggle { display: inline-flex; align-items: center; justify-content: center; }
+}
+
+// --- Barra de estado de los formularios en el celular (auditoría del 2026-11-11, tercera tanda) -----------------------
+// En la cotización, «Enviar por WhatsApp», los tres puntos y el estado («Cotización enviada») no caben en un renglón
+// de 360 a 390 px: el botón se partía en dos líneas, los tres puntos caían debajo y la flecha del estado se montaba
+// sobre el botón. Ahora el botón y sus tres puntos van siempre juntos y enteros; el estado se queda a la derecha si
+// cabe y, si no, baja limpio a su propio renglón.
+@include media-breakpoint-down(md) {
+    .o_form_view .o_form_statusbar {
+        flex-wrap: wrap;
+        gap: 6px 8px;
+
+        > .o_statusbar_buttons {
+            flex: 0 1 auto;
+            flex-wrap: nowrap;
+            min-width: 0;
+
+            > .btn:not(.dropdown-toggle) { padding-left: 12px; padding-right: 12px; }
+        }
+        > .o_field_statusbar { flex: 0 0 auto; margin-left: auto; }
+    }
+}
+
+// --- Botones bajo las líneas de la cotización (auditoría del 2026-11-11, tercera tanda) -------------------------------
+// A la vendedora le salen tres («Descuento», «Agregar envío», «Pedir descuento a Gerencia») y en el celular Odoo los
+// aprieta en una fila: quedaban como cajas de tres renglones. Cada botón conserva su texto en una línea y el que no
+// cabe baja a la fila siguiente.
+.o_form_view div[name="so_button_below_order_lines"] {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+
+    > .btn { white-space: nowrap; }
+}
+
+// --- Ajustes en el celular: las pestañas de arriba, como frase (Odoo las pone en caja alta) -------------------------
+// La marca de Tommalo no escribe nada en caja alta salvo los antetítulos chicos (docs/MARCA_TOMMALO.md).
+@include media-breakpoint-down(md) {
+    .o_base_settings_view .o_form_renderer .o_setting_container .settings_tab .tab .app_name { text-transform: none; }
+}

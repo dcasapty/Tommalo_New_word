@@ -1,0 +1,688 @@
+// Sofía — marca de Tommalo (docs/MARCA_TOMMALO.md): sistema plano, crema y superficie, letra navy, el naranja
+// solo de relleno y con letra navy encima (nunca blanca), salvia para lo secundario y Montserrat para todo (los
+// titulares en 700, como frase).
+// La pantalla (2026-11-06): lo urgente arriba por secciones, filtros con conteos (al lado en la computadora, una tira
+// que se queda arriba en el celular), tarjetas compactas con la acción principal grande y «Descartar» aparte.
+
+// Odoo pone a todo `.o_action` en columna con `overflow: hidden` y sin barra (webclient_layout.scss), y esa regla pesa
+// más que `.o_sofia`: la pantalla quedaba cortada y no bajaba con scroll (2026-11-05). La misma regla fuerte que el
+// Inicio, Contabilidad, la Guía y las pantallas de Juan. NO quitar: la prueba de scroll de dcasa_interfaz la exige.
+.o_web_client > .o_action_manager > .o_sofia.o_action {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    &::-webkit-scrollbar { display: block; width: 8px; }
+    &::-webkit-scrollbar-thumb { background: var(--dc-linea, #E0E0E0); border-radius: 4px; }
+    > * { flex-shrink: 0; }
+}
+
+$sofia-ancho: 1200px;
+$sofia-azul: var(--dc-azul-600, #262626);
+$sofia-azul-oscuro: var(--dc-azul-700, #1F1F1F);
+$sofia-azul-claro: var(--dc-azul-50, #EBEBEB);
+$sofia-amarillo: #D4D4D4;
+$sofia-tinta: var(--dc-tinta, #151515);
+$sofia-tinta-3: var(--dc-tinta-3, #404040);
+$sofia-linea: var(--dc-linea, #E0E0E0);
+$sofia-niebla: var(--dc-niebla, #FAFAFA);
+
+.o_sofia {
+    background: $sofia-niebla;
+    color: $sofia-tinta;
+    font-family: var(--dc-letra);
+
+    // --- Encabezado en la superficie: quién es, revisar ahora y cuánto queda -------------------------------------
+    .o_sofia_encabezado {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "titulo revisar" "resumen ultima";
+        align-items: center;
+        gap: 10px 16px;
+        padding-top: 16px;
+        padding-bottom: 14px;
+        // Alineado con el cuerpo (máximo 1200 px) también en pantallas anchas.
+        padding-inline: #{"max(24px, calc((100% - 1200px) / 2 + 24px))"};
+        background: var(--dc-blanco);
+        border-bottom: 1px solid var(--dc-linea);
+        color: var(--dc-tinta);
+    }
+
+    .o_sofia_titulo {
+        grid-area: titulo;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+
+        h1 {
+            margin: 0;
+            font-family: var(--dc-letra);
+            font-size: 1.75rem;
+            line-height: 1.1;
+            letter-spacing: -.03em;
+            text-transform: none;
+            font-weight: 700;
+            color: var(--dc-tinta);
+        }
+
+        .o_sofia_lema { margin: 2px 0 0; color: var(--dc-tinta-3); font-size: 0.9rem; }
+    }
+
+    .o_sofia_titulo_texto { min-width: 0; }
+
+    .o_sofia_avatar {
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--dc-naranja);   // relleno naranja con la letra navy
+        color: var(--dc-en-naranja);
+        font-family: var(--dc-letra);
+        font-weight: 700;
+        font-size: 1.4rem;
+    }
+
+    .o_sofia_revisar { grid-area: revisar; justify-self: end; }
+
+    .o_sofia_boton_revisar {
+        min-height: 44px;
+        padding: 8px 18px;
+        border: 1px solid var(--dc-naranja);
+        border-radius: var(--dc-r-md);
+        background: var(--dc-naranja);   // el botón principal: naranja con letra navy
+        color: var(--dc-en-naranja);
+        font-weight: 700;
+
+        &:hover, &:focus-visible { background: var(--dc-naranja-puntero); border-color: var(--dc-naranja-puntero);
+                                   color: var(--dc-en-naranja); }
+        &:focus-visible { outline: 2px solid var(--dc-tinta); outline-offset: 2px; }
+        &[disabled] { opacity: 1; background: var(--dc-perla); border-color: transparent; color: var(--dc-tinta-2); }
+    }
+
+    .o_sofia_ultima {
+        grid-area: ultima;
+        justify-self: end;
+        color: var(--dc-tinta-3);
+        font-size: 0.8125rem;
+        text-align: right;
+    }
+
+    .o_sofia_resumen {
+        grid-area: resumen;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        font-size: 0.9rem;
+        color: var(--dc-tinta-2);
+
+        li { display: inline-flex; align-items: center; gap: 2px; }
+
+        strong {
+            display: inline-block;
+            min-width: 1.8em;
+            margin-right: 4px;
+            border-radius: 999px;
+            padding: 1px 8px;
+            background: var(--dc-perla);
+            color: var(--dc-tinta);
+            font-family: var(--dc-letra);
+            text-align: center;
+        }
+
+        // Lo urgente: el número en una pastilla naranja con letra navy.
+        .o_sofia_r3 { color: var(--dc-tinta); font-weight: 600; }
+        .o_sofia_r3 strong { background: var(--dc-naranja); color: var(--dc-en-naranja); }
+    }
+
+    .o_sofia_revisando {
+        padding: 8px 24px;
+        background: $sofia-azul-claro;
+        border-bottom: 1px solid $sofia-linea;
+        color: $sofia-azul-oscuro;
+        font-size: 0.875rem;
+        text-align: center;
+    }
+
+    // --- Cuerpo: filtros al lado (computadora) y la lista ---------------------------------------------------------
+    .o_sofia_cuerpo {
+        display: grid;
+        grid-template-columns: 236px minmax(0, 1fr);
+        align-items: start;
+        gap: 24px;
+        max-width: $sofia-ancho;
+        margin: 0 auto;
+        padding: 20px 24px 64px;
+        width: 100%;
+    }
+
+    // Sin filtros (todo al día o cargando): la lista ocupa todo el ancho.
+    .o_sofia_lista_zona { min-width: 0; }
+    .o_sofia_lista_zona:first-child { grid-column: 1 / -1; }
+
+    .o_sofia_filtros {
+        position: sticky;
+        top: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-width: 0;
+    }
+
+    .o_sofia_filtro_titulo {
+        display: block;
+        margin: 0 0 6px 10px;
+        font-family: var(--dc-letra);
+        font-size: 0.8rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: $sofia-tinta-3;
+    }
+
+    .o_sofia_chips {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .o_sofia_chip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        min-height: 38px;
+        border: 0;
+        border-radius: 8px;
+        padding: 6px 10px;
+        background: transparent;
+        color: $sofia-tinta;
+        font-size: 0.95rem;
+        text-align: left;
+
+        .fa { width: 1.1em; color: $sofia-azul; text-align: center; }
+        .o_sofia_chip_nombre { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .o_sofia_cuenta {
+            flex: 0 0 auto;
+            min-width: 1.8em;
+            border-radius: 999px;
+            padding: 0 7px;
+            background: #FFFFFF;
+            border: 1px solid $sofia-linea;
+            color: $sofia-azul;
+            font-family: var(--dc-letra);
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        &:hover { background: $sofia-azul-claro; }
+        &:focus-visible { outline: 2px solid $sofia-azul; outline-offset: 1px; }
+
+        &.o_activa {
+            background: var(--dc-naranja);
+            color: var(--dc-en-naranja);
+            font-weight: 600;
+
+            .fa { color: var(--dc-en-naranja); }
+            .o_sofia_cuenta { background: var(--dc-crema); border-color: var(--dc-crema); color: var(--dc-tinta); }   // sobre el naranja
+        }
+    }
+
+    .o_sofia_omitidas { margin: 0 10px; color: $sofia-tinta-3; font-size: 0.8rem; }
+
+    // --- Secciones por prioridad --------------------------------------------------------------------------------
+    .o_sofia_seccion { margin-bottom: 22px; }
+
+    .o_sofia_seccion_titulo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+        font-family: var(--dc-letra);
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: none;
+        color: $sofia-tinta-3;
+    }
+
+    .o_sofia_seccion_cuenta {
+        min-width: 1.8em;
+        border-radius: 999px;
+        padding: 0 8px;
+        background: #FFFFFF;
+        border: 1px solid $sofia-linea;
+        color: $sofia-tinta-3;
+        font-size: 0.85rem;
+        text-align: center;
+    }
+
+    // «Hoy sin falta»: una franja naranja con el título navy y el número en crema. Imposible de confundir con lo demás.
+    .o_sofia_s3 .o_sofia_seccion_titulo {
+        border-radius: 8px;
+        padding: 7px 12px;
+        background: var(--dc-naranja);
+        color: var(--dc-en-naranja);
+
+        .o_sofia_seccion_cuenta { background: var(--dc-crema); border-color: var(--dc-crema); color: var(--dc-tinta); }
+    }
+
+    .o_sofia_s2 .o_sofia_seccion_titulo {
+        color: $sofia-azul;
+
+        .o_sofia_seccion_cuenta { background: var(--dc-salvia-claro); border-color: var(--dc-salvia-claro); color: var(--dc-tinta); }
+    }
+
+    .o_sofia_lista {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    // --- La tarjeta ------------------------------------------------------------------------------------------------
+    .o_sofia_tarjeta {
+        min-width: 0;
+        border: 1px solid $sofia-linea;
+        border-left: 5px solid $sofia-linea;
+        border-radius: 10px;
+        padding: 12px 16px 8px;
+        background: #FFFFFF;
+        overflow-anchor: none;   // al cerrarse una tarjeta, el navegador no reacomoda la vista por su cuenta
+
+        &.o_sofia_p3 { border-left-color: $sofia-azul; }
+        &.o_sofia_p2 { border-left-color: #8A8A8A; }
+        &.o_ocupada { opacity: 0.7; }
+    }
+
+    .o_sofia_cabeza {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .o_sofia_cliente {
+        min-width: 0;
+        margin: 0;
+        font-family: var(--dc-letra);
+        font-size: 1.2rem;
+        font-weight: 700;
+        line-height: 1.25;
+        color: $sofia-tinta;
+        overflow-wrap: anywhere;
+
+        .o_sofia_canal {
+            margin-left: 8px;
+            font-family: var(--dc-letra);
+            font-size: 0.8rem;
+            font-weight: 400;
+            color: $sofia-tinta-3;
+            white-space: nowrap;
+        }
+    }
+
+    .o_sofia_temp {
+        flex: 0 0 auto;
+        margin-top: 2px;
+        border-radius: 999px;
+        padding: 1px 10px;
+        background: $sofia-niebla;
+        color: $sofia-tinta-3;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .o_sofia_t3 { background: #FDECEC; color: #A61B1B; }
+    .o_sofia_t2 { background: $sofia-azul-claro; color: $sofia-azul; }
+
+    .o_sofia_que {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin: 4px 0 0;
+        font-weight: 600;
+        color: $sofia-azul;
+        overflow-wrap: anywhere;
+    }
+
+    .o_sofia_motivo { margin: 2px 0 0; color: $sofia-tinta-3; font-size: 0.875rem; line-height: 1.4; }
+    .o_sofia_para_quien { margin: 4px 0 0; color: $sofia-tinta-3; font-size: 0.8rem; }
+
+    .o_sofia_aviso {
+        margin-top: 8px;
+        border-radius: 6px;
+        padding: 7px 10px;
+        background: #FFF6E0;
+        color: #6B4A00;
+        font-size: 0.85rem;
+    }
+
+    // El mensaje: se lee como en el chat; «Editar» lo abre en una caja.
+    .o_sofia_mensaje_zona { margin-top: 10px; }
+
+    .o_sofia_mensaje_cabeza {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 4px;
+        font-size: 0.78rem;
+        color: $sofia-tinta-3;
+    }
+
+    .o_sofia_editar {
+        min-height: 32px;
+        padding: 2px 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .o_sofia_burbuja {
+        margin: 0;
+        border: 1px solid #EDEDED;
+        border-radius: 12px 12px 12px 4px;
+        padding: 9px 12px;
+        background: $sofia-azul-claro;
+        color: $sofia-tinta;
+        font-size: 0.92rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        cursor: text;
+    }
+
+    .o_sofia_mensaje {
+        width: 100%;
+        resize: vertical;
+        font-size: 0.95rem;
+
+        &:focus { border-color: $sofia-azul; box-shadow: none; }
+    }
+
+    .o_sofia_nota_datos { margin: 8px 0 0; font-size: 0.8rem; color: $sofia-tinta-3; }
+
+    // «Guarda sus datos»: lo que escribió el cliente, para revisarlo antes de guardarlo en su ficha.
+    .o_sofia_ficha {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 10px 16px;
+        margin-top: 10px;
+
+        > .o_sofia_etiqueta { grid-column: 1 / -1; margin: 0; font-size: 0.8rem; color: $sofia-tinta-3; }
+    }
+
+    .o_sofia_dato {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        > label, .o_sofia_dato_nombre { margin: 0; font-size: 0.85rem; font-weight: 600; color: $sofia-tinta; }
+        .form-control, .form-select { min-height: 40px; font-size: 0.95rem; }
+        .form-control:focus, .form-select:focus { border-color: $sofia-azul; box-shadow: none; }
+        small { color: $sofia-tinta-3; overflow-wrap: anywhere; }
+    }
+
+    .o_sofia_cumple {
+        display: flex;
+        gap: 8px;
+
+        > .form-select:first-child { flex: 0 0 6rem; }
+        > .form-select:last-child { flex: 1 1 auto; }
+    }
+
+    // Las acciones: la principal grande; las demás al lado, más discretas. «Descartar» va aparte, abajo.
+    .o_sofia_botones {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+
+        .btn {
+            min-height: 42px;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-weight: 600;
+        }
+
+        // Fondo blanco en reposo; con el puntero encima, azul con texto blanco. Fijar solo el fondo dejaba el texto
+        // blanco de Bootstrap sobre el blanco: el botón se borraba al pasar el puntero (la dueña, 2026-11-07).
+        .btn-outline-primary {
+            background: #FFFFFF;
+            border-color: $sofia-azul;
+            color: $sofia-azul;
+
+            &:hover, &:focus-visible, &:active {
+                background: var(--dc-naranja);
+                border-color: var(--dc-naranja);
+                color: var(--dc-en-naranja);
+            }
+        }
+    }
+
+    .o_sofia_pie {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 12px;
+        margin-top: 6px;
+
+        .btn-link {
+            min-height: 36px;
+            padding: 4px 2px;
+            color: $sofia-tinta-3;
+            font-size: 0.85rem;
+            text-decoration: none;
+
+            &:hover, &:focus-visible { color: $sofia-tinta; text-decoration: underline; }
+        }
+
+        .o_sofia_descartar { margin-left: auto; }
+    }
+
+    // --- Resuelta: dice lo que pasó EN SU LUGAR (mismo alto) y después se cierra despacio --------------------------
+    .o_sofia_hecha {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        height: var(--o-sofia-alto, auto);
+        min-height: 56px;
+        border: 1px dashed #8C8C8C;
+        border-radius: 10px;
+        padding: 12px 16px;
+        background: $sofia-azul-claro;
+        color: $sofia-azul-oscuro;
+        text-align: center;
+        overflow: hidden;
+        overflow-anchor: none;
+
+        > .fa { flex: 0 0 auto; font-size: 1.4rem; color: $sofia-azul; }
+        strong { display: block; font-family: var(--dc-letra); font-weight: 700; }
+        span { font-size: 0.9rem; }
+
+        &.o_aviso { background: #FFF6E0; border-color: #E8D29A; color: #6B4A00; > .fa { color: #6B4A00; } }
+        &.o_descartada { background: $sofia-niebla; border-color: $sofia-linea; color: $sofia-tinta-3; > .fa { color: $sofia-tinta-3; } }
+        &.o_cerrando { animation: o_sofia_cerrar 0.35s ease forwards; }
+    }
+
+    // --- Cargando y vacío ----------------------------------------------------------------------------------------
+    .o_sofia_esqueleto { display: flex; flex-direction: column; gap: 12px; }
+
+    .o_sofia_esqueleto_tarjeta {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        border: 1px solid $sofia-linea;
+        border-left: 5px solid $sofia-linea;
+        border-radius: 10px;
+        padding: 16px;
+        background: #FFFFFF;
+    }
+
+    .o_sofia_esqueleto_linea, .o_sofia_esqueleto_boton {
+        display: block;
+        height: 12px;
+        border-radius: 6px;
+        background: #EBEBEB;
+        animation: o_sofia_latido 1.2s ease-in-out infinite;
+
+        &.o_corta { width: 40%; height: 16px; }
+        &.o_media { width: 70%; }
+    }
+
+    .o_sofia_esqueleto_boton { width: 180px; height: 40px; border-radius: 8px; }
+
+    .o_sofia_vacio {
+        padding: 56px 16px;
+        text-align: center;
+        color: $sofia-tinta-3;
+
+        h2 {
+            margin: 16px 0 6px;
+            font-family: var(--dc-letra);
+            font-size: 2rem;
+            letter-spacing: -.03em;
+            text-transform: none;
+            color: $sofia-azul;
+        }
+
+        p { max-width: 42ch; margin: 0 auto; }
+    }
+
+    .o_sofia_al_dia_icono {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        background: var(--dc-naranja);
+        color: var(--dc-en-naranja);   // navy sobre el naranja
+        font-size: 2.2rem;
+    }
+
+    .o_sofia_filtro_vacio {
+        padding: 40px 16px;
+
+        h2 { font-size: 1.5rem; }
+        .o_sofia_al_dia_icono { width: 56px; height: 56px; background: $sofia-azul-claro; color: $sofia-azul; font-size: 1.5rem; }
+        .o_sofia_ver_todo { margin-top: 16px; min-height: 42px; font-weight: 600; }
+    }
+}
+
+@keyframes o_sofia_cerrar {
+    to {
+        height: 0;
+        min-height: 0;
+        margin-bottom: -12px;   // el espacio entre tarjetas se cierra con ella (sin salto al final)
+        padding-top: 0;
+        padding-bottom: 0;
+        border-width: 0;
+        opacity: 0;
+    }
+}
+
+@keyframes o_sofia_latido {
+    50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .o_sofia .o_sofia_hecha.o_cerrando { animation: none; display: none; }
+    .o_sofia .o_sofia_esqueleto_linea, .o_sofia .o_sofia_esqueleto_boton { animation: none; }
+}
+
+// --- Celular y tableta: los filtros en una tira que se queda arriba; botones a lo ancho ---------------------------
+@media (max-width: 991.98px) {
+    .o_sofia {
+        .o_sofia_cuerpo {
+            display: block;
+            padding: 0 0 48px;
+        }
+
+        .o_sofia_filtros {
+            position: sticky;
+            top: 0;
+            z-index: 3;
+            gap: 6px;
+            margin-bottom: 12px;
+            border-bottom: 1px solid $sofia-linea;
+            padding: 8px 0;
+            background: $sofia-niebla;
+        }
+
+        .o_sofia_filtro_titulo { display: none; }
+
+        .o_sofia_chips {
+            flex-direction: row;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 0 16px;
+            scrollbar-width: none;
+            &::-webkit-scrollbar { display: none; }
+        }
+
+        .o_sofia_chip {
+            flex: 0 0 auto;
+            width: auto;
+            min-height: 38px;
+            border: 1px solid $sofia-linea;
+            border-radius: 999px;
+            padding: 4px 12px;
+            background: #FFFFFF;
+            font-size: 0.9rem;
+
+            .o_sofia_chip_nombre { overflow: visible; }
+
+            &.o_activa { border-color: $sofia-azul; }
+        }
+
+        .o_sofia_omitidas { margin: 0 16px; }
+        .o_sofia_lista_zona { padding: 0 12px; }
+        .o_sofia_lista_zona:first-child { padding-top: 12px; }
+    }
+}
+
+@media (max-width: 767.98px) {
+    .o_sofia {
+        .o_sofia_encabezado {
+            grid-template-areas: "titulo revisar" "resumen resumen" "ultima ultima";
+            gap: 8px 12px;
+            padding: 12px 16px;
+        }
+
+        .o_sofia_titulo {
+            gap: 10px;
+            h1 { font-size: 1.45rem; }
+            .o_sofia_lema { display: none; }
+        }
+
+        .o_sofia_avatar { width: 38px; height: 38px; font-size: 1.2rem; }
+        .o_sofia_boton_revisar { padding: 6px 14px; }
+        .o_sofia_ultima { justify-self: start; text-align: left; font-size: 0.75rem; }
+        .o_sofia_resumen { font-size: 0.85rem; }
+
+        .o_sofia_revisando { padding: 8px 16px; text-align: left; }
+
+        .o_sofia_seccion_titulo { margin-bottom: 8px; }
+        .o_sofia_tarjeta { padding: 12px 12px 6px; }
+        .o_sofia_cliente { font-size: 1.15rem; }
+
+        .o_sofia_botones {
+            .btn { flex: 1 1 0; min-height: 46px; padding: 8px 10px; }
+            .o_sofia_principal { flex-basis: 100%; }
+        }
+
+        .o_sofia_pie .btn-link { min-height: 40px; }
+    }
+}

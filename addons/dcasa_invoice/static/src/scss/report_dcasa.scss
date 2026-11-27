@@ -1,0 +1,938 @@
+// Formato de documentos con la marca Tommalo (docs/MARCA_TOMMALO.md, «Documentos y correos»).
+// * El texto va en navy; lo secundario, en navy al 70 % (muted, ya mezclado con el blanco del papel: 5.12).
+// * El naranja y el verde son RELLENO y FILETE (rayas, bandas, el total, las píldoras): nunca letra. Lo que va encima
+//   de un relleno se escribe en navy (5.56 sobre naranja, 6.96 sobre verde).
+// * El papel es blanco (se imprime); el crema y la superficie se usan en bloques suaves, no de fondo de la hoja.
+// * Montserrat en todo, sin caja alta en los títulos. Plano: sin degradados ni sombras.
+// * Nada del azul ni del amarillo de Tommalo.
+$dcasa-tinta: #262626;          // fg
+$dcasa-tinta-suave: #5C5C5C;    // muted sobre blanco (rgba(38, 38, 38, .7) ya mezclado): 5.12
+$dcasa-linea: #E4E6E9;          // line sobre blanco (rgba(38, 38, 38, .12))
+$dcasa-control: #828E99;        // control sobre blanco (rgba(38, 38, 38, .55)): 3.34, lo que se llena a mano
+$dcasa-crema: #FAFAFA;          // bg
+$dcasa-superficie: #FFFFFF;     // surface
+$dcasa-naranja: #D4D4D4;        // accent: relleno y filete
+$dcasa-naranja-filo: #8A8A8A;   // accent-edge: borde naranja que tiene que verse (3.46 sobre blanco)
+$dcasa-salvia: #BDBDBD;         // sage: relleno y filete
+$dcasa-salvia-filo: #8C8C8C;    // sage-edge: borde verde que tiene que verse (3.47 sobre blanco)
+
+// Montserrat alojada en dcasa_base, en TTF fijos (wkhtmltopdf no lee woff2 ni fuentes variables y no sale a internet).
+// QtWebKit elige entre normal (400) y negrita (700); 500 y 600 los usa el HTML del informe en el navegador.
+@font-face {
+    font-family: 'DCASA Montserrat';
+    font-weight: 400;
+    src: url('/dcasa_base/static/src/fonts/Montserrat-Regular.ttf') format('truetype');
+}
+@font-face {
+    font-family: 'DCASA Montserrat';
+    font-weight: 500;
+    src: url('/dcasa_base/static/src/fonts/Montserrat-Medium.ttf') format('truetype');
+}
+@font-face {
+    font-family: 'DCASA Montserrat';
+    font-weight: 600;
+    src: url('/dcasa_base/static/src/fonts/Montserrat-SemiBold.ttf') format('truetype');
+}
+@font-face {
+    font-family: 'DCASA Montserrat';
+    font-weight: 700;
+    src: url('/dcasa_base/static/src/fonts/Montserrat-Bold.ttf') format('truetype');
+}
+
+$dcasa-letra: 'DCASA Montserrat', 'Montserrat', Arial, Helvetica, sans-serif;
+
+.o_dcasa_header.header,
+.o_report_layout_dcasa.article,
+.o_dcasa_footer.footer {
+    font-family: $dcasa-letra;
+    color: $dcasa-tinta;
+}
+
+// ---------------------------------------------------------------------------
+// Cabecera
+// ---------------------------------------------------------------------------
+.o_dcasa_header {
+    .o_dcasa_logo {
+        max-height: 72px;
+        max-width: 190px;
+    }
+    .o_dcasa_company {
+        color: $dcasa-tinta-suave;
+        font-size: 0.8rem;
+        line-height: 1.4;
+        li.fw-bold {
+            color: $dcasa-tinta;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+    }
+    // El filete naranja de la marca como separador: una pastilla larga, plana.
+    .o_dcasa_band {
+        margin-top: 8px;
+        height: 5px;
+        border: 0;
+        border-radius: 999px;
+        background-color: $dcasa-naranja;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cuerpo
+// ---------------------------------------------------------------------------
+.o_report_layout_dcasa {
+    color: $dcasa-tinta;
+    font-size: 0.86rem;
+
+    // Titulares de la marca: Montserrat 700, como frase (nunca en caja alta).
+    .o_dcasa_title,
+    h2 {
+        color: $dcasa-tinta;
+        font-family: $dcasa-letra;
+        font-weight: 700;
+        font-size: 1.6rem;
+        line-height: 1.15;
+        letter-spacing: -0.03em;
+        text-transform: none;
+        margin: 0 0 10px;
+    }
+
+    // Rejilla Cliente | Entrega | Datos
+    .o_dcasa_rejilla {
+        .o_dcasa_celda {
+            border-top: 2px solid $dcasa-naranja;
+            padding-top: 6px;
+            min-height: 1px;
+        }
+    }
+    // Antetítulo: 12 px, 700, caja alta y espaciado .14em (en navy: es letra sobre el papel).
+    .o_dcasa_bloque_titulo {
+        font-family: $dcasa-letra;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .14em;
+        font-size: .75rem;
+        color: $dcasa-tinta;
+        margin-bottom: 2px;
+    }
+    .o_dcasa_cliente {
+        line-height: 1.35;
+        .o_dcasa_cliente_nombre {
+            font-weight: 700;
+            color: $dcasa-tinta;
+        }
+    }
+    .o_dcasa_tabla_datos {
+        width: 100%;
+        line-height: 1.3;
+        // Bootstrap deja «border-style: solid; border-width: 0» en tbody, tr, th y td, y el
+        // QtWebKit de wkhtmltopdf lo pinta como un hilo: aquí no hay borde en ninguna parte.
+        &, thead, tbody, tr, th, td {
+            border: 0 none !important;
+            background: none !important;
+        }
+        th {
+            font-family: $dcasa-letra;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            font-size: .75rem;
+            color: $dcasa-tinta-suave;
+            padding: 1px 8px 1px 0;
+            white-space: nowrap;
+            vertical-align: top;
+            width: 1%;
+        }
+        td {
+            padding: 1px 0;
+            vertical-align: top;
+        }
+    }
+
+    // Odoo pone una raya casi negra bajo toda cabecera de tabla y sobre los totales (report_tables.scss,
+    // «o_table_standard»): aquí la cabecera ya lleva su filete naranja y los totales separan con el canto de la marca.
+    &.o_table_standard table:not(.o_ignore_layout_styling) thead {
+        border-bottom: 0;
+    }
+    &.o_table_standard .o_total_table:not(.o_ignore_layout_styling),
+    &.o_table_standard .o_total_table:not(.o_ignore_layout_styling) .o_total {
+        border-top: 1px solid $dcasa-linea;
+    }
+
+    // Las rayas entre filas de cualquier tabla de Bootstrap (planilla, liquidación…): el canto suave de la marca, no el
+    // gris casi negro que Odoo le da a los informes.
+    .table {
+        --bs-table-border-color: #{$dcasa-linea};
+        --bs-border-color: #{$dcasa-linea};
+        border-color: $dcasa-linea;
+    }
+
+    // Tabla de líneas: la cabecera en navy con el filete naranja debajo.
+    table.o_main_table thead th,
+    table thead th {
+        color: $dcasa-tinta;
+        font-family: $dcasa-letra;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        font-size: .75rem;
+        border-bottom: 2px solid $dcasa-naranja;
+        vertical-align: bottom;
+    }
+    table.o_main_table tbody td {
+        border-bottom: 1px solid $dcasa-linea;
+        vertical-align: top;
+    }
+    .o_dcasa_th_codigo,
+    .o_dcasa_td_codigo {
+        width: 1%;
+        white-space: nowrap;
+        color: $dcasa-tinta-suave;
+        font-size: .8rem;
+    }
+    // Píldora: relleno verde con la letra navy (6.96), en caja alta de 12 px.
+    .o_dcasa_etiqueta {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 0 8px;
+        border-radius: 999px;
+        font-family: $dcasa-letra;
+        font-weight: 700;
+        font-size: .75rem;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: $dcasa-tinta;
+        background-color: $dcasa-salvia;
+    }
+    // Flete y servicios: su bloque, con el título en navy sobre la superficie crema y el filete naranja.
+    .o_dcasa_servicios {
+        .o_dcasa_servicios_titulo td {
+            padding-top: 8px;
+            font-family: $dcasa-letra;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            font-size: .75rem;
+            color: $dcasa-tinta;
+            background-color: $dcasa-superficie;
+            border-bottom: 1px solid $dcasa-naranja;
+        }
+    }
+
+    // Los totales arrancan a la altura del bloque de pago, no tres renglones más abajo.
+    #right-elements {
+        margin-top: 1rem !important;
+    }
+
+    // Totales: el total sobre el relleno naranja con la letra navy (5.56). Se fuerza en los hijos porque Odoo pinta
+    // el importe con el color primario de la empresa.
+    .o_total_table td {
+        padding: 3px 10px;
+    }
+    #total .o_total td,
+    .o_total td {
+        background-color: $dcasa-naranja;
+        color: $dcasa-tinta;
+        font-weight: 700;
+        padding: 6px 10px;
+
+        * {
+            color: $dcasa-tinta !important;
+        }
+    }
+    .o_dcasa_descuento td,
+    .o_dcasa_abono td,
+    .o_dcasa_pagado td {
+        color: $dcasa-tinta-suave;
+        font-size: .82rem;
+    }
+    .o_dcasa_por_pagar td {
+        color: $dcasa-tinta;
+        border-top: 1px solid $dcasa-naranja;
+    }
+
+    // ABONO: lo que le falta pagar al cliente, en grande, bajo los totales. Una tarjeta de la marca: superficie crema,
+    // filo naranja y radio de 16 px; la letra en navy. Plana, sin sombra.
+    .o_dcasa_saldo {
+        margin: 4px 0 8px;
+        padding: 8px 14px;
+        border: 2px solid $dcasa-naranja;
+        border-radius: 16px;
+        background-color: $dcasa-superficie;
+        text-align: right;
+        line-height: 1.2;
+
+        .o_dcasa_saldo_titulo {
+            font-family: $dcasa-letra;
+            font-weight: 700;
+            letter-spacing: .14em;
+            font-size: .75rem;
+            color: $dcasa-tinta;
+        }
+        .o_dcasa_saldo_monto {
+            font-family: $dcasa-letra;
+            font-weight: 700;
+            font-size: 2rem;
+            line-height: 1.15;
+            letter-spacing: -0.03em;
+            color: $dcasa-tinta;
+        }
+        .o_dcasa_saldo_detalle {
+            font-size: .82rem;
+            color: $dcasa-tinta;
+        }
+        .o_dcasa_saldo_vencido {
+            margin-top: 4px;
+            padding-top: 4px;
+            border-top: 1px solid $dcasa-linea;
+            font-size: .8rem;
+            font-weight: 700;
+            color: $dcasa-tinta;
+        }
+    }
+
+    // Etiquetas de fecha/origen: Odoo las pinta con el color secundario de la empresa (el naranja), que no se lee como
+    // letra (2.37 sobre blanco): van en navy.
+    #informations strong,
+    #informations .fw-bold,
+    strong {
+        color: $dcasa-tinta !important;
+    }
+
+    // Lo que acompaña a los totales por la izquierda (pago, socios, factura electrónica, términos):
+    // bloques normales de 55 % de ancho, sin flotar (los flotantes partían la hoja en wkhtmltopdf);
+    // los totales flotan a la derecha como en el formato estándar y no se pisan.
+    .o_dcasa_izquierda,
+    .o_dcasa_socios_factura,
+    .o_dcasa_fe {
+        width: 55%;
+    }
+    #payment_term.o_dcasa_izquierda {
+        margin-top: 0 !important;
+    }
+
+    // Cómo se pagó: una línea sobria con el filete naranja (sin sello de goma de imitación).
+    .o_dcasa_pago {
+        margin: 12px 0 8px;
+        padding: 6px 12px;
+        border-left: 4px solid $dcasa-naranja;
+        color: $dcasa-tinta;
+        font-size: .86rem;
+
+        strong {
+            color: $dcasa-tinta;
+        }
+    }
+
+    // Programa de socios (el contenido lo pone dcasa_socios): superficie crema con el filete verde.
+    .o_dcasa_socios_factura {
+        margin: 8px 0;
+        padding: 8px 12px;
+        border-left: 6px solid $dcasa-salvia;
+        border-radius: 0 16px 16px 0;
+        background-color: $dcasa-superficie;
+        color: $dcasa-tinta;
+        font-size: .84rem;
+        line-height: 1.4;
+
+        .o_dcasa_socios_titulo {
+            font-family: $dcasa-letra;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .14em;
+            font-size: .75rem;
+            color: $dcasa-tinta;
+        }
+        .o_dcasa_socios_codigo {
+            font-family: $dcasa-letra;
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: $dcasa-tinta;
+            letter-spacing: .06em;
+        }
+    }
+
+    // Factura electrónica (dcasa_fe_pa)
+    .o_dcasa_fe {
+        margin: 8px 0;
+        font-size: .8rem;
+    }
+
+    // Garantía · Cambios · Términos, a todo lo ancho
+    .o_dcasa_legales {
+        clear: both;
+        margin-top: 14px;
+        padding-top: 8px;
+        border-top: 1px solid $dcasa-linea;
+        font-size: .76rem;
+        line-height: 1.4;
+        color: $dcasa-tinta-suave;
+
+        .o_dcasa_legal {
+            margin-bottom: 4px;
+            strong {
+                color: $dcasa-tinta;
+                font-family: $dcasa-letra;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: .04em;
+                font-size: .75rem;
+                margin-right: 6px;
+            }
+        }
+    }
+
+    .o_dcasa_en_letras {
+        margin-bottom: 4px;
+    }
+
+    // Los enlaces (términos, portal) en navy y subrayados: el azul de Bootstrap no es de la marca.
+    a {
+        color: $dcasa-tinta;
+        text-decoration: underline;
+    }
+}
+
+// «con ITBMS» / «sin ITBMS» bajo el título de la columna
+.o_dcasa_th_nota {
+    font-size: .75rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: $dcasa-tinta-suave;
+}
+
+// ---------------------------------------------------------------------------
+// Pie: dos líneas de contacto, altura fija, sin párrafos largos que se corten
+// ---------------------------------------------------------------------------
+.o_dcasa_footer {
+    border-top: 2px solid $dcasa-naranja;
+    padding-top: 5px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: $dcasa-tinta-suave;
+
+    .o_dcasa_contact_item + .o_dcasa_contact_item::before {
+        content: ' · ';
+        color: $dcasa-tinta-suave;
+    }
+    .o_dcasa_tagline {
+        color: $dcasa-tinta;
+        font-family: $dcasa-letra;
+        font-weight: 700;
+        text-transform: none;
+        letter-spacing: 0;
+        p {
+            margin: 0;
+        }
+    }
+    .text-muted {
+        color: $dcasa-tinta-suave !important;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Código QR de uso interno (factura, cotización, entrega y compra): pequeño, plano, al final de la hoja.
+// Navy sobre blanco. Sin él (interruptor apagado) no existe en el HTML.
+// ---------------------------------------------------------------------------
+.o_dcasa_qr {
+    margin-top: 12px;
+    text-align: right;
+    line-height: 1.1;
+    page-break-inside: avoid;
+
+    // En la franja de garantía/cambios/términos: a la derecha de los textos, sin pedir más alto en la hoja.
+    &.o_dcasa_qr_flotante {
+        float: right;
+        margin: 0 0 4px 16px;
+    }
+
+    .o_dcasa_qr_img {
+        display: inline-block;
+        width: 22mm;
+        height: 22mm;
+    }
+    .o_dcasa_qr_texto {
+        margin-top: 6px;   // el texto no se pega al cuadro: la cámara necesita un borde en blanco alrededor
+        font-family: $dcasa-letra;
+        font-weight: 700;
+        font-size: .75rem;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: $dcasa-tinta;
+    }
+}
+.o_dcasa_qr_limpio {
+    clear: both;
+}
+
+// ---------------------------------------------------------------------------
+// Nota de entrega FÁCIL DE LEER (la que va a bodega; solo con el interruptor de la empresa encendido).
+// Para personas con dislexia, autismo, poca lectura u otro idioma: se ve más de lo que se lee.
+// * Letra sin adornos (Montserrat), grande, alineada a la izquierda, sin cursivas, sin subrayados, sin mayúsculas largas.
+// * Cada producto es una fila con sus cuatro cosas siempre en el mismo lugar: casilla, foto, nombre y cantidad.
+// * La cantidad es un número grande y una fila de dibujitos (uno por pieza); el color nunca es lo único que informa.
+// * Navy sobre blanco; el naranja y el verde de relleno, con la letra navy encima. Plano, sin sombras. Sin flex ni grid:
+//   wkhtmltopdf es antiguo.
+// ---------------------------------------------------------------------------
+.o_dcasa_entrega_facil {
+    color: $dcasa-tinta;
+    font-family: $dcasa-letra;
+    font-size: .95rem;
+    line-height: 1.45;
+    letter-spacing: .01em;
+    text-align: left;
+
+    .o_df_titulo {
+        margin: 6px 0 10px;
+        .o_df_numero_nota {
+            margin-left: 10px;
+            color: $dcasa-tinta;
+            font-family: $dcasa-letra;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: .04em;
+            text-transform: none;
+            white-space: nowrap;
+        }
+    }
+
+    .o_df_etiqueta {
+        color: $dcasa-tinta-suave;
+        font-size: .85rem;
+        font-weight: 700;
+        letter-spacing: .02em;
+    }
+
+    // Pedido | Factura | Fecha
+    .o_df_datos {
+        width: 100%;
+        margin-bottom: 10px;
+        td {
+            width: 33%;
+            padding: 6px 10px 6px 0;
+            border: 0;
+            border-top: 3px solid $dcasa-naranja;
+            vertical-align: top;
+        }
+        .o_df_dato {
+            font-size: 1.05rem;
+            font-weight: 700;
+            word-wrap: break-word;
+        }
+    }
+
+    // 1 Busca la foto · 2 Cuenta las piezas · 3 Marca el cuadro
+    .o_df_pasos {
+        width: 100%;
+        margin-bottom: 12px;
+        td {
+            width: 33%;
+            padding: 3px 8px 3px 0;
+            border: 0;
+            font-size: .9rem;
+            font-weight: 600;
+        }
+        .o_df_paso_n {
+            display: inline-block;
+            width: 1.7em;
+            height: 1.7em;
+            margin-right: 6px;
+            border-radius: 50%;
+            background-color: $dcasa-naranja;
+            color: $dcasa-tinta;
+            font-weight: 700;
+            line-height: 1.7em;
+            text-align: center;
+        }
+    }
+
+    // Las filas de producto
+    .o_df_lineas {
+        width: 100%;
+        border-collapse: collapse;
+        thead {
+            display: table-header-group;
+        }
+        th {
+            padding: 4px 8px;
+            color: $dcasa-tinta-suave;
+            font-size: .85rem;
+            font-weight: 700;
+            text-align: left;
+        }
+        tr {
+            page-break-inside: avoid;
+        }
+        td {
+            padding: 5px 8px;
+            border: 0;
+            border-top: 2px solid $dcasa-linea;
+            vertical-align: middle;
+        }
+        tbody tr:last-child td {
+            border-bottom: 2px solid $dcasa-linea;
+        }
+        .o_df_c_marca {
+            width: 9%;
+            text-align: center;
+        }
+        .o_df_c_foto {
+            width: 17%;
+        }
+        .o_df_c_producto {
+            width: 47%;
+        }
+        .o_df_c_cantidad {
+            width: 27%;
+            text-align: center;
+        }
+        th.o_df_c_marca,
+        th.o_df_c_cantidad {
+            text-align: center;
+        }
+    }
+
+    // La casilla que se marca a mano: borde navy (se tiene que ver bien al imprimir), esquinas suaves.
+    .o_df_casilla {
+        display: inline-block;
+        width: 26px;
+        height: 26px;
+        border: 3px solid $dcasa-tinta;
+        border-radius: 6px;
+        background-color: #FFFFFF;
+    }
+
+    .o_df_foto {
+        max-width: 22mm;
+        max-height: 22mm;
+        border: 1px solid $dcasa-linea;
+    }
+    .o_df_sin_foto {
+        width: 22mm;
+        height: 22mm;
+        border: 2px dashed $dcasa-control;
+        color: $dcasa-tinta-suave;
+        font-size: .85rem;
+        font-weight: 700;
+        line-height: 22mm;
+        text-align: center;
+    }
+
+    .o_df_nombre {
+        font-size: 1.1rem;
+        font-weight: 700;
+        line-height: 1.3;
+    }
+    .o_df_codigo {
+        margin-top: 6px;
+        .o_df_codigo_valor {
+            display: inline-block;
+            padding: 1px 8px;
+            border: 2px solid $dcasa-salvia-filo;
+            border-radius: 8px;
+            background-color: $dcasa-superficie;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: .1em;
+        }
+    }
+    .o_df_detalle {
+        margin-top: 4px;
+        color: $dcasa-tinta-suave;
+        font-size: .95rem;
+    }
+
+    // Cantidad: número grande en navy sobre el relleno naranja (5.56) y un dibujito por pieza
+    .o_df_cantidad {
+        display: inline-block;
+        min-width: 15mm;
+        padding: 2px 10px 3px;
+        border-radius: 10px;
+        background-color: $dcasa-naranja;
+        color: $dcasa-tinta;
+        text-align: center;
+        .o_df_numero {
+            display: block;
+            font-size: 1.9rem;
+            font-weight: 700;
+            line-height: 1.15;
+        }
+        // Solo si la medida no es la unidad de siempre (metros, por ejemplo): navy sobre el naranja, más chica.
+        .o_df_unidad {
+            display: block;
+            color: $dcasa-tinta;
+            font-size: .8rem;
+            font-weight: 600;
+        }
+    }
+    .o_df_iconos {
+        margin-top: 6px;
+        line-height: 1;
+    }
+    // Un dibujito por pieza: la foto chica sin estirarla (cabe en un cuadro de 9 mm) o, sin foto, una caja.
+    .o_df_icono {
+        display: inline-block;
+        margin: 0 2px 2px 0;
+        vertical-align: middle;
+    }
+    img.o_df_icono {
+        max-width: 7mm;
+        max-height: 7mm;
+        border: 1px solid $dcasa-linea;
+    }
+    span.o_df_icono_caja {
+        width: 6mm;
+        height: 6mm;
+        border: 2px solid $dcasa-salvia-filo;
+        border-radius: 3px;
+        background-color: $dcasa-superficie;
+    }
+    .o_df_mas {
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+    .o_df_falta {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 1px 8px;
+        border: 2px solid $dcasa-tinta;
+        border-radius: 999px;
+        font-weight: 700;
+    }
+
+    // El total, las dos rayas y (si está encendido) el QR van juntos: no se separan entre hojas.
+    .o_df_cierre {
+        width: 100%;
+        page-break-inside: avoid;
+        > tbody > tr > td {
+            padding: 0;
+            border: 0;
+            vertical-align: bottom;
+        }
+        .o_df_cierre_qr {
+            width: 1%;
+            padding-left: 12px;
+            white-space: nowrap;
+            .o_dcasa_qr {
+                margin-top: 0;
+            }
+        }
+    }
+    .o_df_total {
+        margin: 12px 0 0 auto;
+        td {
+            padding: 4px 10px;
+            border: 0;
+            vertical-align: middle;
+        }
+        .o_df_total_texto {
+            font-size: 1rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .o_df_total_numero {
+            background-color: $dcasa-naranja;
+            color: $dcasa-tinta;
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-align: center;
+        }
+    }
+
+    .o_df_pendientes {
+        margin-top: 16px;
+    }
+    .o_df_subtitulo {
+        margin: 0 0 6px;
+        font-family: $dcasa-letra;
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+
+    .o_df_firmas {
+        width: 100%;
+        margin-top: 22px;
+        page-break-inside: avoid;
+        td {
+            width: 50%;
+            padding-right: 24px;
+            border: 0;
+            vertical-align: bottom;
+        }
+        .o_df_raya {
+            height: 30px;
+            border-bottom: 2px solid $dcasa-tinta;
+        }
+        .o_df_firma {
+            max-height: 4cm;
+            max-width: 8cm;
+        }
+    }
+
+    // Densidades (``entrega_facil.densidad``): es una hoja carta, igual que la factura. Con pocos productos todo se ve más
+    // grande; con 8 o más (hasta 10 caben en una sola hoja, con el QR) cada uno conserva su foto, su número y su casilla.
+    .o_df_n2 {
+        .o_df_lineas td {
+            padding: 3px 8px;
+        }
+        .o_df_casilla {
+            width: 22px;
+            height: 22px;
+        }
+        .o_df_foto {
+            max-width: 16mm;
+            max-height: 16mm;
+        }
+        .o_df_sin_foto {
+            width: 16mm;
+            height: 16mm;
+            font-size: .75rem;
+            line-height: 16mm;
+        }
+        .o_df_nombre {
+            font-size: 1rem;
+        }
+        .o_df_cantidad .o_df_numero {
+            font-size: 1.5rem;
+        }
+        img.o_df_icono {
+            max-width: 6mm;
+            max-height: 6mm;
+        }
+        span.o_df_icono_caja {
+            width: 5mm;
+            height: 5mm;
+        }
+    }
+    .o_df_n3 {
+        .o_df_titulo {
+            margin: 0 0 4px;
+        }
+        .o_df_datos {
+            margin-bottom: 4px;
+            td {
+                padding: 3px 8px 3px 0;
+            }
+            .o_df_dato {
+                font-size: .9rem;
+            }
+        }
+        .o_df_pasos {
+            margin-bottom: 4px;
+            td {
+                padding: 1px 6px 1px 0;
+                font-size: .75rem;
+            }
+        }
+        .o_df_lineas {
+            th {
+                padding: 2px 6px;
+                font-size: .75rem;
+            }
+            td {
+                padding: 3px 6px;
+            }
+            .o_df_c_marca {
+                width: 7%;
+            }
+            .o_df_c_foto {
+                width: 10%;
+            }
+            .o_df_c_producto {
+                width: 48%;
+            }
+            .o_df_c_cantidad {
+                width: 35%;
+            }
+        }
+        .o_df_casilla {
+            width: 18px;
+            height: 18px;
+            border-width: 2px;
+            border-radius: 4px;
+        }
+        .o_df_foto {
+            max-width: 13mm;
+            max-height: 13mm;
+        }
+        // «Sin foto» en dos renglones, como en la de siempre: el cuadro es de 13 mm y la letra no baja de 12 px.
+        .o_df_sin_foto {
+            width: 13mm;
+            height: 13mm;
+            border-width: 1px;
+            font-size: .75rem;
+            line-height: 1.1;
+            padding-top: 2.5mm;
+        }
+        // Montserrat es más ancha que la letra de antes (un 7 % en negrita, medido con sus anchos): el nombre baja de
+        // .92rem a .86rem para que los diez productos sigan en los mismos renglones y quepan en una hoja.
+        .o_df_nombre {
+            font-size: .86rem;
+            line-height: 1.2;
+        }
+        .o_df_codigo {
+            margin-top: 1px;
+            .o_df_etiqueta {
+                font-size: .75rem;
+            }
+            .o_df_codigo_valor {
+                padding: 0 5px;
+                border-width: 1px;
+                font-size: .8rem;
+            }
+        }
+        .o_df_detalle {
+            display: none;
+        }
+        .o_df_cantidad {
+            min-width: 9mm;
+            padding: 0 7px;
+            .o_df_numero {
+                font-size: 1.3rem;
+                line-height: 1.3;
+            }
+            .o_df_unidad {
+                font-size: .75rem;
+            }
+        }
+        .o_df_iconos {
+            display: inline-block;
+            margin: 0 0 0 6px;
+            vertical-align: middle;
+        }
+        img.o_df_icono {
+            max-width: 5.5mm;
+            max-height: 5.5mm;
+        }
+        span.o_df_icono_caja {
+            width: 4.5mm;
+            height: 4.5mm;
+            border-width: 1px;
+        }
+        .o_df_mas {
+            font-size: .9rem;
+        }
+        .o_df_falta {
+            margin: 0 0 0 6px;
+            padding: 0 5px;
+            font-size: .75rem;
+        }
+        .o_df_total {
+            margin-top: 4px;
+            .o_df_total_texto {
+                font-size: .85rem;
+            }
+            .o_df_total_numero {
+                font-size: 1.1rem;
+            }
+        }
+        .o_df_firmas {
+            margin-top: 8px;
+            .o_df_raya {
+                height: 20px;
+            }
+        }
+    }
+}

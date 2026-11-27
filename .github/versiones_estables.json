@@ -1,0 +1,9 @@
+{
+  "pendiente": {
+    "desde": "PENDIENTE: todavía no hay despliegues de Tommalo",
+    "que_trae": "PENDIENTE: la primera versión estable propia se anota aquí cuando exista (staging y producción sanos y confirmados por el cliente). Hasta entonces este botón no sirve: no uses «Volver a una versión estable» antes.",
+    "codigo": "PENDIENTE",
+    "app_version": "PENDIENTE",
+    "imagen_digest": "PENDIENTE"
+  }
+}

@@ -1,0 +1,3785 @@
+// Tommalo — el sitio público con la marca provisional neutra (blanco, grises y un acento oscuro).
+//
+// PENDIENTE: colores de Tommalo. Los valores salen de primary_variables.scss (la paleta del sitio) y de los tokens de
+// abajo; cuando Tommalo decida su marca se cambian ahí y en ningún otro lugar. Contraste medido (AA) con las pruebas de
+// website_dcasa/tests/contraste.py.
+//
+// Las tres reglas que no se rompen:
+//  1. El acento (#D4D4D4) y el gris suave (#BDBDBD) son RELLENO: nunca texto ni borde. Encima va la letra oscura
+//     (#262626), nunca blanca.
+//  2. El texto en color de acento usa la versión oscurecida: accent-strong (#595959); los bordes e íconos,
+//     accent-edge (#8A8A8A) y soft-edge (#8C8C8C). Los secundarios de Odoo, en `muted`.
+//  3. Montserrat (provisional) para todo. Titulares en 700, como frase (nunca en caja alta). Antetítulos de 12 px en caja
+//     alta.
+// Las clases conservan el prefijo o_dcasa_ (nombres técnicos: los usan otros módulos y las pruebas).
+
+// ---------------------------------------------------------------------------
+// Tokens de la marca (brand.json · themes/tommalo.css · tokens.css)
+// ---------------------------------------------------------------------------
+
+$bc-bg: #FAFAFA;               // fondo de página (claro)
+$bc-surface: #FFFFFF;          // tarjetas, bandas suaves y campos sobre claro
+$bc-fg: #262626;               // texto, titulares, íconos y aro de foco (oscuro)
+$bc-muted: rgba(38, 38, 38, .7);   // texto secundario: 4.95 sobre bg, 4.80 sobre surface
+$bc-line: rgba(38, 38, 38, .12);   // filos que separan
+$bc-control: rgba(38, 38, 38, .55);   // borde de lo que se toca o se llena (3.26)
+$bc-accent: #D4D4D4;           // RELLENO de acento
+$bc-accent-fg: #262626;        // lo que va encima del de acento (5.56)
+$bc-accent-strong: #595959;    // texto de acento sobre bg/surface (4.90 / 4.60)
+$bc-accent-edge: #8A8A8A;      // bordes e íconos de acento (3.20 / 3.01)
+$bc-sage: #BDBDBD;             // RELLENO suave
+$bc-sage-strong: #595959;      // texto suave sobre bg/surface (4.92 / 4.62)
+$bc-sage-edge: #8C8C8C;        // bordes e íconos verdes (3.22 / 3.03)
+$bc-blanco: #FFFFFF;           // solo campos (con borde `control`) y lo que va sobre el oscuro
+
+// El de acento al pasar el puntero: el mismo de acento un poco más claro (en su web es `hover:opacity-90` sobre el
+// claro). La letra oscuro encima sube de contraste, no baja.
+$bc-accent-hover: mix($bc-accent, $bc-bg, 88%);
+
+$bc-letra: 'Montserrat', sans-serif;
+$bc-r-sm: 8px;
+$bc-r-md: 16px;                // tarjetas
+$bc-r-lg: 24px;                // tarjetas grandes y la foto del hero
+$bc-r-campo: 14px;             // campos
+$bc-pastilla: 999px;           // botones y píldoras
+$bc-sombra: 0 4px 20px -2px rgba(38, 38, 38, .05);           // shadow-soft
+$bc-sombra-alta: 0 20px 60px -25px rgba(38, 38, 38, .25);    // tarjeta al pasar el puntero
+$bc-sombra-foto: 0 30px 80px -30px rgba(38, 38, 38, .35);    // la foto del hero
+$bc-brillo: 0 0 80px -20px $bc-accent;                       // shadow-glow del botón principal
+
+// Estructura (sin cambio de marca: medidas, tiempos y capas).
+$dcasa-radius: $bc-r-md;
+$dcasa-sec: clamp(3.5rem, 6vw, 5.5rem);
+$dcasa-gutter: clamp(1.25rem, 5vw, 5rem);   // --gutter de tokens.css
+$dcasa-curva: cubic-bezier(.16, 1, .3, 1);   // --ease-out de tokens.css
+$dcasa-t-rapida: .25s;
+$dcasa-t-media: .5s;
+$dcasa-t-lenta: .8s;
+$dcasa-z-flotante: 1032;   // sobre el contenido fijo de Odoo (1030), bajo offcanvas (1045) y modales
+$dcasa-z-cta-movil: 1031;
+
+// ---------------------------------------------------------------------------
+// Base
+// ---------------------------------------------------------------------------
+
+// Nada ensancha la página: ni lo que espera su animación de entrada desplazado a un lado
+// ni el menú móvil al abrirse (sin esto el panel se abría fuera de la pantalla).
+html {
+    overflow-x: clip;
+    scroll-padding-top: 7rem;   // lo enfocado nunca queda bajo la cabecera fija
+}
+
+body {
+    background-color: $bc-bg;
+    color: $bc-fg;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+#wrapwrap {
+    background-color: $bc-bg;
+    color: $bc-fg;
+}
+
+// Titulares: Montserrat 700, como frase, `letter-spacing: -0.03em` y `line-height: 1.15` (themes/tommalo.css).
+// El #wrapwrap va dentro de :where() para que la regla pese lo de una etiqueta: le gana a la de Odoo (que va antes en
+// la hoja) y cualquier clase del sitio la gana a ella (un antetítulo que es un <h2>, p. ej.).
+:where(#wrapwrap) {
+    h1, h2, h3, h4, h5, h6,
+    .h1, .h2, .h3, .h4, .h5, .h6 {
+        font-family: $bc-letra;
+        font-weight: 700;
+        letter-spacing: -.03em;
+        line-height: 1.15;
+        text-transform: none;
+        color: inherit;
+    }
+}
+
+// El aro de foco: UNA regla para todo el sitio (themes/tommalo.css): 2 px oscuro con 2 px de aire. El oscuro se ve
+// sobre los cuatro fondos de la marca (bg 12.21 · surface 11.47 · accent 5.56 · suave 6.96).
+#wrapwrap,
+.modal,
+.offcanvas {
+    a:focus-visible,
+    button:focus-visible,
+    summary:focus-visible,
+    [tabindex]:focus-visible,
+    .btn:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+        outline: 2px solid $bc-fg;
+        outline-offset: 2px;
+        box-shadow: none;
+    }
+}
+
+// Lo que Bootstrap pinta con el «primary» de Odoo (el de acento) y sería texto o borde: a sus versiones legibles.
+#wrapwrap,
+.modal,
+.offcanvas,
+.dropdown-menu {
+    .text-primary {
+        color: $bc-accent-strong !important;
+    }
+
+    .link-primary {
+        color: $bc-accent-strong !important;
+    }
+
+    .border-primary {
+        border-color: $bc-accent-edge !important;
+    }
+
+    .bg-primary,
+    .text-bg-primary,
+    .badge.bg-primary {
+        background-color: $bc-accent !important;
+        color: $bc-accent-fg !important;
+    }
+
+    .text-muted,
+    .text-body-secondary {
+        color: $bc-muted !important;
+    }
+
+    a:not(.btn):not(.nav-link):not(.dropdown-item) {
+        text-underline-offset: .2em;
+    }
+}
+
+.o_dcasa_container {
+    width: 100%;
+    max-width: 80rem;   // --container de tokens.css (1280 px)
+    margin-inline: auto;
+    padding-inline: $dcasa-gutter;
+}
+
+.o_dcasa_home {
+    background: $bc-bg;
+    color: $bc-fg;
+}
+
+.o_dcasa_section {
+    padding-block: $dcasa-sec;
+}
+
+// Titulares grandes (hero y cabeceras de página) y de sección: Montserrat 700, como frase.
+.o_dcasa_display,
+.o_dcasa_h2 {
+    font-family: $bc-letra;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: -.03em;
+    line-height: 1.15;
+    color: $bc-fg;
+    text-wrap: balance;
+    overflow-wrap: break-word;   // sin guiones: «hipo-alergénico» partido no se lee como la marca
+}
+
+.o_dcasa_display {
+    font-size: clamp(2.25rem, calc(1.55rem + 2.6vw), 3.6rem);
+    margin-bottom: 1.5rem;
+}
+
+.o_dcasa_h2 {
+    font-size: clamp(1.875rem, calc(1.4rem + 1.9vw), 3rem);
+    margin-bottom: 0;
+}
+
+// Antetítulo: 12 px, 700, caja alta y .14em (la clase `.mono` de su web), en accent-strong.
+.o_dcasa_kicker {
+    font-family: $bc-letra;
+    font-weight: 700;
+    font-size: .75rem;
+    line-height: 1.5;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    margin-bottom: .75rem;
+    color: $bc-accent-strong;
+}
+
+// El antetítulo del hero, en píldora (S02Hero.tsx: borde `line`, fondo claro translúcido, letra suave-strong).
+.o_dcasa_kicker_pildora {
+    display: inline-block;
+    padding: .5rem 1rem;
+    border: 1px solid $bc-line;
+    border-radius: $bc-pastilla;
+    background: rgba($bc-bg, .6);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    color: $bc-sage-strong;
+}
+
+.o_dcasa_lead {
+    font-size: clamp(1.0625rem, calc(1rem + .35vw), 1.25rem);
+    line-height: 1.6;
+    max-width: 38rem;
+    color: $bc-muted;
+}
+
+.o_dcasa_muted {
+    color: $bc-muted;
+}
+
+// Enlace de acción («Ver todo →»): accent-strong, en 700, sin caja alta.
+.o_dcasa_link {
+    font-family: $bc-letra;
+    font-weight: 700;
+    font-size: .9375rem;
+    color: $bc-accent-strong;
+    text-decoration: underline;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: .3em;
+    white-space: nowrap;
+
+    &:hover,
+    &:focus-visible {
+        color: $bc-fg;
+    }
+}
+
+.o_dcasa_section_head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: .75rem 2rem;
+    margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.o_dcasa_section_head_centro {
+    justify-content: center;
+    text-align: center;
+    margin-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+// Lo que va a la derecha del titular: «Ver todo» y, en los carriles, las flechas.
+.o_dcasa_section_extra {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.o_dcasa_split_grid {
+    display: grid;
+    gap: clamp(2rem, 5vw, 4rem);
+    align-items: center;
+
+    @media (min-width: 992px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.o_dcasa_split_top {
+    align-items: start;
+}
+
+// ---------------------------------------------------------------------------
+// Botones: pastillas (border-radius 999px), Montserrat 700 y 44 px de alto como mínimo (dedo, no cursor)
+// ---------------------------------------------------------------------------
+
+.o_dcasa_ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    margin-top: 2rem;
+}
+
+#wrapwrap .btn,
+.modal .btn,
+.offcanvas .btn {
+    font-family: $bc-letra;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+// Todos los botones en pastilla (en un botón cuadrado, como el carrito de las tarjetas, 999px es un círculo).
+#wrapwrap .btn,
+.modal .btn,
+.offcanvas .btn {
+    border-radius: $bc-pastilla;
+}
+
+// Dentro de un grupo (buscador, cantidad, contraseña) el botón sigue pegado al campo, con el radio de 14 px del campo.
+#wrapwrap,
+.modal,
+.offcanvas {
+    .input-group > .btn {
+        border-radius: 0;
+
+        &:first-child {
+            border-top-left-radius: $bc-r-campo;
+            border-bottom-left-radius: $bc-r-campo;
+        }
+
+        &:last-child {
+            border-top-right-radius: $bc-r-campo;
+            border-bottom-right-radius: $bc-r-campo;
+        }
+    }
+}
+
+.o_dcasa_home .btn,
+.o_dcasa_btn_contorno,
+.o_dcasa_btn_amarillo {
+    min-height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+// El botón principal (el de Odoo y los del sitio): relleno de acento con letra oscuro, en pastilla.
+// `o_dcasa_btn_amarillo` conserva su nombre (lo usan otros módulos: dcasa_camila) y es el mismo botón principal.
+#wrapwrap .btn-primary,
+.modal .btn-primary,
+.offcanvas .btn-primary,
+.o_dcasa_btn_amarillo {
+    --bs-btn-color: #{$bc-accent-fg};
+    --bs-btn-bg: #{$bc-accent};
+    --bs-btn-border-color: #{$bc-accent};
+    --bs-btn-hover-color: #{$bc-accent-fg};
+    --bs-btn-hover-bg: #{$bc-accent-hover};
+    --bs-btn-hover-border-color: #{$bc-accent-hover};
+    --bs-btn-active-color: #{$bc-accent-fg};
+    --bs-btn-active-bg: #{$bc-accent-hover};
+    --bs-btn-active-border-color: #{$bc-accent-hover};
+    --bs-btn-disabled-color: #{$bc-accent-fg};
+    --bs-btn-disabled-bg: #{$bc-accent};
+    --bs-btn-disabled-border-color: #{$bc-accent};
+    background-color: $bc-accent;
+    border-color: $bc-accent;
+    color: $bc-accent-fg;
+    font-weight: 700;
+
+    &:hover,
+    &:focus-visible,
+    &:active {
+        background-color: $bc-accent-hover;
+        border-color: $bc-accent-hover;
+        color: $bc-accent-fg;
+    }
+}
+
+// El botón grande del hero y de la banda final: con el resplandor suave del mismo de acento (`shadow-glow`).
+.o_dcasa_btn_hero {
+    padding: 1rem 2rem;
+    font-size: 1.125rem;
+    box-shadow: $bc-brillo;
+}
+
+// El secundario de Odoo: relleno suave con letra oscuro (6.96).
+#wrapwrap .btn-secondary,
+.modal .btn-secondary {
+    --bs-btn-color: #{$bc-fg};
+    --bs-btn-bg: #{$bc-sage};
+    --bs-btn-border-color: #{$bc-sage};
+    --bs-btn-hover-color: #{$bc-fg};
+    --bs-btn-hover-bg: #{mix($bc-sage, $bc-bg, 85%)};
+    --bs-btn-hover-border-color: #{mix($bc-sage, $bc-bg, 85%)};
+    --bs-btn-active-color: #{$bc-fg};
+    --bs-btn-active-bg: #{mix($bc-sage, $bc-bg, 85%)};
+    --bs-btn-active-border-color: #{mix($bc-sage, $bc-bg, 85%)};
+}
+
+// De contorno: borde `control` y letra oscuro sobre transparente (los de Odoo «outline-primary» también: su borde y su
+// letra serían naranjas).
+.o_dcasa_btn_contorno,
+.o_dcasa_btn_texto,
+#wrapwrap .btn-outline-primary,
+#wrapwrap .btn-outline-secondary,
+.modal .btn-outline-primary,
+.modal .btn-outline-secondary {
+    --bs-btn-color: #{$bc-fg};
+    --bs-btn-border-color: #{$bc-control};
+    --bs-btn-hover-color: #{$bc-fg};
+    --bs-btn-hover-bg: #{$bc-surface};
+    --bs-btn-hover-border-color: #{$bc-fg};
+    --bs-btn-active-color: #{$bc-fg};
+    --bs-btn-active-bg: #{$bc-surface};
+    --bs-btn-active-border-color: #{$bc-fg};
+    background: transparent;
+    border: 1.5px solid $bc-control;
+    color: $bc-fg;
+
+    &:hover,
+    &:focus-visible {
+        background: $bc-surface;
+        border-color: $bc-fg;
+        color: $bc-fg;
+    }
+}
+
+#wrapwrap .btn-link {
+    color: $bc-fg;
+}
+
+// ---------------------------------------------------------------------------
+// Campos: radio de 14 px, borde `control`, 44 px de alto y 16 px de letra (el iPhone no acerca la pantalla)
+// ---------------------------------------------------------------------------
+
+#wrapwrap,
+.modal {
+    .form-control,
+    .form-select {
+        min-height: 2.75rem;
+        border: 1px solid $bc-control;
+        border-radius: $bc-r-campo;
+        background-color: $bc-blanco;
+        color: $bc-fg;
+        font-size: 1rem;
+
+        &::placeholder {
+            color: $bc-muted;
+        }
+
+        &:focus {
+            border-color: $bc-fg;
+            box-shadow: 0 0 0 1px $bc-fg;
+        }
+    }
+
+    .input-group > .form-control:not(:last-child) {
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+    }
+
+    .form-check-input {
+        border-color: $bc-control;
+
+        &:checked {
+            background-color: $bc-fg;
+            border-color: $bc-fg;
+        }
+
+        &:focus {
+            box-shadow: 0 0 0 2px rgba($bc-fg, .25);
+        }
+    }
+
+    .form-label,
+    label {
+        color: $bc-fg;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cabecera: la pastilla flotante de vidrio claro de tommalo.example (S01Nav.tsx y `.bc-vidrio` de tokens.css)
+//
+// · El vidrio va en un ::before y NO en el propio nav: `backdrop-filter` convierte al elemento en el contenedor de
+//   sus hijos `position: fixed`, y el menú del celular de Odoo (offcanvas) quedaría encerrado dentro de la pastilla.
+// · Dos capas, como en su web: la mate (desenfoque, saturación y brillo) siempre, y la refracción encima solo donde
+//   `backdrop-filter: url()` funciona (la pone animaciones.js en una variable: escrita aquí, el empaquetador de Odoo
+//   reescribiría url(#dcasa-liquido) como una ruta de archivo).
+// · Tinte claro (`surface`) al 50 %; al bajar (Odoo marca o_header_is_scrolled), al 80 %. La pastilla nunca cambia de
+//   alto: así Odoo no tiene que recalcular el relleno de la página.
+// · Sin barra de anuncios encima ni foto oscura detrás: es la MISMA pastilla en todas las páginas.
+// ---------------------------------------------------------------------------
+
+#wrapwrap > header#top {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: 0 !important;
+
+    > .navbar {
+        background: transparent !important;
+        box-shadow: none !important;
+        border: 0 !important;
+        padding: 1.5rem clamp(.625rem, 2.5vw, 1.5rem) 0;
+    }
+
+    .o_main_nav {
+        position: relative;
+        isolation: isolate;
+        max-width: 72rem;   // max-w-6xl
+        border-radius: $bc-r-md;
+        padding: .625rem 1rem .625rem 1.25rem;
+
+        @media (min-width: 768px) {
+            padding: .75rem 1.25rem .75rem 2rem;
+        }
+
+        &::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            border-radius: inherit;
+            background: rgba($bc-surface, .5);
+            -webkit-backdrop-filter: blur(16px) saturate(210%) brightness(1.06);
+            backdrop-filter: blur(16px) saturate(210%) brightness(1.06);
+            border: 1px solid rgba($bc-fg, .04);   // `border-line/30`
+            box-shadow: 0 8px 32px 0 rgba($bc-fg, .1);
+            transition: background-color 500ms ease;
+            pointer-events: none;
+        }
+    }
+
+    // La marca: solo «Tommalo» en Montserrat 700 (text-xl, tracking-tight), como en su web.
+    .navbar-brand {
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
+        min-height: 2.75rem;
+        margin-right: 1rem;
+        padding-block: 0;
+        color: $bc-fg;
+        text-decoration: none;
+    }
+
+    .o_dcasa_marca {
+        font-family: $bc-letra;
+        font-weight: 700;
+        font-size: 1.25rem;
+        letter-spacing: -.025em;
+        line-height: 1.2;
+        color: $bc-fg;
+        white-space: nowrap;
+    }
+
+    // Enlaces oscuro en 500 (text-sm font-medium); al pasar y el de la página donde se está, en accent-strong.
+    .navbar-nav .nav-link {
+        font-family: $bc-letra;
+        font-weight: 500;
+        font-size: .875rem;
+        letter-spacing: 0;
+        text-transform: none;
+        color: $bc-fg;
+        background: transparent;
+        border-radius: $bc-r-sm;
+        padding-inline: .75rem;
+        transition: color 200ms ease;
+
+        &:hover,
+        &:focus-visible {
+            color: $bc-accent-strong;
+        }
+    }
+
+    #top_menu .nav-link.active {
+        color: $bc-accent-strong;
+    }
+
+    // Carrito, búsqueda y la hamburguesa: íconos oscuro de 44 px, planos (sin el círculo gris de Odoo).
+    .o_navlink_background,
+    .o_navlink_background_hover {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.75rem;
+        height: 2.75rem;
+        padding: 0 !important;
+        background: transparent !important;
+        border: 0 !important;
+        color: $bc-fg !important;
+
+        &:hover,
+        &:focus-visible {
+            color: $bc-accent-strong !important;
+        }
+    }
+
+    // Los íconos de lucide (bolsa, lupa, persona): 24 px y trazo de 2, como `h-6 w-6` en su web, centrados en el
+    // círculo de 44 px. Todos del mismo tamaño: ninguno se ve más pesado que otro.
+    .o_dcasa_icono {
+        display: block;
+        width: 1.5rem;
+        height: 1.5rem;
+        flex-shrink: 0;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .o_wsale_my_cart a > div {
+        position: relative;
+        display: grid;
+        place-items: center;
+    }
+
+    // El número del carrito, arriba a la derecha de la bolsa (`absolute top-0 right-0`, h-5 min-w-5).
+    .o_wsale_my_cart .my_cart_quantity {
+        top: -.375rem !important;
+        right: -.5rem !important;
+        margin: 0 !important;
+        height: 1.25rem;
+        padding: 0 .3125rem;
+        line-height: 1.25rem;
+        border-radius: $bc-pastilla !important;
+    }
+
+    // La burbuja del carrito: de acento con la cifra en oscuro (S01Nav.tsx).
+    .my_cart_quantity,
+    .my_wish_quantity {
+        background: $bc-accent !important;
+        color: $bc-accent-fg !important;
+        font-family: $bc-letra;
+        font-weight: 700;
+        font-size: .75rem;
+        min-width: 1.25rem;
+    }
+
+    // «Mi cuenta» en la pastilla de la computadora: la persona de lucide en un círculo de 44 px, como la bolsa. El texto
+    // queda para el lector de pantalla (es su nombre). En el menú del celular, el texto se ve (más abajo).
+    > .navbar:not(.o_header_mobile) .o_dcasa_cuenta {
+        display: inline-grid;
+        place-items: center;
+        width: 2.75rem;
+        height: 2.75rem;
+        min-height: 2.75rem;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 50% !important;
+        background: transparent;
+        color: $bc-fg;
+
+        &:hover,
+        &:focus-visible {
+            color: $bc-accent-strong;
+            background: transparent;
+        }
+
+        .o_dcasa_cuenta_texto {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important;
+            border: 0 !important;
+        }
+    }
+
+    // «Mi cuenta» como pastilla de contorno (el del menú del celular).
+    .o_nav_link_btn {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.75rem;
+        border: 1.5px solid $bc-control !important;
+        border-radius: $bc-pastilla !important;
+        padding-inline: 1.125rem !important;
+        font-weight: 700;
+        color: $bc-fg;
+
+        &:hover,
+        &:focus-visible {
+            border-color: $bc-fg !important;
+            color: $bc-fg;
+            background: rgba($bc-bg, .6);
+        }
+    }
+
+    // La hamburguesa en oscuro (el ícono de Bootstrap es gris).
+    .navbar-toggler-icon {
+        width: 1.5rem;
+        height: 1.5rem;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3e%3cpath stroke='%231B3246' stroke-linecap='round' stroke-width='2' d='M4 6h16M4 12h16M4 18h16'/%3e%3c/svg%3e");
+        filter: none;
+    }
+
+    .o_header_mobile [data-bs-toggle='offcanvas'] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.75rem;
+        height: 2.75rem;
+        padding: 0 !important;
+        border-radius: 50%;
+    }
+}
+
+// Al bajar: el vidrio se tiñe más (bg-surface al 80 %), como `.bc-vidrio[data-scrolled]`.
+#wrapwrap > header#top.o_header_is_scrolled .o_main_nav::before {
+    background: rgba($bc-surface, .8);
+}
+
+// Refracción real (Chromium): lo que pasa detrás se ondula como a través de agua.
+html.o_dcasa_refraccion #wrapwrap > header#top .o_main_nav::before {
+    -webkit-backdrop-filter: var(--dcasa-refraccion);
+    backdrop-filter: var(--dcasa-refraccion);
+}
+
+.o_dcasa_filtros {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
+// La marca a la izquierda y los enlaces a la derecha, junto a los íconos, como en su web (`justify-between`, enlaces
+// con `gap-6 xl:gap-8`).
+@media (min-width: 992px) {
+    #wrapwrap > header#top #top_menu {
+        margin-left: auto !important;
+        margin-right: 0 !important;
+        gap: .25rem;
+    }
+}
+
+@media (min-width: 1200px) {
+    #wrapwrap > header#top #top_menu {
+        gap: .75rem;
+    }
+}
+
+// El menú del teléfono: a pantalla completa en claro, con los enlaces grandes en Montserrat 700 (como el de su web).
+// Abrir, cerrar, Escape, el foco dentro y su vuelta al botón los hace el offcanvas de Bootstrap (con el tabindex de
+// website_dcasa.menu_movil_accesible). Con la cabecera delante para ganarle a la regla de los enlaces de la pastilla.
+#wrapwrap > header#top #top_menu_collapse_mobile.offcanvas {
+    // Al abrirse, Bootstrap le pone el foco al panel entero (tabindex="-1"): ahí no se dibuja el aro.
+    &:focus {
+        outline: none;
+    }
+
+    width: 100%;
+    max-width: 100%;
+    border: 0;
+    background: $bc-bg;
+    color: $bc-fg;
+
+    .offcanvas-header {
+        padding: 1rem;
+    }
+
+    .btn-close {
+        width: 2.75rem;
+        height: 2.75rem;
+        padding: 0;
+        opacity: 1;
+        background-size: 1.1rem;
+    }
+
+    .top_menu .nav-item {
+        border: 0 !important;
+    }
+
+    .top_menu .nav-link {
+        font-family: $bc-letra;
+        font-weight: 700;
+        font-size: 1.875rem;
+        letter-spacing: -.03em;
+        line-height: 1.2;
+        text-transform: none;
+        color: $bc-fg;
+        padding: .75rem 1rem !important;
+        background: transparent;
+
+        &:hover,
+        &:focus-visible,
+        &.active {
+            color: $bc-accent-strong;
+            background: transparent;
+        }
+    }
+
+    .o_nav_link_btn {
+        justify-content: center;
+        gap: .5rem;
+        min-height: 3rem;
+        border: 1.5px solid $bc-control !important;
+        border-radius: $bc-pastilla !important;
+        font-weight: 700;
+        color: $bc-fg;
+
+        .o_dcasa_icono {
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #wrapwrap > header#top .o_main_nav::before {
+        transition: none;
+    }
+
+    // Quien pidió menos movimiento se queda con el vidrio mate, quieto (tokens.css).
+    html.o_dcasa_refraccion #wrapwrap > header#top .o_main_nav::before {
+        -webkit-backdrop-filter: blur(16px) saturate(210%) brightness(1.06);
+        backdrop-filter: blur(16px) saturate(210%) brightness(1.06);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 1. Hero en claro (S02Hero.tsx): el antetítulo en píldora, el titular oscuro, el subtítulo en `muted`, un solo botón y
+// la foto del bebé con esquinas redondeadas, con la píldora suave flotando encima. Detrás, las dos manchas suaves.
+// Las cabeceras de las páginas interiores (.o_dcasa_hero_compacto) son el mismo claro, sin foto.
+// ---------------------------------------------------------------------------
+
+.o_dcasa_hero,
+.o_dcasa_hero_vitrina {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: $bc-bg;
+    color: $bc-fg;
+    // La pastilla flota encima (o_header_overlay): el contenido empieza por debajo de ella.
+    padding-top: 7.5rem;
+    padding-bottom: clamp(3.5rem, 7vw, 5.5rem);
+
+    @media (min-width: 992px) {
+        display: flex;
+        align-items: center;
+        min-height: unquote('min(90vh, 56rem)');
+    }
+}
+
+.o_dcasa_hero_inner {
+    position: relative;
+    display: grid;
+    gap: 2.5rem;
+    align-items: center;
+
+    @media (min-width: 768px) {
+        grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    }
+
+    @media (min-width: 992px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 2rem;
+    }
+}
+
+.o_dcasa_hero_sin_foto .o_dcasa_hero_inner {
+    display: block;
+}
+
+.o_dcasa_hero_texto {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    max-width: 40rem;
+
+    .o_dcasa_kicker_pildora {
+        margin-bottom: 1.5rem;
+    }
+}
+
+.o_dcasa_hero_sub {
+    font-size: clamp(1.125rem, calc(1.05rem + .35vw), 1.25rem);
+    line-height: 1.6;
+    color: $bc-muted;
+    max-width: 32rem;
+    margin-bottom: 0;
+    text-wrap: balance;
+}
+
+.o_dcasa_hero_texto .o_dcasa_ctas {
+    margin-top: 2.5rem;
+}
+
+// Las manchas: el único degradado de la marca (difuminado), detrás de todo y sin atrapar el puntero.
+.o_dcasa_hero_mancha {
+    position: absolute;
+    z-index: -1;
+    border-radius: 50%;
+    filter: blur(64px);
+    pointer-events: none;
+}
+
+.o_dcasa_hero_mancha_a {
+    top: -6rem;
+    left: -6rem;
+    width: 24rem;
+    height: 24rem;
+    background: rgba($bc-sage, .25);
+}
+
+.o_dcasa_hero_mancha_b {
+    top: 50%;
+    right: -8rem;
+    width: 28rem;
+    height: 28rem;
+    background: rgba($bc-accent, .15);
+}
+
+@media (max-width: 575.98px) {
+    .o_dcasa_hero_texto .o_dcasa_ctas,
+    .o_dcasa_hero_texto .o_dcasa_ctas .btn {
+        width: 100%;
+    }
+}
+
+// Cabecera de página interior (socios, legales, cuenta, contacto): el mismo claro, más bajo y sin foto.
+.o_dcasa_hero_compacto {
+    padding-bottom: clamp(1.5rem, 4vw, 2.5rem);
+
+    @media (min-width: 992px) {
+        display: block;
+        min-height: 0;
+    }
+
+    .o_dcasa_hero_inner {
+        display: block;
+    }
+
+    .o_dcasa_hero_texto {
+        max-width: 48rem;
+    }
+
+    .o_dcasa_display {
+        font-size: clamp(2rem, calc(1.5rem + 2vw), 3rem);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 1b. Hero con los productos que elige Gerencia (models/portada.py, website_dcasa.hero_carrusel; static/src/js/
+// portada.js): el mismo hero claro, con las fotos fundiéndose en el marco redondeado de la derecha. Sin degradado ni
+// velo sobre las fotos: el texto va sobre el claro.
+// ---------------------------------------------------------------------------
+
+// Lo que dura cada foto de fábrica (2 a 3 segundos). Gerencia lo cambia en el panel
+// (Sitio web › Carrusel de la portada, de 2 a 15 s) y la plantilla lo escribe en el hero como --vitrina-tiempo; este
+// valor solo vale si esa variable no llega. El fundido y el zoom se calculan con ella: nada de abajo lleva segundos fijos.
+$dcasa-vitrina-tiempo: 3s;
+$dcasa-vitrina-fundido: .35;   // el fundido dura esta parte de lo que dura cada foto (con 3 s: 1,05 s)
+$dcasa-vitrina-fundido-tope: 2.4s;   // y nunca más que esto, aunque cada foto dure 15 s
+$dcasa-vitrina-zoom-vueltas: 6;      // el zoom tarda esto × lo que dura cada foto en ir (y otro tanto en volver)
+
+.o_dcasa_vitrina {
+    --vitrina-tiempo: #{$dcasa-vitrina-tiempo};
+    position: relative;
+    display: grid;
+    grid-template-areas: 'texto' 'fotos';
+    gap: 2.5rem;
+    align-items: center;
+
+    @media (min-width: 768px) {
+        grid-template-areas: 'texto fotos';
+        grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    }
+
+    @media (min-width: 992px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 2rem;
+    }
+}
+
+.o_dcasa_vitrina_panel {
+    grid-area: texto;
+    position: relative;
+    z-index: 1;
+}
+
+// El marco de las fotos: 4:5, esquinas de 24 px, la sombra larga de la foto del hero.
+.o_dcasa_vitrina_fotos {
+    grid-area: fotos;
+    position: relative;
+    width: 100%;
+    max-width: 28rem;
+    margin-inline: auto;
+    aspect-ratio: 4 / 5;
+    overflow: hidden;
+    border-radius: $bc-r-lg;
+    background: $bc-surface;
+    box-shadow: $bc-sombra-foto;
+
+    @media (min-width: 768px) {
+        max-width: none;
+    }
+}
+
+// Apiladas en el mismo sitio; la activa aparece con un fundido largo. Nada de «imagen quieta, salto, imagen quieta»:
+// el fundido dura poco más de la tercera parte del tiempo de cada foto (con el de fábrica, 3 s: un segundo) y el
+// zoom no para nunca. Los dos escalan con --vitrina-tiempo: si Gerencia lo cambia en el panel, el movimiento se ve
+// igual de suave (a 2 s el fundido es de 0,7 s; a 15 s, de 2,4 s).
+.o_dcasa_vitrina_foto {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity clamp(.5s, calc(var(--vitrina-tiempo, #{$dcasa-vitrina-tiempo}) * #{$dcasa-vitrina-fundido}),
+        #{$dcasa-vitrina-fundido-tope}) ease-in-out;
+
+    &.is-activa {
+        opacity: 1;
+    }
+
+    img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        // El zoom lento y continuo. Va a un ritmo fijo POR FOTO (6 veces lo que dura cada una en ir, otro tanto en
+        // volver): lo que se alcanza a ver del zoom mientras una foto está a la vista es siempre el mismo, dure
+        // 2 s o 15 s, sin saltos. Cada foto arranca en un punto distinto del recorrido (--i) para que dos seguidas
+        // no se muevan igual.
+        animation: dcasa-vitrina-zoom calc(var(--vitrina-tiempo, #{$dcasa-vitrina-tiempo}) * #{$dcasa-vitrina-zoom-vueltas})
+            ease-in-out infinite alternate;
+        animation-delay: calc(var(--i, 0) * var(--vitrina-tiempo, #{$dcasa-vitrina-tiempo}) * -1);
+        will-change: transform;
+    }
+}
+
+@keyframes dcasa-vitrina-zoom {
+    from { transform: scale(1.02); }
+    to   { transform: scale(1.12); }
+}
+
+// ---------------------------------------------------------------------------
+// 4. El carril de productos
+// ---------------------------------------------------------------------------
+
+.o_dcasa_rail_track {
+    // Contiene a los hijos con position:absolute (los «visually-hidden» de los botones: textos solo para
+    // lectores de pantalla). Sin esto su contenedor no es el carril, el carril no los recorta y cada uno queda
+    // a metros a la derecha: la página crece a 5 veces el ancho del teléfono, el navegador achica todo para que
+    // quepa («zoom») y se puede arrastrar de lado.
+    position: relative;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 72%;
+    gap: 1rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: $dcasa-gutter;
+    padding-bottom: .75rem;
+    // La siguiente tarjeta asoma: se entiende que se desliza (de orilla a orilla de la pantalla).
+    margin-inline: calc(-1 * #{$dcasa-gutter});
+    padding-inline: $dcasa-gutter;
+
+    @media (min-width: 576px) {
+        grid-auto-columns: 42%;
+    }
+
+    @media (min-width: 992px) {
+        grid-auto-flow: row;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-auto-columns: auto;
+        overflow: visible;
+        margin-inline: 0;
+        padding-inline: 0;
+        gap: 2.5rem 1.5rem;
+    }
+}
+
+.o_dcasa_rail_item {
+    scroll-snap-align: start;
+    min-width: 0;
+}
+
+// UNA fila que se desliza (antes, una grilla de 4 × 2). Asoma la tarjeta siguiente: se entiende que hay más. Flechas y
+// línea de avance: carril.js (sin JavaScript, el carril igual se desliza). La campaña tiene su carril (.o_dcasa_bw).
+.o_dcasa_rail {
+    --carril-gap: .75rem;
+    --carril-visibles: 2.2;   // celular: dos tarjetas enteras y asoma la tercera
+
+    @media (min-width: 576px) {
+        --carril-gap: 1rem;
+        --carril-visibles: 3.25;
+    }
+
+    @media (min-width: 992px) {
+        --carril-gap: 1.25rem;
+        --carril-visibles: 4;
+    }
+
+    @media (min-width: 1280px) {
+        --carril-visibles: 5;
+    }
+
+    .o_dcasa_rail_track {
+        grid-auto-columns: calc((100% - (var(--carril-visibles) - 1) * var(--carril-gap)) / var(--carril-visibles));
+        gap: var(--carril-gap);
+        padding-bottom: .5rem;
+        scrollbar-width: none;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+
+        @media (min-width: 992px) {
+            grid-auto-flow: column;
+            grid-template-columns: none;
+            overflow-x: auto;
+            overflow-y: hidden;
+            overscroll-behavior-x: contain;
+            // Aire para que el foco, la tarjeta que sube al pasar el puntero y su sombra no se corten.
+            margin-inline: -.5rem;
+            padding: .5rem .5rem 1.25rem;
+            scroll-padding-inline: .5rem;
+        }
+    }
+}
+
+// Flechas del carril (computadora): círculos de 44 px con borde `control` y la flecha oscuro.
+.o_dcasa_carril_flechas {
+    display: none;
+    gap: .5rem;
+
+    @media (min-width: 768px) {
+        display: flex;
+
+        &[hidden] {
+            display: none;
+        }
+    }
+}
+
+.o_dcasa_carril_flecha {
+    width: 2.75rem;
+    height: 2.75rem;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 50%;
+    border: 1.5px solid $bc-control;
+    background: transparent;
+    color: $bc-fg;
+    transition: background-color $dcasa-t-rapida ease, border-color $dcasa-t-rapida ease;
+
+    svg {
+        width: 1.125rem;
+        height: 1.125rem;
+    }
+
+    &:hover:not(:disabled),
+    &:focus-visible {
+        background: $bc-surface;
+        border-color: $bc-fg;
+    }
+
+    &:disabled {
+        color: rgba($bc-fg, .35);
+        border-color: $bc-line;
+        cursor: default;
+    }
+}
+
+// Línea de avance bajo el carril: cuánto se ha recorrido (y que hay más). Barra de acento (relleno) sobre `line`.
+.o_dcasa_carril_avance {
+    position: relative;
+    height: 3px;
+    margin-top: clamp(.75rem, 1.5vw, 1.25rem);
+    border-radius: 3px;
+    background: $bc-line;
+    overflow: hidden;
+
+    &[hidden] {
+        display: none;
+    }
+
+    > span {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: calc(var(--avance-ancho, .25) * 100%);
+        transform: translateX(calc(var(--avance, 0) * (100% / var(--avance-ancho, .25) - 100%)));
+        border-radius: inherit;
+        background: $bc-accent;
+        transition: transform .15s linear;
+    }
+}
+
+// La tarjeta de producto, como TarjetaDeArticulo.tsx: `surface` con filo `line`, radio de 16 px y la sombra casi nada;
+// al pasar el puntero sube un poco y el filo pasa a accent-edge. La foto, entera, en un plato cuadrado claro: las fotos
+// traen su propio fondo quemado y un plato de color dentro de otro se ve desigual.
+.o_dcasa_pcard {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: $bc-surface;
+    border: 1px solid $bc-line;
+    border-radius: $bc-r-md;
+    overflow: hidden;
+    box-shadow: $bc-sombra;
+    container: dcasa-tarjeta / inline-size;
+    transition: transform .3s ease, border-color .3s ease, box-shadow .3s ease;
+
+    &:hover,
+    &:focus-within {
+        transform: translateY(-4px);
+        border-color: $bc-accent-edge;
+        box-shadow: $bc-sombra-alta;
+    }
+}
+
+// <picture> (WebP con respaldo) no debe crear una caja: la <img> sigue siendo la hija que se mide.
+.o_dcasa_pcard_media > picture,
+.oe_product_image_img_wrapper > picture,
+.o_product_detail_img_wrapper > picture {
+    display: contents;
+}
+
+.o_dcasa_pcard_media {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    overflow: hidden;
+    background: $bc-bg;
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        transition: transform .5s ease;
+    }
+
+    &:hover img {
+        transform: scale(1.04);
+    }
+}
+
+.o_dcasa_pcard_body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: .25rem;
+    padding: .875rem 1rem 1rem;
+
+    @media (min-width: 576px) {
+        padding: 1.25rem;
+    }
+}
+
+.o_dcasa_pcard_name {
+    font-family: $bc-letra;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -.01em !important;
+    margin: 0 0 .5rem;
+    min-height: 2.6em;   // dos renglones siempre: los precios quedan alineados en la fila
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+
+    @media (min-width: 576px) {
+        font-size: 1.0625rem;
+    }
+
+    a {
+        color: $bc-fg;
+        text-decoration: none;
+
+        &:hover {
+            color: $bc-accent-strong;
+        }
+    }
+}
+
+// El precio: grande, 700 y con cifras tabulares (text-2xl font-bold tabular-nums).
+.o_dcasa_pcard_price {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    font-family: $bc-letra;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: $bc-fg;
+
+    .o_dcasa_mas_itbms {
+        margin: .3rem 0 0;
+    }
+}
+
+// Precio a la izquierda, botones a la derecha; si la tarjeta es angosta, los botones bajan solos.
+.o_dcasa_pcard_pie {
+    margin-top: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: .75rem .5rem;
+}
+
+.o_dcasa_pcard_actions {
+    display: flex;
+    gap: .375rem;
+    margin-left: auto;
+
+    form {
+        display: flex;
+    }
+}
+
+// Íconos redondos de 48 px: el carrito, relleno de acento con el ícono oscuro; WhatsApp, de contorno. Con `.o_dcasa_pcard`
+// delante para ganarle a las reglas generales de los botones. El nombre va en aria-label («Agregar … al carrito»).
+.o_dcasa_pcard .o_dcasa_pcard_add,
+.o_dcasa_pcard .o_dcasa_pcard_wa {
+    width: 3rem;
+    height: 3rem;
+    min-height: 3rem;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 50%;
+
+    svg {
+        width: 1.3rem;
+        height: 1.3rem;
+    }
+}
+
+.o_dcasa_pcard_add {
+    border: 0;
+
+    // Cargando (carrito.js usa el cargador de Odoo, que antepone un ícono que gira): en un botón redondo,
+    // solo el que gira, centrado.
+    &.o_btn_loading {
+        > .fa-spin {
+            margin: 0 !important;
+        }
+
+        > svg {
+            display: none;
+        }
+    }
+}
+
+.o_dcasa_pcard .o_dcasa_pcard_wa {
+    border: 1.5px solid $bc-control;
+    background: transparent;
+    color: $bc-fg;
+    font-size: 1.3rem;
+
+    &:hover,
+    &:focus-visible {
+        background: $bc-bg;
+        border-color: $bc-fg;
+        color: $bc-fg;
+    }
+}
+
+// Tarjeta angosta (el celular: dos por pantalla, ~160 px): el nombre con tres renglones, el precio arriba y abajo el
+// carrito como una barra ancha y WhatsApp al lado. Mide la tarjeta, no la pantalla (en la computadora, con cinco a la
+// vista, miden ~210 px y llevan los dos botones redondos).
+@container dcasa-tarjeta (max-width: 12.5rem) {
+    .o_dcasa_pcard .o_dcasa_pcard_body {
+        padding: .75rem .75rem .875rem;
+    }
+
+    .o_dcasa_pcard .o_dcasa_pcard_name {
+        font-size: .9375rem;
+        -webkit-line-clamp: 3;
+        min-height: 3.9em;
+        margin-bottom: .5rem;
+    }
+
+    .o_dcasa_pcard .o_dcasa_pcard_price {
+        font-size: 1.25rem;
+    }
+
+    .o_dcasa_pcard .o_dcasa_pcard_pie {
+        flex-direction: column;
+        align-items: stretch;
+        gap: .625rem;
+    }
+
+    .o_dcasa_pcard .o_dcasa_pcard_actions {
+        margin-left: 0;
+
+        > form,
+        > .o_dcasa_pcard_add {
+            flex: 1;
+        }
+
+        .o_dcasa_pcard_add {
+            width: 100%;
+            border-radius: $bc-pastilla;
+        }
+    }
+}
+
+// Disponibilidad real sobre la foto (dcasa_catalogo, misma regla y mismas palabras que la ficha; nunca el número).
+// Una pastilla, y solo cuando hay algo que decir (TarjetaDeArticulo.tsx): «Quedan pocas» en de acento con letra oscuro y
+// «Agotado» en oscuro lleno con letra claro (12.21).
+.o_dcasa_pcard_estado {
+    position: absolute;
+    top: .75rem;
+    left: .75rem;
+    z-index: 1;
+    margin: 0;
+    padding: .35rem .75rem;
+    border-radius: $bc-pastilla;
+    font-family: $bc-letra;
+    font-weight: 700;
+    font-size: .75rem;
+    line-height: 1.2;
+    color: $bc-accent-fg;
+    background: $bc-accent;
+    box-shadow: $bc-sombra;
+
+    &[data-estado="agotado"] {
+        background: $bc-fg;
+        color: $bc-bg;
+    }
+}
+
+// Código público del producto en la ficha («Código: DC-K7M4PX»): discreto, en `muted`; el código en oscuro.
+.o_dcasa_codigo_publico {
+    font-size: .875rem;
+    color: $bc-muted;
+    margin: 0 0 .75rem;
+
+    strong {
+        color: $bc-fg;
+        font-weight: 700;
+        letter-spacing: .04em;
+        user-select: all;   // un toque selecciona el código entero para copiarlo
+    }
+}
+
+// «$39.99 + ITBMS»: los precios son sin ITBMS; la leyenda va al lado, discreta.
+.o_dcasa_mas_itbms {
+    font-family: $bc-letra;
+    font-size: .75rem;
+    font-weight: 500;
+    color: $bc-muted;
+    white-space: nowrap;
+    margin-left: .25rem;
+    letter-spacing: 0;
+}
+
+// ---------------------------------------------------------------------------
+// Socios: una tarjeta grande claro (radio de 24 px) con el texto y la foto de las cajas Nateen.
+// ---------------------------------------------------------------------------
+
+.o_dcasa_socios_band {
+    background: $bc-bg;
+    color: $bc-fg;
+    padding-block: $dcasa-sec;
+}
+
+.o_dcasa_socios_tarjeta {
+    padding: clamp(1.5rem, 4vw, 3.5rem);
+    background: $bc-surface;
+    border: 1px solid $bc-line;
+    border-radius: $bc-r-lg;
+    box-shadow: $bc-sombra;
+}
+
+.o_dcasa_socios_facts {
+    list-style: none;
+    padding: 0;
+    margin: 1.5rem 0 0;
+
+    li {
+        padding: .875rem 0;
+        border-bottom: 1px solid $bc-line;
+        font-size: 1.0625rem;
+        color: $bc-fg;
+    }
+
+    strong {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: $bc-accent-strong;
+        margin-right: .15rem;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 6. Cobertura (S18Coverage.tsx): el titular y los datos con íconos verdes a la izquierda; a la derecha, las tarjetas
+// del delivery y de «Cómo pedir».
+// ---------------------------------------------------------------------------
+
+.o_dcasa_visita {
+    background: $bc-bg;
+    color: $bc-fg;
+    border-top: 1px solid $bc-line;
+}
+
+.o_dcasa_cobertura_grid {
+    display: grid;
+    gap: 3rem;
+    align-items: start;
+
+    @media (min-width: 768px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.o_dcasa_cobertura_texto {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2rem;
+}
+
+.o_dcasa_cobertura_datos {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 1.5rem;
+
+    li {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .fa {
+        flex: none;
+        width: 1.5rem;
+        margin-top: .2rem;
+        font-size: 1.375rem;
+        text-align: center;
+        color: $bc-sage-strong;
+    }
+
+    h3 {
+        margin: 0 0 .25rem;
+        font-size: 1rem;
+        letter-spacing: 0 !important;
+        color: $bc-fg;
+    }
+
+    p,
+    a {
+        margin: 0;
+        color: $bc-muted;
+    }
+
+    a:hover {
+        color: $bc-accent-strong;
+    }
+}
+
+.o_dcasa_cobertura_tarjetas {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.o_dcasa_cobertura_tarjeta {
+    padding: clamp(1.5rem, 3vw, 2rem);
+    background: $bc-surface;
+    border: 1px solid $bc-line;
+    border-radius: $bc-r-md;
+
+    > h3 {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        margin: 0 0 1.25rem;
+        font-size: 1.125rem;
+        letter-spacing: 0 !important;
+        color: $bc-fg;
+    }
+
+    > p {
+        margin: 0;
+        font-size: .875rem;
+        line-height: 1.65;
+        color: $bc-muted;
+
+        strong {
+            color: $bc-fg;
+        }
+    }
+}
+
+.o_dcasa_icono_circulo {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: rgba($bc-sage, .2);
+    color: $bc-sage-strong;
+    font-size: 1.1rem;
+}
+
+.o_dcasa_cobertura_zonas {
+    margin: 0;
+
+    > div {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        padding-bottom: .75rem;
+        border-bottom: 1px solid $bc-line;
+        font-size: .875rem;
+
+        & + div {
+            padding-top: .75rem;
+        }
+
+        &:last-child {
+            padding-bottom: 0;
+            border-bottom: 0;
+        }
+    }
+
+    dt {
+        font-weight: 400;
+        color: $bc-fg;
+    }
+
+    dd {
+        margin: 0;
+        font-size: .75rem;
+        font-weight: 700;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+        text-align: right;
+        color: $bc-accent-strong;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 7. La banda suave final (S19CTA.tsx): la frase grande en oscuro y «Ver el catálogo».
+// ---------------------------------------------------------------------------
+
+.o_dcasa_cta_final {
+    background: $bc-sage;
+    color: $bc-fg;
+    text-align: center;
+    padding-block: clamp(4rem, 9vw, 7.5rem);
+}
+
+.o_dcasa_cta_final_titulo {
+    max-width: 56rem;
+    margin: 0 auto 2.5rem;
+    font-size: clamp(2.25rem, calc(1.3rem + 4vw), 4.5rem);
+    color: $bc-fg;
+    text-wrap: balance;
+}
+
+@media (max-width: 767.98px) {
+    .o_dcasa_cta_final .btn {
+        width: 100%;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 8. Preguntas frecuentes
+// ---------------------------------------------------------------------------
+
+.o_dcasa_ayuda {
+    background: $bc-bg;
+
+    .o_dcasa_h2 {
+        margin-bottom: 1.5rem;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Página /visitanos (contacto): dos tarjetas `surface` bajo la cabecera de página.
+// ---------------------------------------------------------------------------
+
+.o_dcasa_visita_detalle {
+    padding-block: clamp(1rem, 3vw, 2rem) $dcasa-sec;
+}
+
+.o_dcasa_visita_detalle_inner {
+    display: grid;
+    gap: 1.5rem;
+    align-items: start;
+
+    @media (min-width: 992px) {
+        grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+        gap: 2rem;
+    }
+}
+
+.o_dcasa_visita_direccion {
+    font-size: 1.125rem;
+    line-height: 1.6;
+    color: $bc-fg;
+    margin: .5rem 0 1.25rem;
+}
+
+.o_dcasa_visita_lista li {
+    padding: .5rem 0;
+    border-bottom: 1px solid $bc-line;
+
+    &:last-child {
+        border-bottom: 0;
+    }
+
+    .fa {
+        color: $bc-sage-strong;
+    }
+
+    a {
+        display: inline-block;
+        padding-block: .375rem;
+        color: $bc-fg;
+    }
+}
+
+.o_dcasa_visita_aviso {
+    margin-top: 1.5rem;
+
+    &:first-child {
+        margin-top: 0;
+    }
+
+    p {
+        color: $bc-muted;
+        margin: .5rem 0 1.25rem;
+    }
+}
+
+// Horario de la tienda (de los Ajustes de Juan): una tabla corta, días a la izquierda y horas a la derecha.
+.o_dcasa_horario {
+    width: 100%;
+    margin-top: .5rem;
+    border-collapse: collapse;
+
+    th,
+    td {
+        padding: .6rem 0;
+        border-bottom: 1px solid $bc-line;
+        vertical-align: top;
+    }
+
+    th {
+        font-weight: 700;
+        color: $bc-fg;
+        padding-right: 1rem;
+    }
+
+    td {
+        text-align: right;
+        color: $bc-fg;
+        white-space: nowrap;
+    }
+}
+
+// El mapa de Google (static/src/js/mapa.js; la página de Tommalo no lo dibuja: vende en línea).
+.o_dcasa_mapa {
+    border-radius: $bc-r-lg;
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    background: $bc-surface;
+
+    iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+    }
+}
+
+.o_dcasa_mapa_permiso {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    height: 100%;
+    padding: 1.5rem;
+    text-align: center;
+    color: $bc-fg;
+    background: $bc-surface;
+    border-radius: $bc-r-md;
+
+    .fa-map-marker {
+        font-size: 2.5rem;
+        color: $bc-sage-strong;
+    }
+
+    p {
+        max-width: 26rem;
+        margin: 0;
+        color: $bc-muted;
+    }
+}
+
+.o_dcasa_mapa_cargado .o_dcasa_mapa_permiso {
+    display: none;
+}
+
+// ---------------------------------------------------------------------------
+// Pie de página, como S20Footer.tsx: claro, con un filo arriba; la marca y el lema a la izquierda, «Enlaces» y
+// «Contacto» en columnas, y los legales y el copyright abajo, en `muted`.
+// ---------------------------------------------------------------------------
+
+#wrapwrap footer#bottom {
+    background-color: $bc-bg !important;
+    border-top: 1px solid $bc-line;
+    color: $bc-fg;
+}
+
+.o_dcasa_pie {
+    padding-block: clamp(3rem, 6vw, 5rem) 0;
+}
+
+.o_dcasa_pie_rejilla {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2.5rem 1.5rem;
+    margin-bottom: 2.5rem;
+
+    // La marca a todo el ancho en el teléfono; las columnas de enlaces, de a dos.
+    .o_dcasa_pie_marca {
+        grid-column: 1 / -1;
+    }
+
+    @media (min-width: 992px) {
+        grid-template-columns: 2fr 1fr 1fr 1fr;
+        gap: 3rem;
+
+        .o_dcasa_pie_marca {
+            grid-column: auto;
+        }
+    }
+}
+
+.o_dcasa_pie_nombre {
+    margin: 0 0 .75rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -.025em;
+    color: $bc-fg;
+}
+
+.o_dcasa_pie_lema {
+    max-width: 24rem;
+    margin: 0;
+    font-size: .875rem;
+    color: $bc-muted;
+}
+
+.o_dcasa_pie_cobertura {
+    max-width: 24rem;
+    margin: 1rem 0 0;
+    font-size: .75rem;
+    color: $bc-muted;
+}
+
+.o_dcasa_pie_titulo {
+    margin: 0 0 .75rem;
+    font-size: 1rem !important;
+    letter-spacing: 0 !important;
+    color: $bc-fg;
+}
+
+.o_dcasa_footer {
+    ul {
+        margin: 0;
+    }
+
+    // Objetivos táctiles de 44 px (WCAG 2.5.8).
+    li a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.75rem;
+        padding-block: .25rem;
+    }
+}
+
+// Enlaces del pie en `muted` (4.95 sobre el claro), accent-strong al pasar. #wrapwrap sube la especificidad por encima
+// de las reglas de o_cc de Odoo.
+#wrapwrap .o_dcasa_footer a:not(.btn) {
+    font-size: .875rem;
+    color: $bc-muted;
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+        color: $bc-accent-strong;
+        text-decoration: underline;
+    }
+}
+
+.o_dcasa_pie_legales {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 1.5rem;
+    padding: .75rem 0;
+    border-top: 1px solid $bc-line;
+
+    #wrapwrap & a:not(.btn) {
+        font-size: .75rem;
+    }
+}
+
+// El horario en el pie: su propia franja, fuera de la zona que guarda el constructor (views/layout_templates.xml).
+.o_dcasa_pie_horario_banda .container {
+    padding-bottom: .5rem;
+}
+
+.o_dcasa_pie_horario {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .25rem 1.5rem;
+    margin: 0;
+    padding-top: .75rem;
+    border-top: 1px solid $bc-line;
+    font-size: .875rem;
+    color: $bc-muted;
+}
+
+.o_dcasa_pie_horario_titulo {
+    font-weight: 700;
+    color: $bc-fg;
+}
+
+// El copyright: mismo claro, letra `muted` de 12 px.
+#wrapwrap .o_footer .o_footer_copyright {
+    background-color: $bc-bg !important;
+    color: $bc-muted;
+    border-top: 0;
+
+    .o_footer_copyright_name {
+        font-size: .75rem;
+    }
+}
+
+// Mismo borde izquierdo que la portada en las páginas de Odoo y en el pie.
+@media (min-width: 1200px) {
+    #wrapwrap .oe_website_sale > .container,
+    #wrapwrap .oe_website_sale .o_wsale_products_main_row,
+    #wrapwrap .o_dcasa_footer .container,
+    #wrapwrap .o_dcasa_pie_horario_banda .container,
+    #wrapwrap .o_footer_copyright .container {
+        max-width: 80rem;
+        padding-inline: $dcasa-gutter;
+    }
+}
+
+@media (max-width: 767.98px) {
+    // El botón flotante no tapa el copyright al final de la página.
+    #wrapwrap .o_footer_copyright {
+        padding-bottom: 5rem;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Botón flotante de WhatsApp: la burbuja del chat de tommalo.example (Chatbot.tsx): círculo de acento de 56 px con el
+// ícono oscuro (5.56), abajo a la derecha, con la sombra de su web.
+// ---------------------------------------------------------------------------
+
+.o_dcasa_wa_float {
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    z-index: $dcasa-z-flotante;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    background-color: $bc-accent;
+    border: 0;
+    color: $bc-accent-fg;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.75rem;
+    text-decoration: none;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, .1), 0 8px 10px -6px rgba(0, 0, 0, .1);
+    transition: transform 200ms ease;
+
+    &:hover,
+    &:focus-visible {
+        color: $bc-accent-fg;
+        transform: scale(1.05);
+    }
+
+    &:focus-visible {
+        outline: 2px solid $bc-fg;
+        outline-offset: 4px;
+    }
+}
+
+// En el editor no estorba.
+body.editor_enable .o_dcasa_wa_float {
+    display: none;
+}
+
+// ---------------------------------------------------------------------------
+// Opiniones de Google (cinta en movimiento; sin opiniones no sale)
+// ---------------------------------------------------------------------------
+
+.o_dcasa_resenas {
+    background: $bc-bg;
+    overflow: hidden;
+}
+
+.o_dcasa_resenas_nota {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid $bc-line;
+    border-radius: $bc-r-md;
+    background: $bc-surface;
+}
+
+.o_dcasa_resenas_puntuacion {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: $bc-fg;
+    margin: 0 0 .25rem;
+}
+
+.o_dcasa_resenas_total {
+    font-weight: 700;
+    margin: 0 0 .35rem;
+}
+
+.o_dcasa_estrellas {
+    display: inline-flex;
+    gap: .1rem;
+}
+
+// Las estrellas en accent-edge (3.20: un ícono pide 3:1); las vacías, un claro más oscuro. La nota también va escrita.
+.o_dcasa_estrella {
+    width: 1rem;
+    height: 1rem;
+    fill: rgba($bc-fg, .18);
+
+    &.is-llena {
+        fill: $bc-accent-edge;
+    }
+}
+
+.o_dcasa_resenas_control {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.o_dcasa_resenas_pausa {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    min-height: 2.75rem;
+    padding: 0 1rem;
+    border: 1.5px solid $bc-control;
+    border-radius: $bc-pastilla;
+    background: transparent;
+    color: $bc-fg;
+    font-size: .875rem;
+    font-weight: 700;
+
+    &[aria-pressed='true'] .fa::before {
+        content: '\f04b';   // play
+    }
+}
+
+.o_dcasa_resenas_cinta {
+    margin-top: 1rem;
+}
+
+.o_dcasa_resenas_pista {
+    overflow: hidden;
+    padding-inline-start: 1.25rem;
+}
+
+// Sin gap ni relleno lateral en el tren: la mitad exacta del ancho es una vuelta (sin salto).
+.o_dcasa_resenas_tren {
+    display: flex;
+    width: max-content;
+    list-style: none;
+    margin: 0;
+    padding: .75rem 0 1.5rem;
+}
+
+.o_dcasa_resena {
+    flex: none;
+    width: unquote('min(22rem, 82vw)');
+    margin-inline-end: 1.25rem;
+}
+
+.o_dcasa_resenas_cinta:not(.is-viva) .o_dcasa_resenas_tren {
+    width: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 1.25rem;
+}
+
+.o_dcasa_resenas_cinta.is-viva .o_dcasa_resenas_tren {
+    animation: dcasa-correr var(--vuelta, 40s) linear infinite;
+}
+
+// Una reseña hay que poder leerla: se para con el puntero encima o con el botón.
+.o_dcasa_resenas_cinta.is-viva:hover .o_dcasa_resenas_tren,
+.o_dcasa_resenas_cinta.is-pausada .o_dcasa_resenas_tren {
+    animation-play-state: paused;
+}
+
+// Con el teclado, la cinta se detiene y se vuelve desplazable: la tarjeta enfocada nunca
+// queda escondida fuera del borde (WCAG 2.4.11).
+.o_dcasa_resenas_cinta.is-viva:focus-within {
+    .o_dcasa_resenas_tren {
+        animation: none;
+    }
+
+    .o_dcasa_resenas_pista {
+        overflow-x: auto;
+    }
+}
+
+// La lista va impresa varias veces: al avanzar la mitad, está donde empezó.
+@keyframes dcasa-correr {
+    from {
+        transform: translate3d(0, 0, 0);
+    }
+    to {
+        transform: translate3d(-50%, 0, 0);
+    }
+}
+
+.o_dcasa_resena_enlace {
+    display: flex;
+    flex-direction: column;
+    gap: .9rem;
+    height: 100%;
+    padding: 1.4rem;
+    border: 1px solid $bc-line;
+    border-radius: $bc-r-md;
+    background: $bc-surface;
+    color: $bc-fg;
+    text-decoration: none;
+    transition: transform .3s $dcasa-curva, border-color .3s;
+
+    &:hover,
+    &:focus-visible {
+        transform: translateY(-4px);
+        border-color: $bc-accent-edge;
+        color: $bc-fg;
+    }
+}
+
+.o_dcasa_resena_cabecera {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+}
+
+.o_dcasa_resena_avatar {
+    display: inline-flex;
+    flex: none;
+    width: 2.5rem;
+    height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: $bc-sage;
+    color: $bc-fg;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.o_dcasa_resena_autor {
+    font-weight: 700;
+    margin: 0;
+}
+
+.o_dcasa_resena_meta {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: .75rem;
+    color: $bc-muted;
+}
+
+.o_dcasa_resena_google {
+    flex: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-left: auto;
+}
+
+.o_dcasa_resena_texto {
+    flex: 1;
+    margin: 0;
+    line-height: 1.6;
+}
+
+.o_dcasa_resena_pie {
+    font-size: .8125rem;
+    font-weight: 700;
+    color: $bc-accent-strong;
+}
+
+.o_dcasa_resenas_ctas {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+// ---------------------------------------------------------------------------
+// Animaciones de entrada (las de su web, sin GSAP: suben y aparecen)
+//
+// · [data-anim-entrada]: lo que está sobre el pliegue. CSS puro, arranca en el primer
+//   fotograma y no depende de JavaScript: nunca puede quedarse invisible.
+// · [data-anim], [data-anim-cascada], [data-titular]: al entrar en pantalla. Solo se
+//   esconden bajo html.o_dcasa_anim, que pone la interacción DcasaRevelar fuera del
+//   editor y sin prefers-reduced-motion. Sin JavaScript todo se ve.
+// ---------------------------------------------------------------------------
+
+@keyframes dcasa-entrada {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 1.25rem, 0);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+// El titular del hero es el elemento más grande de la pantalla (LCP): sube, pero se ve
+// desde el primer fotograma.
+@keyframes dcasa-entrada-sin-fundido {
+    from {
+        transform: translate3d(0, 1.25rem, 0);
+    }
+    to {
+        transform: none;
+    }
+}
+
+[data-anim-entrada] > * {
+    animation: dcasa-entrada $dcasa-t-lenta $dcasa-curva both;
+    animation-delay: var(--anim-retraso, 0ms);
+}
+
+[data-anim-entrada] > h1 {
+    animation-name: dcasa-entrada-sin-fundido;
+}
+
+@for $i from 2 through 5 {
+    [data-anim-entrada] > *:nth-child(#{$i}) {
+        --anim-retraso: #{($i - 1) * 110}ms;
+    }
+}
+
+// La foto del hero entra un poco más chica y crece a su sitio (`.hero-visual` de su web: scale .95).
+@keyframes dcasa-foto-entrada {
+    from {
+        transform: scale(.95);
+    }
+    to {
+        transform: none;
+    }
+}
+
+.o_dcasa_vitrina_fotos {
+    animation: dcasa-foto-entrada 1.4s $dcasa-curva both;
+}
+
+.o_dcasa_anim {
+    [data-anim]:not(.anim-dentro),
+    [data-anim-cascada]:not(.anim-dentro) > * {
+        opacity: 0;
+        transform: var(--anim-desde, translate3d(0, 1.75rem, 0));
+    }
+
+    // La transición solo mientras entra: después, cada elemento (p. ej. un .btn) recupera
+    // la suya propia sin retrasos heredados.
+    [data-anim]:not(.anim-dentro),
+    [data-anim-cascada]:not(.anim-dentro) > *,
+    .anim-entrando {
+        transition:
+            opacity .7s $dcasa-curva var(--anim-retraso, 0ms),
+            transform .7s $dcasa-curva var(--anim-retraso, 0ms);
+    }
+
+    [data-anim].anim-dentro,
+    [data-anim-cascada].anim-dentro > * {
+        transition:
+            opacity .7s $dcasa-curva var(--anim-retraso, 0ms),
+            transform .7s $dcasa-curva var(--anim-retraso, 0ms),
+            color $dcasa-t-rapida ease,
+            background-color $dcasa-t-rapida ease,
+            border-color $dcasa-t-rapida ease;
+    }
+
+    [data-anim='izquierda'],
+    [data-anim-cascada='izquierda'] > * {
+        --anim-desde: translate3d(-2.25rem, 0, 0);
+    }
+
+    [data-anim='derecha'],
+    [data-anim-cascada='derecha'] > * {
+        --anim-desde: translate3d(2.25rem, 0, 0);
+    }
+
+    [data-anim='escala'] {
+        --anim-desde: scale(.95);
+    }
+
+    @for $i from 2 through 8 {
+        [data-anim-cascada] > *:nth-child(#{$i}) {
+            --anim-retraso: #{($i - 1) * 80}ms;
+        }
+    }
+
+    // Titular palabra a palabra: cada palabra sube desde detrás de su propia máscara. El
+    // margen negativo compensa el relleno de la máscara: mismo alto de línea que sin trocear.
+    [data-titular] .o_dcasa_palabra {
+        display: inline-block;
+        overflow: hidden;
+        vertical-align: bottom;
+        padding-bottom: .1em;
+        margin-bottom: -.1em;
+
+        > span {
+            display: inline-block;
+            transform: translate3d(0, 110%, 0);
+            transition: transform .75s $dcasa-curva;
+            transition-delay: calc(var(--i, 0) * 40ms);
+        }
+    }
+
+    [data-titular].anim-dentro .o_dcasa_palabra > span {
+        transform: none;
+    }
+}
+
+// En el celular las entradas son solo verticales (nada se asoma por los lados).
+@media (max-width: 767.98px) {
+    .o_dcasa_anim {
+        [data-anim='izquierda'],
+        [data-anim='derecha'],
+        [data-anim-cascada='izquierda'] > *,
+        [data-anim-cascada='derecha'] > * {
+            --anim-desde: translate3d(0, 1.75rem, 0);
+        }
+    }
+}
+
+.o_dcasa_section_descripcion {
+    margin-top: 1rem;
+}
+
+
+
+@media (prefers-reduced-motion: reduce) {
+}
+
+// ---------------------------------------------------------------------------
+// Auditoría (2026-11-24, axe-core y medidas a 390, 768, 1024 y 1440 px): todo lo que se toca mide al menos 44 px
+// (el dedo, no el cursor), también lo que dibuja la tienda de Odoo. Las plantillas que arreglan nombres y roles para el
+// lector de pantalla van en views/accesibilidad_templates.xml.
+// ---------------------------------------------------------------------------
+
+// Los íconos de lucide en todo el sitio (la lupa también vive en la caja de búsqueda y en el catálogo, fuera de la
+// cabecera): trazo de 2, sin relleno; 24 px, y 20 dentro del botón de enviar de una caja de búsqueda.
+.o_dcasa_icono {
+    display: block;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.oe_search_button .o_dcasa_icono {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+// Los enlaces del menú de la computadora: 44 px de alto (medían 38).
+#wrapwrap > header#top #top_menu .nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+}
+
+// Enlaces de acción («Ver todo →», «Horario y contacto →»): 44 px de alto sin cambiar cómo se ven.
+.o_dcasa_link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+}
+
+// Las migas: cada paso a 44 px de alto y todos centrados en la misma línea (con la barra que los separa). Sin el relleno
+// de arriba y abajo de Odoo (7 px): los 44 px ya son el dedo, y en el celular esos 14 px de más empujaban la
+// disponibilidad de la ficha debajo de la barra fija de «Agregar al carrito».
+.breadcrumb {
+    align-items: center;
+}
+
+.breadcrumb .breadcrumb-item {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+
+    > a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.75rem;
+    }
+}
+
+// (La tienda de Odoo les pone el relleno de un botón con un selector más fuerte:
+// `.o_wsale_content_contained .breadcrumb …`.)
+#wrapwrap .breadcrumb .breadcrumb-item {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+// El nombre del producto en las tarjetas (carril de la portada y la tienda): el enlace ocupa al menos 44 px aunque el
+// nombre sea de una línea.
+.o_dcasa_pcard_name a,
+.o_wsale_products_item_title a {
+    display: flex;
+    align-items: flex-start;
+    min-height: 2.75rem;
+}
+
+// Los datos de la cobertura (el teléfono abre WhatsApp) y los enlaces del pie: 44 × 44 como mínimo («Tips» y «FAQ»
+// medían 28 de ancho).
+.o_dcasa_cobertura_datos a,
+.o_dcasa_pie_columna a,
+.o_dcasa_pie_legales a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+}
+
+// La barra de la tienda: «Ordenar por» y «Filtros».
+.o_sortby_dropdown .dropdown-toggle,
+button[data-bs-target='#o_wsale_offcanvas'] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+}
+
+// Contacto (/visitanos): el teléfono, el correo e Instagram, a 44 de alto (medían 38). Y «Agregar para comparar».
+.o_dcasa_visita_lista a,
+.o_add_compare_dyn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+}
+
+// Carrito y pago: los botones («Finalizar compra», «Orden») a 44 de alto (medían 38) y los enlaces de la línea y del
+// resumen («Quitar del carrito», «Guardar para después», «Seguir comprando», «Volver al carrito», el nombre del producto y
+// los pasos) a 44, sin cambiar cómo se ven.
+.o_website_sale_checkout_container .btn:not(.btn-close),
+.o_wsale_shorter_cart_summary .btn,
+#o_cart_summary_offcanvas .btn:not(.btn-close) {
+    min-height: 2.75rem;
+}
+
+.o_website_sale_checkout_container a.btn,
+.o_wsale_shorter_cart_summary a.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.o_website_sale_checkout_container a[name='o_cart_line_product_link'],
+.o_website_sale_checkout_container a.js_delete_product,
+.o_website_sale_checkout_container a.o_add_wishlist,
+.o_website_sale_checkout_container .o_wizard a,
+.o_website_sale_checkout_container a.no-decoration,
+.o_wsale_shorter_cart_summary a:not(.btn),
+.o_total_card a:not(.btn) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+}
+
+.o_website_sale_checkout_container button.js_delete_product {
+    min-width: 2.75rem;
+}
+
+// «Volver al carrito» y «Seguir comprando» debajo del botón principal del pago (Odoo no les pone otra clase).
+a[class='mt-2 mt-lg-0 text-center'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+}
+
+// La cantidad en la ficha y el carrito: − y + de 44 × 44 (medían 34 de ancho).
+.css_quantity .btn,
+.css_quantity .css_quantity_minus,
+.css_quantity .css_quantity_plus {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+}
+
+.css_quantity input.quantity {
+    min-width: 2.75rem;
+}
+
+// Entrar: «Restablecer contraseña», «¿No tienes una cuenta?» y el ojo de la contraseña.
+.oe_login_form .btn-link,
+.oe_signup_form .btn-link,
+.oe_reset_password_form .btn-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+}
+
+.oe_login_form .input-group .btn,
+.oe_signup_form .input-group .btn {
+    min-width: 2.75rem;
+}
+
+// Las tallas de la ficha (atributos tipo «radio»): pastillas de 44 px que se tocan enteras, como las de una app. El
+// botón de radio sigue en su lugar para el teclado (flechas) y el lector de pantalla, solo que invisible y del tamaño
+// de la pastilla. La elegida se rellena de suave con letra oscuro (6.96) y borde `suave-edge`; las demás, de contorno.
+.o_wsale_product_attribute > .js_attribute_value > label.col-form-label {
+    position: relative;
+    cursor: pointer;
+
+    .form-check {
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        min-height: 2.75rem;
+        min-width: 2.75rem;
+        margin: 0;
+        padding: .375rem 1.125rem;
+        border: 1.5px solid $bc-control;
+        border-radius: $bc-pastilla;
+        background: transparent;
+        color: $bc-fg;
+        font-weight: 700;
+        transition: background-color $dcasa-t-rapida ease, border-color $dcasa-t-rapida ease;
+    }
+
+    .form-check-input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+        float: none;
+    }
+
+    .form-check-label {
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        margin: 0;
+        cursor: pointer;
+    }
+
+    &:hover .form-check {
+        border-color: $bc-fg;
+    }
+
+    &:has(.form-check-input:checked) .form-check {
+        background: $bc-sage;
+        border-color: $bc-sage-edge;
+    }
+
+    &:has(.form-check-input:focus-visible) .form-check {
+        outline: 2px solid $bc-fg;
+        outline-offset: 2px;
+    }
+
+    // Una talla agotada o que no combina: tachada y apagada, pero se puede elegir para ver que no está.
+    &:has(.form-check-input.css_not_available) .form-check {
+        opacity: .55;
+        text-decoration: line-through;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .o_wsale_product_attribute > .js_attribute_value > label.col-form-label .form-check {
+        transition: none;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Movimiento reducido
+// ---------------------------------------------------------------------------
+
+@media (prefers-reduced-motion: reduce) {
+    .o_dcasa_carril_avance > span,
+    .o_dcasa_pcard,
+    .o_dcasa_pcard_media img,
+    .o_dcasa_wa_float,
+    .o_dcasa_resena_enlace {
+        transition: none;
+    }
+
+    .o_dcasa_pcard:hover,
+    .o_dcasa_pcard:focus-within,
+    .o_dcasa_pcard_media:hover img,
+    .o_dcasa_resena_enlace:hover,
+    .o_dcasa_resena_enlace:focus-visible,
+    .o_dcasa_wa_float:hover,
+    .o_dcasa_wa_float:focus-visible {
+        transform: none;
+    }
+
+    [data-anim-entrada] > *,
+    .o_dcasa_vitrina_fotos,
+    .o_dcasa_vitrina_foto img {
+        animation: none;
+        transform: none;
+    }
+
+    // Las fotos del hero: quietas del todo. Ni zoom, ni fundido, ni cambio de foto (el JavaScript tampoco lo programa).
+    .o_dcasa_vitrina_foto,
+    .o_dcasa_vitrina_foto.is-activa {
+        transition: none;
+    }
+
+    .o_dcasa_resenas_cinta.is-viva .o_dcasa_resenas_tren {
+        animation: none;
+    }
+
+    // Sin movimiento, las copias de la cinta sobran: se deja una fila desplazable.
+    .o_dcasa_resena[aria-hidden='true'] {
+        display: none;
+    }
+
+    .o_dcasa_resenas_pista {
+        overflow-x: auto;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Impresión: todo visible y sin lo que solo sirve en pantalla
+// ---------------------------------------------------------------------------
+
+@media print {
+    .o_dcasa_anim [data-anim],
+    .o_dcasa_anim [data-anim-cascada] > *,
+    .o_dcasa_anim [data-titular] .o_dcasa_palabra > span,
+    [data-anim-entrada] > * {
+        opacity: 1 !important;
+        transform: none !important;
+        transition: none !important;
+        animation: none !important;
+    }
+
+    .o_dcasa_wa_float,
+    .o_dcasa_filtros,
+    .o_dcasa_hero_mancha,
+    .o_dcasa_resenas_control {
+        display: none !important;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Páginas de Odoo con la marca: tienda, ficha, carrito, checkout y contacto
+// ---------------------------------------------------------------------------
+
+#wrapwrap .oe_website_sale {
+    .o_wsale_products_main_row {
+        padding-bottom: 3rem;
+    }
+
+    // Títulos de la tienda y de la ficha: Montserrat 700, como frase.
+    .o_wsale_products_main_row h1,
+    #product_details h1 {
+        font-family: $bc-letra;
+        font-weight: 700;
+        text-transform: none;
+        letter-spacing: -.03em;
+        line-height: 1.15;
+        color: $bc-fg;
+    }
+
+    #product_details h1 {
+        font-size: clamp(1.75rem, calc(1.4rem + 1.4vw), 2.5rem);
+    }
+
+    .product_price .oe_price,
+    .oe_currency_value {
+        color: $bc-fg;
+        font-family: $bc-letra;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+
+    // CLS 0,126 de /shop (auditoría ronda 3 y 4): website_sale pone `content-visibility: auto`
+    // sin `contain-intrinsic-size` en cada tarjeta; las que quedan fuera de pantalla nacían con
+    // alto 0 (el paginador aparecía dentro de la pantalla) y al medirse lo empujaban ~4 000 px.
+    // Con un alto estimado el paginador nace fuera de pantalla y las tarjetas lejanas siguen sin pintarse.
+    #o_wsale_products_grid .oe_product_cart {
+        contain-intrinsic-size: auto 420px;
+    }
+
+    // Fotos de la tienda como las de la portada: el plato cuadrado claro con la foto entera.
+    #o_wsale_products_grid {
+        --o-wsale-card-thumb-aspect-ratio: 1 / 1;
+        --o-wsale-card-thumb-fill-mode: contain;
+        --o-wsale-card-thumb-background: #{$bc-bg};
+    }
+
+    #o_wsale_products_grid .oe_product_image_link img {
+        object-fit: contain !important;
+    }
+
+    // Las tarjetas del catálogo, como las de la portada (TarjetaDeArticulo.tsx).
+    .oe_product_cart {
+        background: $bc-surface !important;
+        border: 1px solid $bc-line !important;
+        border-radius: $bc-r-md !important;
+        box-shadow: $bc-sombra;
+        overflow: hidden;
+        transition: transform .3s ease, border-color .3s ease, box-shadow .3s ease;
+
+        &:hover,
+        &:focus-within {
+            transform: translateY(-4px);
+            border-color: $bc-accent-edge !important;
+            box-shadow: $bc-sombra-alta;
+        }
+
+        .oe_product_image {
+            background: $bc-bg;
+            border-radius: 0 !important;
+        }
+
+        .o_wsale_product_information {
+            padding: .875rem 1rem 1rem;
+        }
+
+        .o_wsale_product_btn .btn,
+        .a-submit {
+            min-height: 2.75rem;
+            min-width: 2.75rem;
+            border-radius: $bc-pastilla !important;
+        }
+
+        .oe_currency_value {
+            font-size: 1.375rem;
+        }
+    }
+
+    // El nombre del producto en oscuro 700, como frase.
+    .o_wsale_products_item_title {
+        font-family: $bc-letra;
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1.3;
+        text-transform: none;
+        letter-spacing: -.01em;
+
+        a {
+            color: $bc-fg;
+
+            &:hover,
+            &:focus-visible {
+                color: $bc-accent-strong;
+            }
+        }
+    }
+
+    // Ficha: «Agregar al carrito» (48 px), de contorno: WhatsApp va primero y lleno.
+    #add_to_cart {
+        min-height: 3rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    // Migas, filtros y el orden: oscuro y `muted`.
+    .breadcrumb {
+        --bs-breadcrumb-divider-color: #{$bc-muted};
+        --bs-breadcrumb-item-active-color: #{$bc-muted};
+
+        a {
+            color: $bc-fg;
+        }
+    }
+
+    .o_wsale_filmstip_wrapper .o_wsale_filmstip_container,
+    .o_wsale_products_grid_before_rail {
+        color: $bc-fg;
+    }
+
+    // El buscador de la tienda: un campo de 14 px de radio con el borde `control`.
+    .o_wsale_products_searchbar_form .oe_search_box {
+        background: $bc-blanco !important;
+        border: 1px solid $bc-control !important;
+        border-right: 0 !important;
+    }
+
+    .o_wsale_products_searchbar_form .oe_search_button,
+    .o_wsale_products_searchbar_form .o_dcasa_foto_boton {
+        background: $bc-blanco !important;
+        border: 1px solid $bc-control !important;
+        border-left: 0 !important;
+        color: $bc-fg !important;
+    }
+
+    .o_wsale_products_searchbar_form .o_dcasa_foto_boton {
+        border-right: 0 !important;
+    }
+
+    // Paginador: el de la página donde se está, en de acento con letra oscuro.
+    .pagination {
+        --bs-pagination-color: #{$bc-fg};
+        --bs-pagination-bg: transparent;
+        --bs-pagination-border-color: #{$bc-line};
+        --bs-pagination-hover-color: #{$bc-fg};
+        --bs-pagination-hover-bg: #{$bc-surface};
+        --bs-pagination-active-color: #{$bc-accent-fg};
+        --bs-pagination-active-bg: #{$bc-accent};
+        --bs-pagination-active-border-color: #{$bc-accent};
+    }
+
+    // Las tarjetas de Odoo (direcciones, métodos de pago y de entrega): `surface` con filo `line` y radio de 16 px. La
+    // elegida, con el filo en accent-edge (el de acento no es borde).
+    .card {
+        --bs-card-bg: #{$bc-surface};
+        --bs-card-border-color: #{$bc-line};
+        --bs-card-border-radius: #{$bc-r-md};
+        --bs-card-inner-border-radius: #{$bc-r-md - 1px};
+        color: $bc-fg;
+    }
+
+    .list-group {
+        --bs-list-group-bg: #{$bc-surface};
+        --bs-list-group-border-color: #{$bc-line};
+        --bs-list-group-color: #{$bc-fg};
+        --bs-list-group-active-bg: #{$bc-surface};
+        --bs-list-group-active-color: #{$bc-fg};
+        --bs-list-group-active-border-color: #{$bc-accent-edge};
+    }
+
+    .table {
+        --bs-table-bg: transparent;
+        --bs-table-color: #{$bc-fg};
+        --bs-table-border-color: #{$bc-line};
+    }
+}
+
+// Carrito: «Reordenar» no tiene sentido para un visitante; el resumen sobre `surface`, plano.
+.o_public_user .o_wsale_reorder_button,
+#wrapwrap .o_wsale_reorder_button:empty {
+    display: none !important;
+}
+
+#wrapwrap .oe_website_sale .o_total_card {
+    background: $bc-surface;
+    border: 1px solid $bc-line;
+    border-radius: $bc-r-md;
+}
+
+// Pasos del checkout: el de la página donde se está en oscuro y los demás en `muted` (el gris de Odoo no llega a 4.5:1).
+#wrapwrap .o_wizard .o_disabled .text-muted,
+#wrapwrap .o_wizard .text-muted {
+    color: $bc-muted !important;
+}
+
+// Y sin la mitad de opacidad con que Odoo apaga los pasos que aún no tocan («Dirección», «Pago»;
+// web/static/src/scss/ui.scss, .o_disabled): con ella el `muted` de arriba no llegaba a 4.5:1 (lote «legibilidad» de
+// Tommalo, 2026-11-19). A opacidad plena da 4.95 sobre el claro; el paso actual se sigue distinguiendo por la negrilla.
+#wrapwrap .o_wizard .o_disabled {
+    opacity: 1;
+}
+
+// Marcas de relleno (placeholder) de la búsqueda del catálogo (cabecera, menú del celular y /shop) y del celular de
+// Socios en `muted` a opacidad plena: el gris por defecto de Odoo no llega a 4.5:1 (lote «legibilidad» de Tommalo).
+.oe_search_box::placeholder,
+.o_dcasa_socios_form .form-control::placeholder {
+    color: $bc-muted;
+    opacity: 1;
+}
+
+#wrapwrap .o_wizard {
+    .o_wizard_step_active,
+    .o_wizard_step_active .o_wizard_steplabel {
+        color: $bc-fg !important;
+        font-weight: 700;
+    }
+
+    .o_wizard_circle_progress,
+    .progress-bar {
+        background-color: $bc-accent !important;
+    }
+}
+
+// Ficha: sellos de confianza junto al botón de compra.
+.o_dcasa_sellos {
+    list-style: none;
+    padding: 1.25rem;
+    margin: 0 0 1rem;
+    background: $bc-surface;
+    border: 1px solid $bc-line;
+    border-radius: $bc-r-md;
+    display: grid;
+    gap: .9rem;
+
+    li {
+        display: flex;
+        gap: .85rem;
+        align-items: flex-start;
+        font-size: .9375rem;
+        line-height: 1.5;
+        color: $bc-fg;
+    }
+
+    .fa {
+        color: $bc-sage-strong;
+        font-size: 1.2rem;
+        width: 1.4rem;
+        text-align: center;
+        margin-top: .1rem;
+    }
+
+    strong {
+        color: $bc-fg;
+    }
+}
+
+.o_dcasa_wa_producto {
+    min-height: 3rem;
+    font-size: 1rem;
+}
+
+// Ficha: «Agregar al carrito» es la opción secundaria (de contorno); WhatsApp va primero y lleno.
+#product_detail #add_to_cart {
+    background-color: transparent;
+    color: $bc-fg;
+    border: 1.5px solid $bc-control;
+
+    &:hover,
+    &:focus-visible {
+        background-color: $bc-surface;
+        border-color: $bc-fg;
+        color: $bc-fg;
+    }
+}
+
+// La cantidad (− y +) de la ficha y del carrito: una pastilla con borde `control`.
+#wrapwrap .css_quantity {
+    .btn {
+        background: transparent;
+        border-color: $bc-control;
+        color: $bc-fg;
+    }
+
+    input.quantity {
+        border-color: $bc-control;
+        color: $bc-fg;
+        background: $bc-blanco;
+        font-weight: 700;
+    }
+}
+
+// Móvil: el botón de compra queda fijo abajo mientras se ve la ficha.
+@media (max-width: 767.98px) {
+    #product_detail #o_wsale_cta_wrapper {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: $dcasa-z-cta-movil;
+        margin: 0 !important;
+        padding: .75rem 1rem calc(.75rem + env(safe-area-inset-bottom));
+        background: $bc-bg;
+        border-top: 1px solid $bc-line;
+        box-shadow: 0 -8px 24px -12px rgba($bc-fg, .15);
+
+        #add_to_cart {
+            min-height: 3rem;
+        }
+
+        // En la barra fija solo cantidad y «Agregar»; la lista de deseos no cabe.
+        #product_option_block {
+            display: none !important;
+        }
+    }
+
+    body:has(#o_wsale_cta_wrapper) #wrapwrap {
+        padding-bottom: 5.5rem;
+    }
+
+    // Al abrir la ficha, el precio y la disponibilidad se ven sin bajar y sin que los tape la barra fija (lote 1 de la
+    // web): menos aire arriba de la foto (las migas) y entre la foto, el nombre, el código y el precio.
+    #product_detail .o_wsale_content_contained:has(.o_wsale_breadcrumb) {
+        padding-top: .25rem !important;
+        padding-bottom: .25rem !important;
+    }
+
+    #product_detail #o-carousel-product {
+        margin-bottom: .5rem !important;
+    }
+
+    #product_detail #product_details {
+        padding-top: .5rem !important;
+    }
+
+    #product_detail .o_wsale_product_details_content_section_title {
+        margin-bottom: .625rem !important;
+
+        h1 {
+            margin-bottom: .375rem !important;
+        }
+    }
+
+    #product_detail .o_dcasa_codigo_publico {
+        margin-bottom: .5rem;
+    }
+
+    // En la ficha ya hay «Pregunta por este producto por WhatsApp»: dos botones de WhatsApp
+    // chocarían con la barra fija.
+    body:has(#product_detail) .o_dcasa_wa_float {
+        display: none;
+    }
+}
+
+// Celular (hasta 429 px): la barra fija en una sola fila (cantidad y «Agregar al carrito», sin el ícono del carrito).
+// En dos filas medía 127 px y tapaba el precio y la disponibilidad al abrir la ficha. Desde que el − y el + miden 44 px
+// (auditoría del 2026-11-24), a 390 px tampoco cabía con el ícono: el tope pasó de 389 a 429 px.
+@media (max-width: 429.98px) {
+    #product_detail #o_wsale_cta_wrapper > div:first-child {
+        flex-wrap: nowrap !important;
+    }
+
+    #product_detail #o_wsale_cta_wrapper .css_quantity {
+        flex: none;
+    }
+
+    #product_detail #o_wsale_cta_wrapper #add_to_cart {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding-inline: .5rem;
+        white-space: nowrap;
+
+        .fa {
+            display: none;
+        }
+    }
+}
+
+// La foto de la ficha: esquinas de 16 px sobre el plato claro.
+#product_detail #o-carousel-product .carousel-inner,
+#product_detail .o_wsale_product_images img {
+    border-radius: $bc-r-md;
+}
+
+#product_detail .o_carousel_product_indicators .carousel-indicators [data-bs-target] {
+    border-radius: $bc-r-sm;
+}
+
+// Checkout: la entrega a domicilio se cotiza por WhatsApp; nunca decir «Gratis».
+.o_wsale_delivery_price_badge.o_dcasa_por_cotizar {
+    font-size: 0;
+
+    &::after {
+        content: 'Por cotizar';
+        font-size: .875rem;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// La campaña del sitio (Black Weekend y las demás; views/black_weekend_templates.xml): banda oscuro (#262626) con el
+// titular en claro (12.21) y el botón de acento con letra oscuro. Las tarjetas, claro, con texto oscuro.
+// ---------------------------------------------------------------------------
+
+.o_dcasa_bw {
+    background: $bc-fg;
+    color: $bc-bg;
+    padding-block: clamp(2.5rem, 6vw, 5rem);
+
+    .o_dcasa_section_head {
+        align-items: center;
+    }
+
+    .o_dcasa_kicker {
+        color: $bc-bg;
+    }
+
+    // El aro de foco sobre el oscuro va en claro; dentro de las tarjetas, oscuro otra vez.
+    a:focus-visible,
+    button:focus-visible {
+        outline-color: $bc-bg !important;
+    }
+
+    .o_dcasa_bw_card a:focus-visible,
+    .o_dcasa_bw_card button:focus-visible {
+        outline-color: $bc-fg !important;
+    }
+}
+
+.o_dcasa_bw_titulo {
+    font-family: $bc-letra;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: -.03em;
+    line-height: 1.1;
+    color: $bc-bg;
+    font-size: clamp(2.25rem, calc(1.5rem + 3vw), 4rem);
+    margin-bottom: .5rem;
+}
+
+.o_dcasa_bw_titulo_grande {
+    font-size: clamp(2.75rem, calc(1.8rem + 4vw), 5rem);
+}
+
+.o_dcasa_bw_sub {
+    font-size: clamp(1rem, calc(.95rem + .3vw), 1.2rem);
+    color: $bc-bg;
+    max-width: 44rem;
+    margin-bottom: 0;
+}
+
+.o_dcasa_bw_card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: $bc-surface;
+    color: $bc-fg;
+    border-radius: $bc-r-md;
+    overflow: hidden;
+
+    .o_dcasa_pcard_body {
+        padding: 1rem;
+    }
+}
+
+.o_dcasa_bw_codigo {
+    font-size: .8125rem;
+    color: $bc-muted;
+    margin-bottom: .35rem;
+}
+
+.o_dcasa_bw_precio {
+    margin-bottom: .5rem;
+}
+
+.o_dcasa_bw_combo {
+    font-size: .9375rem;
+    color: $bc-fg;
+    margin-bottom: .85rem;
+
+    strong {
+        font-weight: 700;
+    }
+}
+
+.o_dcasa_bw_acciones {
+    margin-top: auto;
+    display: grid;
+    gap: .5rem;
+
+    .btn {
+        min-height: 3rem;
+    }
+}
+
+// La etiqueta de la campaña sobre la foto de la tarjeta: oscuro con letra claro, en pastilla.
+.o_dcasa_bw_etiqueta {
+    position: absolute;
+    top: .75rem;
+    left: .75rem;
+    z-index: 2;
+    background: $bc-fg;
+    color: $bc-bg;
+    font-family: $bc-letra;
+    font-weight: 700;
+    font-size: .75rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    line-height: 1;
+    padding: .45rem .75rem;
+    border-radius: $bc-pastilla;
+    pointer-events: none;
+}
+
+.o_dcasa_bw_grid {
+    list-style: none;
+    padding: 0;
+    margin: clamp(1.5rem, 4vw, 3rem) 0 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 1.25rem;
+}
+
+// Precio normal tachado junto al precio de campaña.
+.o_dcasa_precio_antes {
+    margin-right: .4rem;
+    font-size: .8em;
+    font-weight: 400;
+    color: $bc-muted;
+}
+
+// ---------------------------------------------------------------------------
+// Legales y cuenta: la cabecera de página claro y el cuerpo de lectura
+// ---------------------------------------------------------------------------
+
+// Legales: cuerpo de lectura (≈70 caracteres por línea); los subtítulos en Montserrat 700, como frase.
+.o_dcasa_legal_cuerpo {
+    padding-block: clamp(1.5rem, 4vw, 3rem) clamp(2.5rem, 6vw, 5rem);
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    color: $bc-fg;
+
+    .col-lg-8 {
+        max-width: 46rem;
+    }
+
+    h2 {
+        font-size: clamp(1.25rem, calc(1.15rem + .4vw), 1.5rem);
+        color: $bc-fg;
+        margin: 2.5rem 0 .75rem;
+    }
+
+    li + li {
+        margin-top: .35rem;
+    }
+
+    // Enlaces dentro del texto: subrayados (el color solo no basta, WCAG 1.4.1).
+    p a,
+    li a {
+        color: $bc-fg;
+        text-decoration: underline;
+        text-underline-offset: .15em;
+    }
+}
+
+// Cuenta: el formulario en una tarjeta grande `surface`.
+.o_dcasa_login {
+    padding-block: clamp(.5rem, 2vw, 1.5rem) clamp(2.5rem, 6vw, 4.5rem);
+    padding-inline: $dcasa-gutter;   // en el celular la tarjeta no llega al borde de la pantalla
+    // Odoo 19 pinta el formulario de entrar oculto (d-none) y lo muestra con JavaScript: sin
+    // reservar su alto, el pie saltaba ~500 px al aparecer (CLS 0,18 en escritorio).
+    min-height: 41rem;
+
+    .oe_login_form,
+    .oe_signup_form,
+    .oe_reset_password_form {
+        background: $bc-surface;
+        border: 1px solid $bc-line;
+        border-radius: $bc-r-lg;
+        box-shadow: $bc-sombra;
+        padding: clamp(1.25rem, 4vw, 2rem);
+        max-width: 26rem;
+        margin-inline: auto;
+    }
+
+    .form-control {
+        min-height: 3rem;
+    }
+
+    .btn-primary {
+        min-height: 3rem;
+    }
+
+    a:not(.btn) {
+        color: $bc-fg;
+        text-decoration: underline;
+    }
+}
+
+// Contacto de Odoo (/contactus): el formulario y, al lado, los datos.
+.o_dcasa_contacto {
+    .lead {
+        color: $bc-fg;
+    }
+}
+
+.o_dcasa_contacto_datos li {
+    padding: .5rem 0;
+
+    .fa {
+        color: $bc-sage-strong;
+    }
+}
+
+// La página 404 de Odoo y el resto: los titulares ya van en Montserrat 700 (regla de arriba).
+
+// ---------------------------------------------------------------------------
+// Celular: nada fuera de la pantalla, ni un instante, y sin zoom por accidente
+// (pedido de la dueña: en el teléfono solo se debe deslizar hacia abajo; de lado, nada más los carriles).
+//
+// Causas que se midieron en Chrome con el teléfono emulado (tests/test_movil.py las vigila):
+//  1. El menú del celular (offcanvas) está a la derecha, fuera de la pantalla, mientras está cerrado. Al volver
+//     arriba tras bajar, Odoo suelta y vuelve a fijar la cabecera ~0,4 s y en ese lapso el menú ahí parado
+//     ensancha la página: el navegador del teléfono la achica («zoom») y se puede arrastrar de lado.
+//     Cerrado, ahora no se dibuja ni mide nada; al abrirse se desliza con una animación propia.
+//  2. Los carriles (.o_dcasa_rail_track) no contenían a sus hijos con position:absolute (arriba).
+//  3. Un campo de formulario con letra menor de 16 px hace que el iPhone acerque la pantalla al tocarlo.
+//  4. Doble toque = zoom en el iPhone: se desactiva (el pellizco para agrandar sigue funcionando).
+// ---------------------------------------------------------------------------
+
+#top_menu_collapse_mobile.offcanvas:not(.show):not(.showing):not(.hiding) {
+    display: none;
+}
+
+#top_menu_collapse_mobile.offcanvas.showing {
+    animation: o_dcasa_menu_entra .3s ease-in-out;
+}
+
+@keyframes o_dcasa_menu_entra {
+    from {
+        transform: translateX(100%);
+    }
+
+    to {
+        transform: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #top_menu_collapse_mobile.offcanvas.showing {
+        animation: none;
+    }
+}
+
+@media (max-width: 991.98px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+}
+
+html {
+    touch-action: manipulation;
+}
+
+// ---------------------------------------------------------------------------
+// «Cargando…»: barra fina arriba mientras se abre otra página (static/src/js/carrito.js). El botón ocupado usa
+// el cargador de Odoo (.o_btn_loading). Una barra de acento (relleno), plana, sin sombra.
+// ---------------------------------------------------------------------------
+
+html.o_dcasa_navegando::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: $bc-accent;
+    transform-origin: 0 50%;
+    animation: o_dcasa_progreso 1.4s cubic-bezier(.2, .7, .2, 1) infinite;
+    z-index: 2000;
+    pointer-events: none;
+}
+
+@keyframes o_dcasa_progreso {
+    0% {
+        transform: scaleX(0);
+    }
+
+    70% {
+        transform: scaleX(.85);
+    }
+
+    100% {
+        transform: scaleX(.95);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.o_dcasa_navegando::before {
+        animation: none;
+        transform: scaleX(.6);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pantallas táctiles: los controles que se tocan con el dedo miden al menos 44 px (guía de Apple y de WCAG 2.5.5).
+// Medidos en el teléfono eran de 28 a 36 px: «Ver todo →», cantidad (− y +), flechas de la galería, buscador.
+// ---------------------------------------------------------------------------
+
+@media (pointer: coarse) {
+    .o_dcasa_link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.75rem;
+    }
+
+    .css_quantity .btn,
+    .css_quantity input.quantity {
+        min-height: 2.75rem;
+        min-width: 2.75rem;
+    }
+
+    #o-carousel-product .carousel-control-prev,
+    #o-carousel-product .carousel-control-next {
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+    }
+
+    .o_wsale_products_searchbar_form .oe_search_box,
+    .o_wsale_products_searchbar_form .oe_search_button {
+        min-height: 2.75rem;
+    }
+
+    // Lote «legibilidad» de Tommalo, arreglo 4 (medidos en el celular de 390 px: de 32 a 40 px): la X y «Eliminar
+    // filtros» del cajón de los filtros (32 y 34) y los campos y «Enviar» del contacto (38). Mismo tamaño visible: solo
+    // crece el área que toca el dedo. La hamburguesa, «Ordenar por», «Filtros» y el menú del celular ya miden 44 en la
+    // cabecera de Tommalo (arriba): aquí no se tocan.
+    // La X del cajón de los filtros: el relleno crece y el margen negativo lo compensa, así la X queda donde estaba.
+    #o_wsale_offcanvas .offcanvas-header .btn-close {
+        padding: .875rem;
+        margin: -.875rem -.875rem -.875rem auto;
+    }
+
+    #o_wsale_offcanvas .offcanvas-body a.btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.75rem;
+    }
+
+    .o_dcasa_contacto .s_website_form_input:not(textarea),
+    .o_dcasa_contacto .s_website_form_send {
+        min-height: 2.75rem;
+    }
+
+    .o_dcasa_contacto .s_website_form_send {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+// Lote «legibilidad», arreglo 6: «Enviar mensaje» del contacto como «Entrar» de /socios: a todo el ancho de los campos y de
+// 48 px o más (la plantilla le pone btn-lg w-100).
+.o_dcasa_contacto .s_website_form_send {
+    width: 100%;
+    min-height: 3rem;
+}
+
+// ---------------------------------------------------------------------------
+// Lote 1 de la web (2026-11-13): buscar, carrito vacío y la foto en grande (views/buscador_templates.xml).
+// ---------------------------------------------------------------------------
+
+// Celular: la lupa junto al carrito, las dos con 44 px de área táctil (WCAG 2.5.5) y planas, como el resto de la
+// pastilla.
+#wrapwrap > header#top .o_header_mobile {
+    .o_header_mobile_buttons_wrap {
+        gap: .125rem !important;
+    }
+
+    .o_dcasa_lupa_movil,
+    .o_wsale_my_cart > a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.75rem;
+        height: 2.75rem;
+        padding: 0 !important;
+    }
+
+    .o_dcasa_lupa_movil .oi {
+        font-size: 1.15rem;
+    }
+}
+
+// La caja de búsqueda que abre la lupa: claro, radio de 24 px; en el celular, pegada arriba y a lo ancho (con el
+// teclado abierto, la lista de sugerencias necesita el espacio).
+#o_search_modal .modal-content {
+    background: $bc-bg;
+    border: 1px solid $bc-line;
+    border-radius: $bc-r-lg;
+    overflow: hidden;
+
+    .oe_search_box,
+    .oe_search_button,
+    .o_dcasa_foto_boton {
+        background: $bc-blanco !important;
+        color: $bc-fg;
+    }
+}
+
+@media (max-width: 575.98px) {
+    #o_search_modal .modal-dialog {
+        margin: .75rem;
+        padding-top: 0 !important;
+    }
+
+    #o_search_modal .modal-content {
+        margin-top: 0 !important;
+    }
+}
+
+// El sitio para botones extra del buscador (views/buscador_templates.xml) no dibuja caja: sus botones se acomodan como
+// si fueran hijos directos de la caja de búsqueda.
+.o_dcasa_buscador_extra {
+    display: contents;
+}
+
+// Celular: en /shop la caja de búsqueda va sola en su fila, a lo ancho; «Ordenar por» y «Filtros» en la de abajo.
+// Las tres en una fila dejaban la caja en ~125 px (no se leía ni el texto de ayuda) y un botón extra dentro de la
+// caja (la cámara de «Busca con una foto», website_dcasa.buscador_botones_extra) no cabía.
+@media (max-width: 575.98px) {
+    #o_wsale_products_header .products_header {
+        flex-wrap: wrap !important;
+        row-gap: .5rem;
+
+        > .o_wsale_products_header_search_form_container {
+            display: block !important;
+            order: -1;
+            flex: 1 0 100%;
+            width: 100%;
+            max-width: 100%;
+            margin-right: 0 !important;
+        }
+
+        // La lupa que abre la búsqueda en una ventana (Odoo la usa cuando no cabe la caja): la caja ya está a la vista.
+        > a[data-bs-target="#o_wsale_search_modal"] {
+            display: none !important;
+        }
+    }
+}
+
+// Búsqueda sin resultados en el catálogo: algo útil (categorías y WhatsApp), no solo «sin resultados».
+.o_dcasa_sin_resultados {
+    max-width: 40rem;
+    margin-inline: auto;
+    color: $bc-fg;
+
+    .o_dcasa_lead {
+        margin-inline: auto;
+    }
+}
+
+.o_dcasa_sin_resultados_titulo,
+.o_dcasa_carrito_vacio_titulo {
+    font-family: $bc-letra;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: -.03em;
+    line-height: 1.15;
+    font-size: clamp(1.75rem, calc(1.4rem + 1.4vw), 2.5rem);
+    color: $bc-fg;
+    overflow-wrap: anywhere;
+}
+
+.o_dcasa_sin_resultados_categorias {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .5rem;
+    margin: 1.5rem 0;
+
+    .btn {
+        padding-inline: 1.25rem;
+    }
+}
+
+// Carrito vacío: el título, una línea y los dos caminos (catálogo y WhatsApp).
+.o_dcasa_carrito_vacio_titulo {
+    text-align: center;
+    margin-bottom: .5rem;
+}
+
+.o_dcasa_carrito_vacio_texto {
+    text-align: center;
+    color: $bc-muted;
+}
+
+.o_dcasa_carrito_vacio_acciones {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .75rem;
+}
+
+// Los botones de estas dos pantallas: pastillas de 48 px, en 700.
+.o_dcasa_carrito_vacio_acciones .btn,
+.o_dcasa_sin_resultados_wa {
+    min-height: 3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+}
+
+@media (max-width: 575.98px) {
+    .o_dcasa_carrito_vacio_acciones .btn {
+        width: 100%;
+    }
+}
+
+// Ficha: la lupa sobre la foto (abre el visor de Odoo) y la foto avisa que se puede agrandar.
+#o-carousel-product .o_carousel_product_outer {
+    position: relative;
+}
+
+.ecom-zoomable .product_detail_img {
+    cursor: zoom-in;
+}
+
+.o_dcasa_ver_grande {
+    position: absolute;
+    top: .75rem;
+    right: .75rem;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border: 1px solid $bc-line;
+    border-radius: 50%;
+    color: $bc-fg;
+    background: rgba($bc-bg, .92);
+    font-size: 1.15rem;
+
+    &:hover {
+        background: $bc-surface;
+        border-color: $bc-fg;
+    }
+}
+
+// Sin la opción de Odoo, el botón no tendría qué abrir.
+.o_wsale_product_page:not(.ecom-zoomable) .o_dcasa_ver_grande {
+    display: none;
+}
+
+// El visor: los gestos con el dedo los maneja foto_grande.js (no el navegador) y la X se toca con el dedo.
+.o_wsale_image_viewer_image {
+    touch-action: none;
+}
+
+// Por encima de la foto acercada (Odoo deja la cabecera del visor en z-index 1, igual que la foto, y de 40 px).
+.o_wsale_image_viewer .o_wsale_image_viewer_header {
+    position: relative;
+    z-index: 3;
+    height: auto;
+    padding: .5rem;
+    pointer-events: none;
+
+    > div {
+        padding: 0 !important;
+        pointer-events: auto;
+    }
+
+    // La X (lo que Odoo escucha es su <span>): un círculo oscuro de 44 px, visible también sobre una foto blanca.
+    .fa-times {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+        color: $bc-bg;
+        background: rgba($bc-fg, .85);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Opiniones en la ficha (lote 2 de la web): solo las publicadas por Gerencia (views/opiniones_templates.xml).
+// ---------------------------------------------------------------------------
+.o_dcasa_ficha_valoracion {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    margin: -.4rem 0 .6rem;
+    font-size: .875rem;
+    color: $bc-fg;
+    text-decoration: none;
+
+    &:hover span,
+    &:focus-visible span {
+        text-decoration: underline;
+    }
+}
+
+.o_dcasa_ficha_opiniones {
+    padding: 2.5rem 0;
+    border-top: 1px solid $bc-line;
+}
+
+.o_dcasa_ficha_opiniones_cabeza {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem 1.5rem;
+    margin-bottom: 1.25rem;
+
+    .o_dcasa_kicker {
+        margin: 0;
+    }
+}
+
+.o_dcasa_ficha_opiniones_nota {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    margin: 0;
+    color: $bc-muted;
+}
+
+.o_dcasa_ficha_opiniones_promedio {
+    font-family: $bc-letra;
+    font-weight: 700;
+    font-size: 2rem;
+    line-height: 1;
+    color: $bc-fg;
+}
+
+.o_dcasa_ficha_opiniones_lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+
+    @media (min-width: 768px) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    @media (min-width: 1200px) {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.o_dcasa_ficha_opinion {
+    background: $bc-surface;
+    border: 1px solid $bc-line;
+    border-radius: $bc-r-md;
+    padding: 1rem 1.25rem;
+}
+
+.o_dcasa_ficha_opinion_cabeza {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .75rem;
+    margin-bottom: .5rem;
+    color: $bc-fg;
+}
+
+.o_dcasa_ficha_opinion_cuando {
+    font-size: .8125rem;
+    color: $bc-muted;
+}
+
+.o_dcasa_ficha_opinion_texto {
+    margin: 0;
+    color: $bc-fg;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.o_dcasa_ficha_opiniones_aviso {
+    margin: 1rem 0 0;
+    font-size: .8125rem;
+    color: $bc-muted;
+}
+
+// El rango de precio de la tienda: la barra entre los dos puntos, en de acento (relleno); los puntos, claro con el borde
+// oscuro (un control: el de acento no es borde).
+#wrapwrap .form-range {
+    &::-webkit-slider-thumb {
+        background-color: $bc-bg;
+        border: 2px solid $bc-fg;
+    }
+
+    &::-moz-range-thumb {
+        background-color: $bc-bg;
+        border: 2px solid $bc-fg;
+    }
+}

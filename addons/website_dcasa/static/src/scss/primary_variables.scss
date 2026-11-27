@@ -1,0 +1,96 @@
+// Tommalo — marca provisional neutra: blanco, grises y un acento oscuro. Se carga como la paleta por defecto del sitio:
+// desde el editor (Sitio web > Editar > Tema) se puede ajustar sin tocar este archivo.
+//
+// PENDIENTE: colores de Tommalo (el cliente todavía no decidió logo ni colores; docs/MARCA_TOMMALO.md). Es el ÚNICO
+// lugar donde se cambia la paleta del sitio: dcasa.scss y los demás módulos toman estos valores (variables $bc-*).
+//
+// Los cinco colores de Odoo y su papel:
+//   o-color-1 gris claro  #D4D4D4 — el botón principal (relleno). NUNCA texto ni borde: sobre el fondo da 1.5.
+//   o-color-2 gris medio  #BDBDBD — bandas e insignias (relleno). Tampoco texto ni borde.
+//   o-color-3 blanco      #FFFFFF — tarjetas y bandas suaves.
+//   o-color-4 casi blanco #FAFAFA — el fondo de la página.
+//   o-color-5 casi negro  #262626 — texto, titulares, enlaces e íconos (>12 sobre el fondo).
+//
+// Como el gris claro es el «primary» de Odoo, los enlaces NO pueden quedarse con el color de Odoo por defecto (el
+// primary): cada combinación pone su enlace en el color de texto. Y la letra de los botones de Odoo la decide su
+// contraste automático: dcasa.scss la fija en el color de texto encima del relleno (nunca blanca).
+//
+// Combinaciones de color de Odoo con esta paleta:
+//   o_cc1 fondo · o_cc2 blanco · o_cc3 gris medio (letra oscura) · o_cc4 gris claro (letra oscura) · o_cc5 oscuro
+
+$o-color-palettes: map-merge($o-color-palettes, (
+    'tommalo': (
+        'o-color-1': #D4D4D4, // accent: relleno de acción (PENDIENTE: colores de Tommalo)
+        'o-color-2': #BDBDBD, // relleno de las bandas
+        'o-color-3': #FFFFFF, // surface
+        'o-color-4': #FAFAFA, // bg: el fondo de la página
+        'o-color-5': #262626, // fg: el color de la letra
+
+        'o-cc1-text': 'o-color-5',
+        'o-cc1-headings': 'o-color-5',
+        'o-cc1-link': 'o-color-5',
+        'o-cc2-text': 'o-color-5',
+        'o-cc2-headings': 'o-color-5',
+        'o-cc2-link': 'o-color-5',
+        'o-cc3-text': 'o-color-5',
+        'o-cc3-headings': 'o-color-5',
+        'o-cc3-link': 'o-color-5',
+        'o-cc3-btn-primary': 'o-color-1',
+        'o-cc3-btn-secondary': 'o-color-4',
+        'o-cc4-text': 'o-color-5',
+        'o-cc4-headings': 'o-color-5',
+        'o-cc4-link': 'o-color-5',
+        'o-cc4-btn-primary': 'o-color-5',
+        'o-cc4-btn-secondary': 'o-color-4',
+        'o-cc5-text': 'o-color-4',
+        'o-cc5-headings': 'o-color-4',
+        'o-cc5-link': 'o-color-4',
+
+        // Cabecera, pie y copyright en el fondo de la página.
+        'menu': 1,
+        'footer': 1,
+        'copyright': 1,
+    ),
+));
+
+// Montserrat autoalojada (static/src/scss/fuentes.scss; tipografía provisional, PENDIENTE: la de Tommalo): sin 'url', website.scss de Odoo
+// no hace @import de fonts.googleapis.com. Odoo trae su propia entrada «Montserrat» con la URL de Google: esta la reemplaza
+// entera.
+$o-theme-font-configs: map-merge($o-theme-font-configs, (
+    'Montserrat': (
+        'family': ('Montserrat', sans-serif),
+    ),
+));
+
+$o-website-values-palettes: (
+    (
+        'color-palettes-name': 'tommalo',
+        'font': 'Montserrat',
+        'headings-font': 'Montserrat',
+        'h2-font': 'Montserrat',
+        'h3-font': 'Montserrat',
+        'h4-font': 'Montserrat',
+        'h5-font': 'Montserrat',
+        'h6-font': 'Montserrat',
+        'navbar-font': 'Montserrat',
+        'buttons-font': 'Montserrat',
+
+        // Botones en pastilla y campos de 14 px de radio . En rem: Bootstrap resta
+        // el ancho del borde (en rem) a estos radios y no mezcla unidades. 50rem es una pastilla en cualquier botón.
+        'btn-padding-x': 1.5rem,
+        'btn-padding-y-lg': .9rem,
+        'btn-padding-x-lg': 2rem,
+        'btn-border-radius': 50rem,
+        'btn-border-radius-sm': 50rem,
+        'btn-border-radius-lg': 50rem,
+        'input-border-radius': .875rem,
+        'input-border-radius-sm': .875rem,
+        'input-border-radius-lg': .875rem,
+
+        'header-template': 'default',
+        'header-links-style': 'default',
+        'logo-height': 2.5rem,
+        'footer-template': 'default',
+        'footer-scrolltop': true,
+    ),
+);

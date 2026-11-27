@@ -1,0 +1,650 @@
+// Las herramientas del modelo = las de Odoo (docs/JUAN.md): el Worker pide la lista
+// (`GET /herramientas`), se la pasa al modelo tal cual y ejecuta con `POST /herramienta`.
+// Además, una local: `enviar_foto_producto(codigo)`.
+//
+// Todo lo que vuelve de Odoo pasa por `procesarResultado` antes de llegar al modelo:
+//   · se quita cualquier número de existencias (el modelo solo conoce la etiqueta);
+//   · se agrega `precio_texto` («$499.00 + ITBMS») para que copie el precio ya correcto;
+//   · se anotan los precios y cifras conocidas (la guardia de salida las usa para rechazar inventos);
+//   · se recuerdan las fotos que devolvió `ver_producto`, que son las únicas que `enviar_foto_producto` puede enviar;
+//   · de `cotizar_envio` / `agregar_envio` se toma su `respaldo_envio` (cada lugar con sus cifras y su papel, y el total de la
+//     cotización si se sumó el envío): solo eso deja decir el costo del envío en este turno. El modelo no lo ve.
+//   · de `enlace_de_ubicacion` se toma `boton_whatsapp` (Odoo lo pone en el WhatsApp de la API oficial): con él, la respuesta lleva
+//     al final el botón nativo «Enviar ubicación» (`RegistroDelTurno.pedirUbicacion`). Es una señal para el Worker: el modelo no la ve.
+//     Con `para_otra_casa` (un parámetro del Worker: el pedido va a otra persona u otro lugar) no hay botón.
+
+import { jsonSchema, tool, type ToolSet } from "ai";
+import type { DefHerramienta, OdooApi, ResultadoHerramienta } from "../odoo/cliente";
+import type { MedioSaliente } from "../canales/tipos";
+import { extraerMontos, parseMonto, type LugarDeEnvio } from "../dcasa/salvaguardas";
+import { sinAcentos } from "../dcasa/texto";
+
+/** Lo que se aprende durante UN turno del modelo. */
+export class RegistroDelTurno {
+  /** Precios de producto vistos (llevan «+ ITBMS»). */
+  readonly preciosProducto = new Set<number>();
+  /** Toda cifra respaldada por una herramienta. */
+  readonly cifras = new Set<number>();
+  /** Números que aparecen escritos dentro del texto de un resultado («cambios dentro de 8 días»): respaldan plazos y porcentajes. */
+  readonly numerosEnTexto = new Set<number>();
+  readonly fotos = new Map<string, { url: string; nombre?: string }>();
+  /** Las otras fotos (la galería) de cada producto que devolvió `ver_producto` en este turno: de ahí salen las «más fotos». */
+  readonly galerias = new Map<string, { url: string; nombre?: string }[]>();
+  readonly medios: MedioSaliente[] = [];
+  readonly llamadas: { nombre: string; ok: boolean }[] = [];
+  pasoAVendedora = false;
+  textoDeVendedora: string | null = null;
+  readonly pines: string[] = [];
+  /** buscar_conocimiento sin respuesta (vacía o floja). */
+  busquedasFlojas = 0;
+  /** Consultas que SÍ trajeron algo útil (conocimiento, Socios, horario, catálogo con resultados). */
+  consultasUtiles = 0;
+  /** El modelo ya llamó registrar_pregunta_sin_respuesta en este turno. */
+  preguntaRegistrada = false;
+  /** Ya hay una cotización en PDF en la respuesta de este turno (solo va una por respuesta). */
+  cotizacionPreparada = false;
+  /** Odoo dijo en este turno que hay productos así que se venden sin estar publicados en la tienda en línea: negarlos es falso. */
+  haySinPublicar = false;
+  /** Lo que la herramienta de envíos respaldó en este turno: cada lugar con sus cifras y su papel, y el total si sumó el envío. */
+  readonly envio: { lugares: LugarDeEnvio[]; total: number | null } = { lugares: [], total: null };
+  /**
+   * `enlace_de_ubicacion` devolvió `boton_whatsapp: true` en este turno: después del texto sale el botón «Enviar ubicación» (si el
+   * canal lo tiene: `Capacidades.pedirUbicacion`).
+   */
+  pedirUbicacion = false;
+  /**
+   * Las `frase_para_el_cliente` que devolvieron las herramientas en este turno: las escribió Odoo para el cliente, así que la guardia de
+   * salida deja sus íconos tal cual cuando el modelo las copia (`ContextoRevision.frasesDeLaTienda`).
+   */
+  readonly frases: string[] = [];
+}
+
+/**
+ * Un parámetro del WORKER (no de Odoo) en `enlace_de_ubicacion`: el pedido va a otra casa (un regalo, la abuela, el trabajo). Entonces no
+ * sale el botón «Enviar ubicación» (mandaría la ubicación del teléfono, que no es la de esa casa) y el modelo le dice a la clienta que en la
+ * página busque la barriada o mueva el mapa hasta esa casa. El Worker lo agrega al esquema de Odoo y lo quita antes de llamar, salvo que
+ * Odoo ya lo declare (entonces le llega tal cual).
+ */
+export const PARAMETRO_OTRA_CASA = "para_otra_casa";
+const INSTRUCCION_OTRA_CASA =
+  "Es para otra casa: no le digas que toque «Mi ubicación» (sería la del teléfono). Dile, corto, que abra el enlace y busque la barriada o mueva el mapa hasta esa casa, y que escriba ahí su número de casa.";
+
+/** ¿Odoo ya declara ese parámetro en la herramienta? */
+function declara(def: DefHerramienta, parametro: string): boolean {
+  return esObjeto(def.parametros) && esObjeto(def.parametros.properties) && parametro in def.parametros.properties;
+}
+
+/** El esquema de `enlace_de_ubicacion` con `para_otra_casa` (si Odoo no lo trae). */
+function esquemaConOtraCasa(def: DefHerramienta): unknown {
+  if (declara(def, PARAMETRO_OTRA_CASA)) return def.parametros;
+  const base = esObjeto(def.parametros) ? def.parametros : {};
+  const propiedades = esObjeto(base.properties) ? base.properties : {};
+  return {
+    ...base,
+    type: "object",
+    properties: {
+      ...propiedades,
+      [PARAMETRO_OTRA_CASA]: { type: "boolean", description: "true si el pedido va a otra persona u otro lugar (un regalo, la abuela, el trabajo), no a donde está ella ahora." },
+    },
+  };
+}
+
+/**
+ * `boton_whatsapp` de `enlace_de_ubicacion`: se anota en el registro del turno y se quita de lo que ve el modelo (el botón lo pone el
+ * Worker; el modelo solo manda el enlace con su frase). Para otra casa no hay botón, y el modelo recibe cómo decírselo.
+ */
+export function tomarBotonDeUbicacion(resultado: unknown, reg: RegistroDelTurno, otraCasa = false): unknown {
+  if (!esObjeto(resultado)) return resultado;
+  const { boton_whatsapp: boton, ...resto } = resultado;
+  if (boton === true && !otraCasa) reg.pedirUbicacion = true;
+  if (!otraCasa) return resto;
+  return { ...resto, instruccion: [typeof resto.instruccion === "string" ? resto.instruccion : "", INSTRUCCION_OTRA_CASA].filter(Boolean).join(" ") };
+}
+
+/** Las herramientas de envíos de Odoo: lo que devuelven respalda el costo del envío en la guardia de salida. */
+export const HERRAMIENTAS_DE_ENVIO: ReadonlySet<string> = new Set(["cotizar_envio", "agregar_envio"]);
+
+/** Herramientas de LECTURA: dan lo mismo para los mismos argumentos durante un rato, así que se guardan 60 s. Nunca saldo_puntos ni las de escritura. */
+export const HERRAMIENTAS_DE_LECTURA: ReadonlySet<string> = new Set([
+  "buscar_productos",
+  "ver_producto",
+  "listar_categorias",
+  "reglas_socios",
+  "horario_y_tienda",
+  "buscar_conocimiento",
+]);
+
+export interface CacheDeHerramientas {
+  obtener(clave: string): unknown | undefined;
+  guardar(clave: string, valor: unknown): void;
+}
+
+/** Argumentos con las llaves ordenadas: {a,b} y {b,a} son la misma consulta. */
+export function argumentosEstables(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(argumentosEstables).join(",")}]`;
+  if (v && typeof v === "object") {
+    return `{${Object.keys(v as object)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${argumentosEstables((v as Record<string, unknown>)[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(v) ?? "null";
+}
+
+/**
+ * ¿La búsqueda en la base de conocimiento salió floja? Sin resultados, `encontrado: false` o una puntuación baja.
+ * (El CRM de origen subía al modelo inteligente cuando `lastSearchKbScore < 0.5`.) Tolera la forma exacta que mande Odoo.
+ */
+export function busquedaFlojaDe(resultado: unknown): boolean {
+  if (resultado === null || resultado === undefined) return true;
+  if (Array.isArray(resultado)) return resultado.length === 0;
+  if (typeof resultado === "string") return resultado.trim().length === 0;
+  if (!esObjeto(resultado)) return false;
+  if (resultado.encontrado === false || resultado.sin_resultados === true) return true;
+  for (const k of ["resultados", "fragmentos", "documentos", "items", "resultado", "articulos"]) {
+    const lista = resultado[k];
+    if (Array.isArray(lista)) {
+      if (lista.length === 0) return true;
+      const puntos = lista.map((x) => (esObjeto(x) ? [x.score, x.puntaje, x.similitud, x.relevancia].find((n) => typeof n === "number") : undefined)).filter((n): n is number => typeof n === "number");
+      return puntos.length > 0 && Math.max(...puntos) < 0.5;
+    }
+  }
+  return false;
+}
+
+const CLAVES_DE_EXISTENCIAS = /^(existencias?|stock|qty_available|free_qty|virtual_available|incoming_qty|outgoing_qty|cantidad(_disponible)?|unidades(_disponibles)?|inventario|disponible_cantidad|en_bodega|saldo_stock)$/i;
+const CLAVES_DE_PRECIO = /precio|price|importe/i;
+const CLAVES_DE_FOTO = ["foto", "foto_url", "imagen", "imagen_url", "image", "image_url", "url_foto", "url_imagen"];
+const CLAVES_DE_URL = /^(url|foto|imagen|image|galeria|enlace|link)|(_url|_foto|_imagen)$/i;
+const CLAVES_SIN_CIFRAS = /(^|_)(id|ids|conversacion_id|partner_id|product_id|template_id)$/i;
+
+const esObjeto = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const aTexto = (v: unknown) => (typeof v === "string" ? v : "");
+
+export function formatearPrecio(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
+export function resolverUrl(url: string, sitio: string | undefined): string | null {
+  const u = url.trim();
+  if (/^https:\/\//i.test(u)) return u;
+  if (u.startsWith("/") && !u.startsWith("//") && sitio) return `${sitio.replace(/\/$/, "")}${u}`;
+  return null;
+}
+
+/** Recorre el resultado: quita existencias, agrega `precio_texto`, recoge cifras y fotos. Devuelve una copia. */
+export function procesarResultado(
+  valor: unknown,
+  reg: RegistroDelTurno,
+  sitio: string | undefined,
+  clave = "",
+  enPrecio = false,
+  sinItbmsHeredado = false,
+): unknown {
+  if (Array.isArray(valor)) return valor.map((v) => procesarResultado(v, reg, sitio, clave, enPrecio, sinItbmsHeredado));
+
+  if (typeof valor === "number") {
+    if (Number.isFinite(valor) && !CLAVES_SIN_CIFRAS.test(clave)) {
+      reg.cifras.add(valor);
+      if (enPrecio) reg.preciosProducto.add(valor);
+    }
+    return valor;
+  }
+
+  if (typeof valor === "string") {
+    for (const m of extraerMontos(valor)) {
+      reg.cifras.add(m.valor);
+      if (enPrecio) reg.preciosProducto.add(m.valor);
+    }
+    // Direcciones de fotos y rutas llevan números que no son datos (ids): no cuentan.
+    if (!CLAVES_DE_URL.test(clave) && !/^(?:https?:)?\/|^data:/i.test(valor.trim())) for (const n of cifrasDeTexto(valor)) reg.numerosEnTexto.add(n);
+    return valor;
+  }
+
+  if (!esObjeto(valor)) return valor;
+
+  const salida: Record<string, unknown> = {};
+  // Un producto sin ITBMS (`mas_itbms: false`): sus precios (también los de sus variantes) son cifras conocidas, pero no se
+  // marcan para «+ ITBMS».
+  const sinItbms = sinItbmsHeredado || valor.mas_itbms === false;
+  for (const [k, v] of Object.entries(valor)) {
+    // El modelo nunca ve un número de existencias, aunque Odoo lo mande por error.
+    if (CLAVES_DE_EXISTENCIAS.test(k) && (typeof v === "number" || (typeof v === "string" && /^\s*\d+([.,]\d+)?\s*$/.test(v)))) continue;
+    salida[k] = procesarResultado(v, reg, sitio, k, (enPrecio || CLAVES_DE_PRECIO.test(k)) && !sinItbms, sinItbms);
+  }
+
+  // Un producto: código + foto. Es lo único que `enviar_foto_producto` puede mandar.
+  const codigo = aTexto(valor.codigo).trim();
+  if (codigo) {
+    let url: string | null = null;
+    for (const c of CLAVES_DE_FOTO) {
+      if (typeof valor[c] === "string") {
+        url = resolverUrl(valor[c] as string, sitio);
+        if (url) break;
+      }
+    }
+    if (!url && Array.isArray(valor.galeria)) {
+      for (const g of valor.galeria) {
+        const cand = typeof g === "string" ? g : esObjeto(g) ? aTexto(g.url) : "";
+        url = cand ? resolverUrl(cand, sitio) : null;
+        if (url) break;
+      }
+    }
+    if (url) reg.fotos.set(codigo.toUpperCase(), { url, nombre: aTexto(valor.nombre) || undefined });
+    if (Array.isArray(valor.galeria)) {
+      const nombre = aTexto(valor.nombre) || undefined;
+      const otras: { url: string; nombre?: string }[] = [];
+      for (const g of valor.galeria) {
+        const cand = typeof g === "string" ? g : esObjeto(g) ? aTexto(g.url) : "";
+        const u = cand ? resolverUrl(cand, sitio) : null;
+        if (u && !otras.some((o) => o.url === u)) otras.push({ url: u, nombre });
+      }
+      if (otras.length > 0) reg.galerias.set(codigo.toUpperCase(), otras);
+    }
+  }
+
+  // «$499.00 + ITBMS» ya armado, para que el modelo lo copie en vez de escribirlo.
+  const precio = valor.precio;
+  if (typeof precio === "number" && Number.isFinite(precio) && !sinItbms && salida.precio_texto === undefined) {
+    salida.precio_texto = `${formatearPrecio(precio)} + ITBMS`;
+    reg.preciosProducto.add(precio);
+  }
+  return salida;
+}
+
+const LIMITE_JSON = 20_000;
+
+/** Un resultado enorme no cabe en el contexto: se recortan las listas más largas. */
+export function acotar(valor: unknown): unknown {
+  let actual = valor;
+  for (let i = 0; i < 8 && JSON.stringify(actual).length > LIMITE_JSON; i++) {
+    actual = recortarLaMasLarga(actual);
+  }
+  return actual;
+}
+
+function recortarLaMasLarga(v: unknown): unknown {
+  if (Array.isArray(v)) return v.length > 1 ? v.slice(0, Math.ceil(v.length / 2)) : v;
+  if (!esObjeto(v)) return v;
+  let mayor: string | null = null;
+  let largo = -1;
+  for (const [k, x] of Object.entries(v)) {
+    const l = Array.isArray(x) || esObjeto(x) ? JSON.stringify(x).length : 0;
+    if (l > largo) {
+      largo = l;
+      mayor = k;
+    }
+  }
+  if (mayor === null) return v;
+  return { ...v, [mayor]: recortarLaMasLarga(v[mayor]) };
+}
+
+export interface OpcionesHerramientas {
+  odoo: OdooApi;
+  defs: DefHerramienta[];
+  conversacionId: () => number | null;
+  registro: RegistroDelTurno;
+  sitio?: string;
+  /** Celular de la conversación (WhatsApp): `saldo_puntos` solo se consulta con ese. */
+  celularDeLaConversacion?: string;
+  /** Fotos de turnos anteriores (código → url). */
+  fotoPrevia: (codigo: string) => { url: string; nombre?: string } | undefined;
+  /** Direcciones de las fotos que ya se le mandaron a este cliente: «más fotos» no repite ninguna. */
+  fotosYaEnviadas?: () => ReadonlySet<string>;
+  /** true = Odoo no contesta en esta pasada: las herramientas fallan al instante en vez de esperar. */
+  omitir?: () => boolean;
+  /** Caché de 60 s de las herramientas de LECTURA (solo de esta conversación). */
+  cache?: CacheDeHerramientas;
+  /** Quién es esta conversación (`canal:id`): va en la clave de la caché, para que jamás se mezclen datos de dos personas. */
+  identidad?: string;
+  /** Se llama justo antes de preguntarle a Odoo (para mostrar «escribiendo…» mientras tanto). */
+  alEmpezar?: () => void;
+  /** Lo último que escribió el cliente (texto plano): `crear_oportunidad` solo anota la zona y el «para cuándo» que están ahí. */
+  textoDelCliente?: () => string;
+  /**
+   * La respuesta no puede llevar archivos (la respuesta privada a un comentario: Meta deja UN mensaje de texto): no se ofrecen las
+   * herramientas que mandan una foto o un PDF (`enviar_foto_producto`, `cotizar`, `agregar_envio`).
+   */
+  sinArchivos?: boolean;
+}
+
+/** Las herramientas cuya respuesta sale con un archivo (foto o PDF): no se ofrecen cuando la respuesta solo puede ser texto. */
+export const HERRAMIENTAS_CON_ARCHIVO: ReadonlySet<string> = new Set(["enviar_foto_producto", "cotizar", "agregar_envio"]);
+
+/**
+ * Un turno puede correr el modelo dos veces (`sinTexto`, pasada de corrección): dentro de UN turno, la misma escritura con los mismos
+ * argumentos va a Odoo una sola vez (la segunda recibe la misma respuesta), `pasar_a_vendedora` una sola vez sea cual sea el motivo,
+ * y a lo más estas escrituras en total (issue #24). Un fallo pasajero (Odoo no contestó) no se recuerda: se puede intentar otra vez.
+ */
+export const MAX_ESCRITURAS_POR_TURNO = 8;
+
+/** Las respuestas de «no pude consultar el sistema ahora» (Odoo no contestó): no se recuerdan como una escritura hecha. */
+const FALLOS_PASAJEROS = new WeakSet<object>();
+
+const MAX_FOTOS_POR_RESPUESTA = 3;
+/** Cuántas fotos nuevas salen cada vez que el cliente pide «más fotos». */
+const FOTOS_ADICIONALES_POR_PEDIDO = 3;
+
+/** Extrae el texto que `pasar_a_vendedora` pide decirle al cliente. */
+export function textoDeLaHerramienta(resultado: unknown): string | null {
+  if (typeof resultado === "string") return resultado.trim() || null;
+  if (!esObjeto(resultado)) return null;
+  // `texto_para_el_cliente` es la clave que publica Odoo (addons/dcasa_conversaciones, `_pasar_a_vendedora`); las demás, por tolerancia.
+  for (const k of ["texto_para_el_cliente", "texto", "mensaje", "texto_para_cliente", "texto_cliente", "decir", "respuesta", "texto_sugerido"]) {
+    const v = resultado[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+const cifraOnula = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+
+/** Un lugar de `respaldo_envio` como lo usa la guardia, o null si no trae nombres ni cifras que sirvan. */
+function lugarDeEnvio(v: unknown): LugarDeEnvio | null {
+  if (!esObjeto(v)) return null;
+  const nombres = Array.isArray(v.nombres) ? v.nombres.filter((n): n is string => typeof n === "string").map((n) => sinAcentos(n).replace(/\s+/g, " ").trim()).filter(Boolean) : [];
+  const cargos = Array.isArray(v.cargos)
+    ? v.cargos.flatMap((c) => (esObjeto(c) && typeof c.nombre === "string" && cifraOnula(c.monto) !== null ? [{ nombre: sinAcentos(c.nombre).trim(), monto: c.monto as number }] : []))
+    : [];
+  return {
+    nombres,
+    normal: cifraOnula(v.normal),
+    final: cifraOnula(v.final),
+    ahorro: cifraOnula(v.ahorro),
+    gratis: v.gratis === true,
+    condicional: v.condicional === true,
+    minimo: cifraOnula(v.minimo),
+    compra: cifraOnula(v.compra),
+    cargos,
+    llevaItbms: v.lleva_itbms === true,
+  };
+}
+
+/**
+ * `respaldo_envio` (de `cotizar_envio` y `agregar_envio`): `{lugares: [{nombres, normal, final, ahorro, gratis, condicional, minimo, compra,
+ * cargos, lleva_itbms}], total}`, armado por Odoo con el motor de la tarifa y de la promoción. Se anota en el registro del turno y se quita
+ * de lo que ve el modelo (es para la guardia, no para él).
+ */
+export function tomarRespaldoDeEnvio(resultado: unknown, reg: RegistroDelTurno): unknown {
+  if (!esObjeto(resultado) || !("respaldo_envio" in resultado)) return resultado;
+  const { respaldo_envio: respaldo, ...resto } = resultado;
+  if (esObjeto(respaldo)) {
+    if (Array.isArray(respaldo.lugares)) {
+      for (const l of respaldo.lugares) {
+        const lugar = lugarDeEnvio(l);
+        if (lugar) reg.envio.lugares.push(lugar);
+      }
+    }
+    const total = cifraOnula(respaldo.total);
+    if (total !== null) reg.envio.total = total;
+  }
+  return resto;
+}
+
+/**
+ * ¿Odoo dijo que lo que pide el cliente SÍ se trabaja aunque no esté publicado en la tienda en línea? (`hay_sin_publicar` o el aviso
+ * `sin_publicar` de buscar_productos y ver_producto; el «no» `sin_publicar` de cotizar). Incidente del 2026-11-13: Juan negó unos
+ * productos que se venden pero no están publicados, y el cliente se fue. Con esto la guardia de salida no deja pasar un «no lo manejamos».
+ */
+export function haySinPublicarEn(nombre: string, resultado: unknown): boolean {
+  if (!esObjeto(resultado)) return false;
+  if (nombre === "cotizar") return resultado.motivo === "sin_publicar";
+  if (nombre === "buscar_productos" || nombre === "ver_producto") return resultado.estado === "hay_sin_publicar" || esObjeto(resultado.sin_publicar);
+  return false;
+}
+
+/** Procesa el resultado para el modelo y anota si la consulta sirvió o salió floja. */
+function anotarConsulta(nombre: string, resultado: unknown, reg: RegistroDelTurno, sitio: string | undefined): unknown {
+  if (haySinPublicarEn(nombre, resultado)) reg.haySinPublicar = true;
+  if (esObjeto(resultado) && typeof resultado.frase_para_el_cliente === "string" && resultado.frase_para_el_cliente.trim()) reg.frases.push(resultado.frase_para_el_cliente);
+  if (nombre === "buscar_conocimiento" && busquedaFlojaDe(resultado)) {
+    reg.busquedasFlojas++;
+    // Sin respuesta en la base de conocimiento: el modelo recibe la orden de NO improvisar, junto con lo poco que haya salido.
+    return {
+      sin_respuesta: true,
+      instruccion:
+        "La base de conocimiento no tiene respuesta para esto. NO la inventes ni la deduzcas por parecido. Dile al cliente que una vendedora lo confirma, " +
+        "llama a registrar_pregunta_sin_respuesta con su pregunta y, si hay interés de compra, también a crear_oportunidad.",
+      detalle: procesarResultado(resultado, reg, sitio),
+    };
+  }
+  if (HERRAMIENTAS_DE_LECTURA.has(nombre) && !(nombre === "buscar_productos" && busquedaFlojaDe(resultado))) reg.consultasUtiles++;
+  // El costo de un envío que sí se encontró es una respuesta útil (no hace falta anotar la pregunta como «sin respuesta»).
+  if (nombre === "cotizar_envio" && esObjeto(resultado) && (resultado.estado === "precio" || resultado.estado === "varios")) reg.consultasUtiles++;
+  return procesarResultado(resultado, reg, sitio);
+}
+
+/**
+ * Una consulta que hizo el SISTEMA antes de llamar al modelo (el envío que Odoo cotizó con la ubicación que compartió la clienta:
+ * motor/ubicacion.ts). Pasa por el mismo camino que si la hubiera hecho el modelo: el `respaldo_envio` queda en el registro del turno
+ * para la guardia de salida (y se quita de lo que ve el modelo) y las cifras quedan anotadas. Devuelve lo que el modelo puede ver.
+ */
+export function consultaPrevia(nombre: string, resultado: unknown, reg: RegistroDelTurno, sitio: string | undefined): unknown {
+  const sinRespaldo = HERRAMIENTAS_DE_ENVIO.has(nombre) ? tomarRespaldoDeEnvio(resultado, reg) : resultado;
+  return acotar(anotarConsulta(nombre, sinRespaldo, reg, sitio));
+}
+
+/**
+ * `cotizar` devuelve el PDF como `documento` (URL firmada de Odoo, de vida corta). Ese enlace NO le llega al modelo —no lo debe
+ * pegar en el chat—: pasa a los medios de la respuesta y sale como archivo junto con ella. Solo se acepta una dirección https
+ * de un PDF; cualquier otra cosa se ignora y el modelo lo sabe (no dirá que va adjunto algo que no va).
+ */
+function tomarDocumentoDeLaCotizacion(resultado: unknown, reg: RegistroDelTurno, reemplaza = false): unknown {
+  if (!esObjeto(resultado)) return resultado;
+  const { documento, ...resto } = resultado;
+  if (!esObjeto(documento)) return resultado;
+  const url = aTexto(documento.url).trim();
+  if (!/^https:\/\//i.test(url) || reg.medios.some((m) => m.url === url)) {
+    return { ...resto, pdf_adjunto: false, nota: "No pude preparar el PDF: dile al cliente el total y que una vendedora le manda el documento." };
+  }
+  // `agregar_envio` vuelve a armar la MISMA cotización con el envío: si en esta respuesta ya iba su PDF sin el envío, sale solo el nuevo.
+  if (reemplaza) for (let i = reg.medios.length - 1; i >= 0; i--) if (reg.medios[i].tipo === "documento") reg.medios.splice(i, 1);
+  reg.medios.push({ tipo: "documento", url, nombre: aTexto(documento.nombre) || "Cotizacion.pdf", mime: aTexto(documento.mime) || "application/pdf", sinCopia: true });
+  reg.cotizacionPreparada = true;
+  return { ...resto, pdf_adjunto: true };
+}
+
+const PALABRAS_SIN_PESO = new Set(["para", "por", "con", "del", "los", "las", "una", "uno", "que", "esta", "este", "estos", "entre", "sobre", "hacia"]);
+
+function palabrasDe(texto: string): string[] {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9ñ]+/)
+    .filter((p) => p.length >= 3 || /\d/.test(p));
+}
+
+/** ¿Lo que el modelo anota (zona, «para cuándo») está en lo que el cliente escribió? Todas sus palabras con peso deben aparecer. */
+export function loDijoElCliente(valor: string, dicho: string): boolean {
+  const pedidas = palabrasDe(valor).filter((p) => !PALABRAS_SIN_PESO.has(p));
+  if (pedidas.length === 0) return false;
+  const reales = new Set(palabrasDe(dicho));
+  return pedidas.every((p) => reales.has(p));
+}
+
+export function construirHerramientas(op: OpcionesHerramientas): ToolSet {
+  const { odoo, registro } = op;
+  const tools: ToolSet = {};
+
+  // El modelo puede pedir varias herramientas en un mismo paso y el SDK las corre a la vez. Las que ESCRIBEN en Odoo se turnan: todas tocan
+  // la MISMA conversación (oportunidad, etiqueta, nota...) y dos transacciones sobre la misma fila chocan en Postgres («could not serialize
+  // access due to concurrent update»): Odoo contestaba error y la herramienta fallaba al azar. Hallado con Odoo real (test/integracion).
+  let turno: Promise<unknown> = Promise.resolve();
+  const enTurno = <T>(trabajo: () => Promise<T>): Promise<T> => {
+    const mia = turno.then(trabajo, trabajo);
+    turno = mia.catch(() => undefined);
+    return mia;
+  };
+
+  // Las escrituras de este turno por su clave (ver MAX_ESCRITURAS_POR_TURNO), con lo que se le contestó al modelo la primera vez.
+  const escrituras = new Map<string, Promise<unknown>>();
+  const unaVezPorTurno = (nombre: string, ejecutar: (args: unknown) => Promise<unknown>) => (args: unknown): Promise<unknown> => {
+    if (HERRAMIENTAS_DE_LECTURA.has(nombre)) return ejecutar(args);
+    const clave = nombre === "pasar_a_vendedora" ? nombre : `${nombre}|${argumentosEstables(args)}`;
+    const anterior = escrituras.get(clave);
+    if (anterior && nombre === "pasar_a_vendedora") {
+      // Otra del mismo paso, todavía en camino: si sale bien, vale para las dos; si Odoo la rechaza, esta va con sus argumentos.
+      const otraVez = () => unaVezPorTurno(nombre, ejecutar)(args);
+      return anterior.then((v) => (esObjeto(v) && v.ok === true ? v : otraVez()), otraVez);
+    }
+    if (anterior) return anterior;
+    if (escrituras.size >= MAX_ESCRITURAS_POR_TURNO) {
+      return Promise.resolve({ ok: false, error: "Ya hiciste suficientes cambios en esta respuesta.", instruccion: "No llames más herramientas que escriban: responde al cliente con lo que tienes." });
+    }
+    const resultado = ejecutar(args);
+    escrituras.set(clave, resultado);
+    resultado.then(
+      (v) => {
+        // Un fallo pasajero no se recuerda. Y de `pasar_a_vendedora` (una sola por turno, con el motivo que sea) solo se recuerda
+        // la que salió bien: si Odoo la rechazó («Faltan datos: motivo»), la corregida tiene que llegar. Tampoco una respuesta que
+        // NO hizo el cambio (`sumado: false`, `ok: false`): después de arreglar lo que faltaba (p. ej. `agregar_envio` sin
+        // `cotizar_envio` antes), la misma llamada tiene que llegar a Odoo (revisión adversarial, segunda vuelta, M-4).
+        const salioBien = esObjeto(v) && v.ok === true;
+        const noLoHizo = esObjeto(v) && (!salioBien || (esObjeto(v.resultado) && (v.resultado.sumado === false || v.resultado.ok === false)));
+        if ((v && typeof v === "object" && FALLOS_PASAJEROS.has(v)) || (nombre === "pasar_a_vendedora" && !salioBien) || noLoHizo) escrituras.delete(clave);
+      },
+      () => escrituras.delete(clave),
+    );
+    return resultado;
+  };
+
+  for (const def of op.defs) {
+    if (def.nombre === "enviar_foto_producto") continue; // la local manda
+    if (op.sinArchivos && HERRAMIENTAS_CON_ARCHIVO.has(def.nombre)) continue;
+    tools[def.nombre] = tool({
+      description: def.descripcion,
+      inputSchema: jsonSchema((def.nombre === "enlace_de_ubicacion" ? esquemaConOtraCasa(def) : def.parametros) as never),
+      execute: unaVezPorTurno(def.nombre, async (args: unknown) => {
+        const argumentos = esObjeto(args) ? { ...args } : {};
+        // El pedido va a otra casa: sin botón «Enviar ubicación». El parámetro es del Worker: a Odoo no le llega si no lo declara.
+        const otraCasa = def.nombre === "enlace_de_ubicacion" && (argumentos[PARAMETRO_OTRA_CASA] === true || argumentos[PARAMETRO_OTRA_CASA] === "true");
+        if (def.nombre === "enlace_de_ubicacion" && !declara(def, PARAMETRO_OTRA_CASA)) delete argumentos[PARAMETRO_OTRA_CASA];
+        // Un cliente (o un mensaje manipulado) no puede pedir el saldo de otro número.
+        if (def.nombre === "saldo_puntos" && op.celularDeLaConversacion) argumentos.celular = op.celularDeLaConversacion;
+        if (def.nombre === "saldo_puntos" && typeof argumentos.pin === "string") registro.pines.push(argumentos.pin);
+        // La zona y el «para cuándo» van a la ficha y puntúan la temperatura de la oportunidad: solo valen si el cliente lo dijo.
+        if (def.nombre === "crear_oportunidad" && op.textoDelCliente) {
+          const dicho = op.textoDelCliente();
+          for (const campo of ["zona", "cuando"]) {
+            const valor = argumentos[campo];
+            if (valor !== undefined && !(typeof valor === "string" && loDijoElCliente(valor, dicho))) delete argumentos[campo];
+          }
+        }
+
+        // Lectura repetida (mismos argumentos, misma conversación, menos de 60 s): sin viaje a Odoo.
+        const clave =
+          op.cache && HERRAMIENTAS_DE_LECTURA.has(def.nombre) ? `${op.identidad ?? ""}|${def.nombre}|${argumentosEstables(argumentos)}` : null;
+        const guardado = clave ? op.cache!.obtener(clave) : undefined;
+        if (guardado !== undefined) {
+          registro.llamadas.push({ nombre: def.nombre, ok: true });
+          return { ok: true, resultado: acotar(anotarConsulta(def.nombre, guardado, registro, op.sitio)) };
+        }
+
+        // Solo va una cotización por respuesta: lo que el cliente cambie después se arma en su siguiente mensaje.
+        if (def.nombre === "cotizar" && registro.cotizacionPreparada) {
+          registro.llamadas.push({ nombre: def.nombre, ok: true });
+          return {
+            ok: true,
+            resultado: { creada: false, motivo: "ya_va_una", mensaje: "Ya va una cotización en esta respuesta. Si el cliente quiere cambiar algo, la armas en su siguiente mensaje." },
+          };
+        }
+
+        op.alEmpezar?.();
+        const llamar = async () => (op.omitir?.() ? ({ ok: false, resultado: undefined } as ResultadoHerramienta) : odoo.herramienta(def.nombre, argumentos, op.conversacionId()));
+        // Las consultas corren juntas (no escriben nada); las que escriben sobre la conversación, una tras otra.
+        const r = await (HERRAMIENTAS_DE_LECTURA.has(def.nombre) ? llamar() : enTurno(llamar));
+        registro.llamadas.push({ nombre: def.nombre, ok: r.ok });
+        if (!r.ok && r.rechazo) {
+          // Odoo contestó y explicó por qué no (código que no existe, falta elegir tamaño…): el modelo corrige o se lo dice al cliente.
+          return { ok: false, error: r.rechazo, instruccion: "Corrige la llamada con eso. Si no se puede, dile al cliente con honestidad lo que pasó y ofrécele una vendedora. No inventes el dato." };
+        }
+        if (!r.ok) {
+          const fallo = {
+            ok: false,
+            error: "No pude consultar el sistema ahora.",
+            instruccion: "Dile al cliente, con honestidad, que ahorita no pudiste consultarlo y ofrécele una vendedora. No inventes el dato.",
+          };
+          FALLOS_PASAJEROS.add(fallo);
+          return fallo;
+        }
+        if (def.nombre === "pasar_a_vendedora") {
+          registro.pasoAVendedora = true;
+          registro.textoDeVendedora = textoDeLaHerramienta(r.resultado);
+        }
+        if (def.nombre === "registrar_pregunta_sin_respuesta") registro.preguntaRegistrada = true;
+        if (clave) op.cache!.guardar(clave, r.resultado);
+        let resultado = def.nombre === "cotizar" ? tomarDocumentoDeLaCotizacion(r.resultado, registro) : r.resultado;
+        if (HERRAMIENTAS_DE_ENVIO.has(def.nombre)) resultado = tomarRespaldoDeEnvio(resultado, registro);
+        if (def.nombre === "agregar_envio") resultado = tomarDocumentoDeLaCotizacion(resultado, registro, true);
+        if (def.nombre === "enlace_de_ubicacion") resultado = tomarBotonDeUbicacion(resultado, registro, otraCasa);
+        return { ok: true, resultado: acotar(anotarConsulta(def.nombre, resultado, registro, op.sitio)) };
+      }),
+    });
+  }
+
+  if (op.sinArchivos) return tools;
+
+  tools.enviar_foto_producto = tool({
+    description:
+      "Envía al cliente la foto de un producto por este mismo chat. Úsala SOLO cuando el cliente pida ver el producto, y con un código que ya consultaste con ver_producto o buscar_productos. " +
+      "Si pide MÁS fotos de un producto cuya foto ya recibió, llámala con adicionales=true (después de ver_producto): manda otras de su galería, sin repetir. " +
+      "La foto sale junto con tu respuesta; no digas que ya la mandaste, di que se la envías.",
+    inputSchema: jsonSchema({
+      type: "object",
+      properties: {
+        codigo: { type: "string", description: "Código del producto, tal cual lo devolvió la herramienta." },
+        adicionales: { type: "boolean", description: "true = otras fotos de su galería (el cliente pidió más). Por defecto false: la foto principal." },
+      },
+      required: ["codigo"],
+      additionalProperties: false,
+    } as never),
+    execute: async (args: unknown) => {
+      const codigo = esObjeto(args) ? aTexto(args.codigo).trim().toUpperCase() : "";
+      const adicionales = esObjeto(args) && (args.adicionales === true || args.adicionales === "true");
+      if (adicionales) return enviarFotosAdicionales(codigo, op, registro);
+      const foto = registro.fotos.get(codigo) ?? op.fotoPrevia(codigo);
+      registro.llamadas.push({ nombre: "enviar_foto_producto", ok: !!foto });
+      if (!codigo || !foto) {
+        return { ok: false, error: "No tengo la foto de ese código. Consulta primero el producto con ver_producto." };
+      }
+      if (registro.medios.some((m) => m.url === foto.url)) return { ok: true, resultado: "Esa foto ya va en tu respuesta." };
+      if (registro.medios.length >= MAX_FOTOS_POR_RESPUESTA) {
+        return { ok: false, error: `Ya van ${MAX_FOTOS_POR_RESPUESTA} fotos en esta respuesta; ofrece mandar las demás después.` };
+      }
+      registro.medios.push({ tipo: "imagen", url: foto.url, nombre: foto.nombre, pie: foto.nombre });
+      return { ok: true, resultado: "La foto sale junto con tu respuesta." };
+    },
+  });
+
+  return tools;
+}
+
+/** «Más fotos»: hasta 3 de la galería que `ver_producto` devolvió en este turno, sin repetir ninguna que ya se le mandó al cliente. */
+function enviarFotosAdicionales(codigo: string, op: OpcionesHerramientas, registro: RegistroDelTurno) {
+  const galeria = registro.galerias.get(codigo);
+  registro.llamadas.push({ nombre: "enviar_foto_producto", ok: !!galeria });
+  if (!codigo || !galeria) {
+    return { ok: false, error: "Para mandar más fotos consulta primero el producto con ver_producto: ahí vienen las de su galería." };
+  }
+  const yaEnviadas = op.fotosYaEnviadas?.() ?? new Set<string>();
+  const principal = registro.fotos.get(codigo)?.url;
+  const nuevas = galeria.filter((f) => f.url !== principal && !yaEnviadas.has(f.url) && !registro.medios.some((m) => m.url === f.url));
+  if (nuevas.length === 0) return { ok: true, resultado: "Ya le mandaste todas las fotos que hay de ese producto: díselo con honestidad, no inventes otras." };
+  const cupo = Math.min(FOTOS_ADICIONALES_POR_PEDIDO, MAX_FOTOS_POR_RESPUESTA - registro.medios.length);
+  if (cupo <= 0) return { ok: false, error: `Ya van ${MAX_FOTOS_POR_RESPUESTA} fotos en esta respuesta; ofrece mandar las demás después.` };
+  const salen = nuevas.slice(0, cupo);
+  for (const f of salen) registro.medios.push({ tipo: "imagen", url: f.url, nombre: f.nombre });
+  const quedan = nuevas.length - salen.length;
+  return { ok: true, resultado: `Salen ${salen.length} foto(s) más junto con tu respuesta.${quedan > 0 ? ` Todavía quedan ${quedan}: si quiere más, vuelve a llamarla.` : " Con esas ya vio todas las que hay."}` };
+}
+
+/** Para las pruebas y el registro de cifras: números de un texto cualquiera (mensajes del cliente, respuestas previas). */
+export function cifrasDeTexto(texto: string): number[] {
+  const n: number[] = [];
+  for (const m of texto.matchAll(/\d+(?:[.,]\d+)*/g)) {
+    const v = parseMonto(m[0]);
+    if (Number.isFinite(v)) n.push(v);
+  }
+  return n;
+}

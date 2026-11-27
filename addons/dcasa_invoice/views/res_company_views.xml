@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Los textos que se imprimen al pie de facturas, cotizaciones y pedidos. Los redacta la
+         dueña; mientras estén vacíos no se imprime nada. -->
+    <record id="view_company_form_dcasa_invoice" model="ir.ui.view">
+        <field name="name">res.company.form.dcasa.invoice</field>
+        <field name="model">res.company</field>
+        <field name="inherit_id" ref="base.view_company_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Documentos Tommalo" name="dcasa_documentos">
+                    <group>
+                        <div class="text-muted mb-2" colspan="2">
+                            Textos cortos que salen al final de la factura, la cotización y el pedido.
+                            Si un campo está vacío, su bloque no se imprime.
+                        </div>
+                        <field name="dcasa_factura_garantia" placeholder="Por ejemplo: cuánto dura la garantía de fábrica y qué cubre."/>
+                        <field name="dcasa_factura_cambios" placeholder="Por ejemplo: en qué plazo y en qué condiciones se cambia un producto."/>
+                        <field name="dcasa_factura_terminos" placeholder="Por ejemplo: condiciones de apartado, entrega y pago."/>
+                    </group>
+                    <group string="Imprimir documentos">
+                        <div class="text-muted mb-2" colspan="2">
+                            El botón «Imprimir documentos» de la factura y del pedido junta en un solo PDF la
+                            nota de entrega, la factura del cliente y la copia de la empresa, en ese orden.
+                        </div>
+                        <field name="dcasa_ofrecer_impresion_pago"/>
+                    </group>
+                    <group string="Código QR y código público">
+                        <div class="text-muted mb-2" colspan="2">
+                            Cambian cómo se ve la factura, la cotización y la nota de entrega. Vienen apagados:
+                            enciéndelos solo cuando hayas aprobado cómo queda. Apagados, esos documentos salen
+                            exactamente como siempre.
+                        </div>
+                        <field name="dcasa_mostrar_qr_documentos"/>
+                        <field name="dcasa_mostrar_codigo_publico"/>
+                    </group>
+                    <group string="Nota de entrega para bodega">
+                        <div class="text-muted mb-2" colspan="2">
+                            Cada producto sale con su foto, la cantidad en número grande y en dibujitos, y una casilla
+                            para marcarlo, para que quien saca la mercancía no se confunda. Viene apagada: enciéndela
+                            cuando hayas aprobado cómo se ve. Apagada, la nota de entrega sale como siempre.
+                        </div>
+                        <field name="dcasa_entrega_facil"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

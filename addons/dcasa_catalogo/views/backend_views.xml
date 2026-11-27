@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Cotización: enviarla por WhatsApp, el canal donde de verdad se vende. -->
+    <record id="view_order_form_whatsapp" model="ir.ui.view">
+        <field name="name">sale.order.form.dcasa.whatsapp</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//button[@id='quotation_send_primary']" position="before">
+                <button name="action_dcasa_whatsapp" type="object" string="Enviar por WhatsApp"
+                        class="btn-primary" icon="fa-whatsapp" data-hotkey="w"
+                        invisible="state not in ('draft', 'sent', 'sale')"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Producto: medidas y precio en combo a la vista, junto a la categoría. -->
+    <record id="product_template_form_dcasa" model="ir.ui.view">
+        <field name="name">product.template.form.dcasa.catalogo</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <field name="categ_id" position="after">
+                <field name="dcasa_medidas" placeholder="Ancho × Fondo × Alto: 80 × 40 × 120 cm"/>
+                <field name="dcasa_combo" placeholder="Combo con colchón $349.99"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Presentación (el texto de la lista del dueño: unidades por caja, medidas…). Es de cada variante: en la
+         ficha del producto se ve cuando tiene una sola; con varias variantes, en cada variante y en su lista. -->
+    <record id="product_template_form_presentacion" model="ir.ui.view">
+        <field name="name">product.template.form.dcasa.presentacion</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_only_form_view"/>
+        <field name="arch" type="xml">
+            <field name="dcasa_medidas" position="after">
+                <field name="dcasa_presentacion" invisible="product_variant_count > 1"
+                       placeholder="Caja de 12 unidades"/>
+                <!-- La promoción «2 por…» (models/precio_par.py): con varias variantes, cada una tiene la suya. -->
+                <field name="dcasa_precio_par" invisible="product_variant_count > 1"/>
+            </field>
+        </field>
+    </record>
+    <record id="product_variant_form_presentacion" model="ir.ui.view">
+        <field name="name">product.product.form.dcasa.presentacion</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_normal_form_view"/>
+        <field name="arch" type="xml">
+            <field name="dcasa_medidas" position="after">
+                <field name="dcasa_presentacion" placeholder="Caja de 12 unidades"/>
+                <field name="dcasa_precio_par"/>
+            </field>
+        </field>
+    </record>
+    <record id="product_variant_easy_edit_presentacion" model="ir.ui.view">
+        <field name="name">product.product.easy.dcasa.presentacion</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_variant_easy_edit_view"/>
+        <field name="arch" type="xml">
+            <field name="default_code" position="after">
+                <field name="dcasa_presentacion" placeholder="Caja de 12 unidades"/>
+            </field>
+        </field>
+    </record>
+    <record id="product_variant_list_presentacion" model="ir.ui.view">
+        <field name="name">product.product.list.dcasa.presentacion</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_product_tree_view"/>
+        <field name="arch" type="xml">
+            <field name="product_template_variant_value_ids" position="after">
+                <field name="dcasa_presentacion" optional="show"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Lista de productos: con foto, referencia, categoría de la tienda y si está publicado. -->
+    <record id="product_template_list_dcasa" model="ir.ui.view">
+        <field name="name">product.template.list.dcasa.catalogo</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_tree_view"/>
+        <field name="arch" type="xml">
+            <field name="is_favorite" position="after">
+                <field name="image_128" widget="image" options="{'size': [40, 40]}" string="Foto" optional="show"/>
+            </field>
+            <field name="default_code" position="attributes">
+                <attribute name="optional">show</attribute>
+            </field>
+            <field name="name" position="after">
+                <field name="public_categ_ids" widget="many2many_tags" string="En la tienda" optional="show"/>
+                <field name="is_published" widget="boolean_toggle" string="Publicado" optional="show"/>
+            </field>
+            <!-- Stock al lado del precio, y los dos se ordenan con un clic en el título de la columna (o con los
+                 botones «Ordenar» de dcasa_interfaz). Es el mismo número que «A la mano», pero ese Odoo no lo
+                 deja ordenar; por eso se esconde (sigue en las columnas opcionales). -->
+            <field name="list_price" position="after">
+                <field name="is_storable" column_invisible="True"/>
+                <field name="dcasa_stock" string="Stock" optional="show" invisible="not is_storable"
+                       decoration-danger="dcasa_stock &lt; 0" decoration-warning="dcasa_stock == 0"
+                       decoration-bf="1" sum="Total"/>
+            </field>
+            <field name="qty_available" position="attributes">
+                <attribute name="optional">hide</attribute>
+            </field>
+            <field name="virtual_available" position="attributes">
+                <attribute name="optional">hide</attribute>
+            </field>
+        </field>
+    </record>
+
+    <!-- Productos: buscar sin saber «filtros». Categorías a la izquierda (con cantidad), y
+         arriba los filtros que más se usan como botones de un clic (dcasa_interfaz). -->
+    <record id="producto_buscar_dcasa" model="ir.ui.view">
+        <field name="name">product.template.search.dcasa</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_search_view"/>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <field name="name" position="attributes">
+                <attribute name="string">Nombre o código</attribute>
+            </field>
+            <filter name="goods" position="before">
+                <filter string="Disponibles" name="dcasa_disponibles" domain="[('dcasa_stock', '&gt;', 0)]"/>
+                <filter string="Pocas unidades" name="dcasa_pocas"
+                        domain="[('dcasa_stock', '&gt;', 0), ('dcasa_stock', '&lt;=', 5)]"/>
+                <filter string="Agotados" name="dcasa_agotados"
+                        domain="[('is_storable', '=', True), ('dcasa_stock', '&lt;=', 0)]"/>
+                <separator/>
+                <filter string="Hasta $100" name="dcasa_precio_1" domain="[('list_price', '&lt;=', 100)]"/>
+                <filter string="$100 a $300" name="dcasa_precio_2"
+                        domain="[('list_price', '&gt;', 100), ('list_price', '&lt;=', 300)]"/>
+                <filter string="$300 a $600" name="dcasa_precio_3"
+                        domain="[('list_price', '&gt;', 300), ('list_price', '&lt;=', 600)]"/>
+                <filter string="Más de $600" name="dcasa_precio_4" domain="[('list_price', '&gt;', 600)]"/>
+                <separator/>
+                <filter string="En la tienda en línea" name="dcasa_en_web" domain="[('is_published', '=', True)]"/>
+                <filter string="Sin foto" name="dcasa_sin_foto" domain="[('image_1920', '=', False)]"/>
+                <separator/>
+            </filter>
+            <!-- Lo técnico de Odoo queda en el menú de filtros, no en los botones rápidos. -->
+            <filter name="goods" position="attributes"><attribute name="invisible">1</attribute></filter>
+            <filter name="services" position="attributes"><attribute name="invisible">1</attribute></filter>
+            <filter name="combo" position="attributes"><attribute name="invisible">1</attribute></filter>
+            <filter name="is_storable" position="attributes"><attribute name="invisible">1</attribute></filter>
+            <filter name="filter_to_sell" position="attributes"><attribute name="invisible">1</attribute></filter>
+            <filter name="published" position="attributes"><attribute name="invisible">1</attribute></filter>
+            <filter name="activities_exception" position="attributes"><attribute name="invisible">1</attribute></filter>
+            <xpath expr="//search" position="inside">
+                <searchpanel>
+                    <field name="public_categ_ids" string="Categorías" select="multi" icon="fa-th-large"
+                           enable_counters="1"/>
+                </searchpanel>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Productos abre en lista (con foto, precio y stock ordenables): es la vista de trabajo de quien arma una
+         campaña. Las tarjetas siguen a un clic en el selector de vistas. -->
+    <record id="sale.product_template_action" model="ir.actions.act_window">
+        <field name="view_ids" eval="[Command.clear(),
+            Command.create({'view_mode': 'list', 'view_id': ref('account.product_template_list_view_sellable_inherit')}),
+            Command.create({'view_mode': 'kanban'}),
+            Command.create({'view_mode': 'form'}),
+            Command.create({'view_mode': 'activity'})]"/>
+    </record>
+    <record id="stock.product_template_action_product" model="ir.actions.act_window">
+        <field name="view_mode">list,kanban,form</field>
+    </record>
+
+    <!-- Favoritos compartidos: el orden que se usa según la campaña (menú «Favoritos» de la lista de productos).
+         «Menor stock» deja fuera lo agotado y lo que no controla inventario: eso no se puede empujar.
+         (Los ids son nuevos a propósito: los de la pantalla aparte que se retiró colgaban de su acción y Odoo los
+         borra junto con ella al actualizar.) -->
+    <record id="filtro_productos_stock_mayor" model="ir.filters">
+        <field name="name">Mayor stock primero</field>
+        <field name="model_id">product.template</field>
+        <field name="domain">[('is_storable', '=', True)]</field>
+        <field name="context">{}</field>
+        <field name="sort">["dcasa_stock desc"]</field>
+    </record>
+    <record id="filtro_productos_stock_menor" model="ir.filters">
+        <field name="name">Menor stock primero</field>
+        <field name="model_id">product.template</field>
+        <field name="domain">[('is_storable', '=', True), ('dcasa_stock', '&gt;', 0)]</field>
+        <field name="context">{}</field>
+        <field name="sort">["dcasa_stock asc"]</field>
+    </record>
+    <record id="filtro_productos_precio_mayor" model="ir.filters">
+        <field name="name">Mayor precio primero</field>
+        <field name="model_id">product.template</field>
+        <field name="domain">[]</field>
+        <field name="context">{}</field>
+        <field name="sort">["list_price desc"]</field>
+    </record>
+    <record id="filtro_productos_precio_menor" model="ir.filters">
+        <field name="name">Menor precio primero</field>
+        <field name="model_id">product.template</field>
+        <field name="domain">[]</field>
+        <field name="context">{}</field>
+        <field name="sort">["list_price asc"]</field>
+    </record>
+</odoo>

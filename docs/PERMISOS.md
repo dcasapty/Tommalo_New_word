@@ -1,0 +1,640 @@
+# Qué ve cada rol (permisos de la tienda)
+
+Para la dueña: **quien vende no ve nómina ni la contabilidad de un jefe**, ni por el menú ni por un enlace, y
+**cada vendedora ve solo sus cotizaciones, pedidos, facturas, notas de crédito y cobros** (más lo que no tiene
+vendedora, como los pedidos de la web); **Caja** y **Gerencia** ven todo. Esto último tiene un interruptor para volver
+atrás (abajo). Y las **reglas contables de la gerencia** (17 oct, [DECISIONES_CONTABLES.md](DECISIONES_CONTABLES.md)):
+**el cobro solo en Caja** (la vendedora cotiza, confirma y factura, pero no cobra), el primer abono es **al menos la
+mitad** del total (si es menos, Gerencia), y **anular, pasar a borrador, notas de crédito, devolver dinero y dejar saldo
+a favor son solo de Gerencia**.
+Para quien programa: cómo está armado y cómo se comprueba. Reglas en
+`addons/dcasa_base/security/dcasa_reglas_contables.xml` y `dcasa_reglas_ventas.xml` (más las de Socios y de factura
+electrónica); pruebas en `addons/dcasa_base/tests/test_permisos_contables.py`, `test_solo_lo_suyo.py` y
+`test_permisos_vendedora.py` (menús).
+
+Más abajo: [roles y grupos](#roles-y-grupos-mapa-completo) · [interruptores](#interruptores) ·
+[reglas de Socios y Vendedores](#reglas-no-negociables-de-socios-y-vendedores) ·
+[superficie RPC](#superficie-rpc-lista-blanca) · [privacidad](#privacidad) ·
+[políticas del sitio](#políticas-del-sitio-dónde-viven-y-cómo-se-cambian).
+
+## En palabras sencillas
+
+| | Vendedora | Caja | Contador | Gerencia | Administrador |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Ver cotizaciones y pedidos** | **Los suyos** y los que no tienen vendedora* | Todos | (según su rol de Ventas) | Todos | Todos |
+| **Ver facturas y notas de crédito de clientes** | **Las suyas** y las que no tienen vendedora* | Todas | Todas | Todas | Todas |
+| **Ver cobros de clientes** | **Los suyos** (los que registró y los de sus facturas)* | Todos | Todos | Todos | Todos |
+| Facturar la cotización de otra vendedora | **No*** | Sí | Sí | Sí | Sí |
+| «Cobros de hoy (caja)» (Ventas › Hoy), la caja de toda la tienda | **No*** | Sí | Sí | Sí | Sí |
+| Notas de entrega: despachar lo de cualquier vendedora (no lleva precios) | Sí | Sí | (según Inventario) | Sí | Sí |
+| Oportunidades (CRM): siguen compartidas | Todas | Todas | — | Todas | Todas |
+| Encender o apagar «Cada vendedora ve solo sus documentos» | No | No | No | Sí | Sí |
+| Ver el chatbot y las conversaciones, atender clientes | Sí | Sí | Sí | Sí | Sí |
+| En una conversación, cambiar a mano el cliente, quién atiende, las etiquetas, la pausa y su respuesta. El estado, la nota para el asistente y los seguimientos solo cambian con los botones (Atender, Devolver, Cerrar); a mano, solo el administrador del sistema | Sí | Sí | Sí | Sí | Sí |
+| **Conversaciones › Costos de IA**: ver lo que cuesta Juan y tocar «Pagar» (el saldo con Meta vuelve a $0) o «Deshacer» el último pago (2026-11-12; el administrador que no es de Gerencia no ve el menú, pero el servidor lo deja y Brian se lo dice) | No | No | No | Sí | Sí |
+| **Sitio web › Carrusel de la portada** (2026-11-19): elegir los productos del fondo de la portada, su orden y los **segundos que dura cada foto** (de 2 a 15; viven en `dcasa.portada.ajustes`, uno por sitio, ACL de Gerencia y administradores sin borrar). **Gerencia NO escribe en el sitio (`website`)**: darle ese permiso le abría, como superusuario, las acciones de servidor del sitio sin grupo de Odoo (revisión independiente); hay prueba de que no las corre (`website_dcasa/tests/test_portada_permisos.py`) | No | No | No | Sí | Sí |
+| **Sitio web › Busca con una foto** (2026-11-13): encender o apagar la cámara de la búsqueda de la tienda, cambiar los topes (por visitante, por conexión y por día) y el techo del gasto de IA de la foto en el mes, y ver cuántas búsquedas hubo. El servidor exige el grupo antes de guardar | No | No | No | Sí | Sí |
+| **Ajustes de Juan › Comentarios de Instagram y Facebook** (2026-11-13): encender o apagar que Juan responda comentarios, elegir las redes, la frase pública y los topes. Los comentarios atendidos se ven en la conversación de cada persona (solo lectura; los escribe el servidor) | No | No | No | Sí | Sí |
+| Crear y editar clientes | Sí | Sí | Sí | Sí | Sí |
+| Ver productos (editar nombre y descripción) | Sí | Sí | Sí | Sí | Sí |
+| Ver las fotos de un producto en grande (tocar la foto: ficha, lista, tarjetas, Escáner) y descargarlas | Sí | Sí | Sí | Sí | Sí |
+| **Cambiar las fotos** de un producto: subir varias, reemplazar, recortar, girar, ordenar, elegir la principal, quitar (2026-10-22; las «Imágenes extra» de la tienda incluidas) | Sí (decisión de la dueña, 2026-10-22) | Sí | (si edita productos) | Sí | Sí |
+| La app **Marketing** (stock por categoría, más vendidos, movimiento, quietos, fotos que faltan) y su acceso en el Inicio | No | No | No | Sí | Sí |
+| **Rotación del inventario** (2026-11-22; días sin vender, ancla, cobertura, Excel): lo ven Gerencia, administradores y el rol Marketing; **el dinero** (costos, capital parado, margen y la simulación de rebaja) solo Gerencia y administradores | No | No | No | Sí | Sí |
+| **Movimiento** (2026-11-22; comparar dos periodos, qué subió y qué bajó, Excel): lo ven Gerencia, administradores y el rol Marketing; **el dinero** (lo vendido en $ y el capital parado) solo Gerencia y administradores | No | No | No | Sí | Sí |
+| **Marketing › Camila** (2026-11-06): armar, editar, mandarse la prueba y **aprobar el envío** de la campaña de correo (también el rol «Marketing») | No | No | No | Sí | Sí |
+| **Camila, etapa 2** (2026-11-06): varias campañas a la vez, «Escribir con IA», elegir a quién va con los chips del CRM (ve cuántos, nunca nombres ni correos), los botones del correo y «Crear campaña con estos» desde el tablero de Marketing (también el rol «Marketing») | No | No | No | Sí | Sí |
+| Ver **cuánto dinero** vendieron los clientes que llegaron por una campaña de correo, por el chat o en la web (cuántos chats y ventas lo ve también el rol Marketing) | No | No | No | Sí | Sí |
+| Ver en la cotización **«Vino del correo»** (de qué campaña llegó el cliente; solo lectura, nadie lo escribe a mano), 2026-11-06 | Sí (las que ve) | Sí | (según su rol de Ventas) | Sí | Sí |
+| Marcar en la ficha que el cliente **quiere recibir novedades por correo** (cuando lo dice; una ficha a la vez) y **«Darle de baja»** cuando lo pide (la baja es final), 2026-11-06 | Sí | Sí | Sí | Sí | Sí |
+| Contestar **«¿El cliente quiere recibir novedades por correo?»** al confirmar una venta o registrar un pago desde la pantalla (Sí / No; si no tiene correo, se escribe ahí y se guarda en su ficha), etapa 1b, 2026-11-06. Solo quien confirma o cobra, de su venta o su pago; nunca traba la venta ni el pago | Sí | Sí | (si confirma o cobra) | Sí | Sí |
+| **Camila:** apagar o encender la línea «Sí, quiero» del pie de la factura y la bienvenida, y descartar una campaña **aprobada** que quedó trabada (si en Resend no salió), 2026-11-06 | No | No | No | Sí | Sí |
+| **Envíos › Calculadora** y **Lugares** (ver precios, cotizar por km) y **agregar un lugar que falta** (queda su nombre y, desde 2026-11-12, «Por revisar»: Juan no da su precio hasta que Gerencia lo revise), 2026-11-06 | Sí | Sí | Sí | Sí | Sí |
+| **Envíos:** editar o archivar lugares (los km y la provincia, solo aquí), **«Marcar revisado»** un lugar, cambiar y **aprobar la tarifa**, cargar el archivo de envíos, y **Envíos › Promoción de envío** (2026-11-12) | No | No | No | Sí | Sí |
+| **Envíos › Tarifa › Enlace para choferes** (2026-11-09): ver, encender, copiar y cambiar el enlace secreto de la calculadora de los choferes (que no tienen usuario) | No | No | No | Sí | Sí |
+| **Ventas › Hoy › Opiniones por aprobar** (lote 2 de la web, 2026-11-13): leer las opiniones que dejaron los clientes y **«Publicar»** o **«No publicar»** cada una. Nadie las crea ni cambia lo que dijo el cliente (estrellas, texto); borrar una, solo el administrador | No | No | No | Sí | Sí |
+| **Ajustes › Marca del panel** (2026-11-18): subir el logo y el ícono del panel y elegir sus colores (los ve todo el equipo; la página web no cambia). También con Brian. Como los datos de la empresa (*Ajustes › Empresas*): el servidor exige administrador antes de escribir ([MARCA_DEL_PANEL.md](MARCA_DEL_PANEL.md)) | No | No | No | No (si no es administradora) | Sí |
+| **Exportar listas a Excel** (Acción › Exportar; `base.group_allow_export`): pedido del jefe 2026-11-19, para bajar facturas con su forma de pago. Gerencia trae el permiso por su rol (`dcasa_roles.xml`), pero **solo baja facturas y apuntes contables, pagos y ventas (pedidos y sus líneas)**: la lista corta vive en `dcasa_base/models/exportar.py` (2026-11-20). Cualquier otra lista (clientes, empleados, chatter, adjuntos, usuarios, cuentas bancarias de contactos, conversaciones, productos…) da «Ese Excel solo lo bajan los administradores», también por `/web/export/xlsx` y `/web/export/csv`. Se siguen relaciones de una factura (cliente, vendedor, producto), salvo hacia el chatter, los adjuntos, los empleados y las cuentas bancarias; por una relación no se piden identificadores externos. Además el exportador lee con los permisos de quien exporta: no abre lo que solo ven los administradores (clave del PIN de Socios, datos de Meta, parámetros del sistema). El cierre del costo (`costos_cerrados.py`) no cubre `export_data`; es seguro porque quien exporta ya ve los costos y no se le da el permiso a ningún rol que no los vea. El Excel no vuelve fórmula lo que escribió un cliente (`dcasa_base/excel_seguro.py`). Pruebas: `dcasa_base/tests/test_exportar.py` y `test_revision_exportar.py` | No | No | No | Solo finanzas y ventas | Sí, todas |
+| **Sitio web › Brian de la tienda** (2026-11-13): encender o apagar el chat de la tienda, el presupuesto del mes, los topes de mensajes y ver su gasto y sus calificaciones (número y fecha; nadie las crea ni cambia por la interfaz) | No | No | No | Sí | Sí |
+
+**Opiniones de los productos (cliente, lote 2 de la web).** El cliente opina desde **Mi cuenta › Tus opiniones**
+(`/mi-cuenta/opiniones`, con la cuenta de la tienda o con celular + PIN), **solo** de un producto que está en una factura
+suya publicada y **pagada por completo**, una vez por producto; el anónimo no opina. Ningún usuario portal ni el público
+tiene permiso sobre el modelo `dcasa.resena` (solo lectura para Gerencia y administradores; borrar, solo
+administradores): el sitio lee y guarda con `sudo` después de comprobar la sesión, la compra y el pago
+(`website_dcasa/models/resena.py`). `create` sin `sudo` lanza `AccessError` y `write` sin `sudo` lanza `UserError`
+(ni Gerencia cambia lo que dijo el cliente); «Publicar» y «No publicar» exigen Gerencia o administrador en el servidor.
+Lo que no está publicado no sale en la ficha ni en los datos para Google.
+
+**Rol «Marketing»** (2026-10-22, selector propio «Marketing» en la sección D'CASA de la ficha del usuario; se suma a
+cualquier otro rol): ve la app Marketing **completa, igual que Gerencia y administradores** (todas las secciones y su
+acceso en el Inicio), **cambia las fotos** de cualquier producto (solo las fotos: no el nombre, el precio ni lo demás),
+usa las herramientas de Brian de marketing y **Camila** (2026-11-06: arma, edita, se manda la prueba y aprueba el envío
+de la campaña de correo; ve a cuántos se envió y cuántos chats y ventas trajo, **no** cuánto dinero ni quiénes llegaron por el correo). **No** ve dinero, costos, facturas, cobros, pedidos de venta, contabilidad,
+Estadísticas ni ninguna otra pantalla de Gerencia (no implica ningún grupo de Ventas, Contabilidad ni Inventario).
+| Crear facturas **de clientes**, buscarlas, imprimirlas y enviarlas | Sí | Sí | Sí | Sí | Sí |
+| Hacer una factura de cliente **suelta** (sin cotización ni pedido; Facturación › Facturas › Nuevo o Subir, RPC o Brian), 2026-10-19 | **No**: cotiza y factura desde el pedido (también anticipos). Tampoco le salen «Nuevo» ni «Subir» (2026-10-22) | Sí | Sí | Sí | Sí |
+| **Registrar el cobro** de una factura de cliente (o un abono), un cobro suelto, o aplicarle un cobro que ya estaba («el cobro solo en Caja», 2026-10-17) | **No** (con el interruptor encendido o apagado) | Sí | Sí | Sí | Sí |
+| Cobrar con **Tafi** o **Crediviva** (financieras: formas de pago en «Pagar») | No | Sí | Sí | Sí | Sí |
+| Registrar un **primer abono menor a la mitad** del total | No | **No** | **No** | Sí | Sí |
+| **Pasar a borrador o anular** una factura de cliente publicada | **No** | **No** | **No** | Sí | Sí |
+| **Notas de crédito** de clientes; **devolverle dinero** a un cliente; cobrar de más dejándole **saldo a favor**; dar una factura por pagada con una diferencia | **No** | **No** | **No** | Sí | Sí |
+| Rebajar un precio: por línea, global o de importe fijo (se suman) | Hasta el tope de Ajustes de Ventas (10 % de fábrica) | Hasta el tope de Ajustes de Ventas (10 % de fábrica) | Hasta el tope | **Sin tope** | **Sin tope** |
+| Armar un combo cama + colchón en una cotización («Armar combo»; el colchón va a su precio en combo, que no cuenta como rebaja suya), 2026-10-22 | Sí (lo suyo) | Sí | (según su rol de Ventas) | Sí | Sí |
+| Poner el **precio en combo** de un colchón, la **medida** de una cama o colchón y si un producto es cama o colchón (*Ventas › Productos › Precios en combo*) | **No** | **No** | **No** | Sí | Sí |
+| Ajustar las existencias a mano (Inventario físico, Escáner › Contar); el motivo es obligatorio y queda en la bitácora | **No** | **No** | **No** | Sí | Sí |
+| Ventas o facturado **por día**, **Estadísticas › Resumen** e **Inventario › Movimientos** (2026-10-22) | **No** | **No** | **No** | Sí | Sí |
+| **Inventario › Valor del inventario** (al costo y a precio de venta sin ITBMS) y lo **cobrado por forma de pago** de días y meses pasados en Por día y Estadísticas (2026-11-02) | **No** | **No** | **No** | Sí | Sí |
+| Ver el menú «Inventario físico», «Desechos» y «Deshacer el ajuste»; mover mercancía hacia o desde «Ajuste de inventario» (también por RPC), 2026-10-22 | **No** | **No** | **No** | Sí | Sí |
+| Dejar en borrador una merma, un daño, una muestra o un regalo (no mueve nada) | **No** (no ve los menús) | **No** | **No** | Sí | Sí |
+| **Dar de baja** una merma, daño, muestra o regalo; Mermas del mes; reclamo al proveedor | **No** | **No** | **No** | Sí | Sí |
+| **Bitácora de bodega** (solo lectura; nadie la edita) | **No** | **No** | **No** | Sí | Sí |
+| Ajustes de bodega y mermas (cuentas de mermas, tope, alertas por Telegram) | **No** | **No** | **No** | Sí | Sí |
+| Registrar adelantos y préstamos a colaboradores; enviar comprobantes de pago | **No** | **No** | (según su grupo de nómina) | Sí | Sí |
+| **Autorizar** un adelanto o un préstamo | **No** | **No** | **No** | Sí | Sí |
+| Comprobantes en ZIP (respaldo DGI) | **No** | **No** | Sí | Sí | Sí |
+| Pasar del tope con la **clave de Gerencia** («Pedir descuento a Gerencia» en la cotización; D1, 2026-10-22) | Sí, la suya | Sí, la suya | Sí, la suya | No le hace falta | No le hace falta |
+| Aprobar o rechazar esos descuentos (Ventas › Descuentos por autorizar; le llega la clave por Telegram) | **No** | **No** | **No** | Sí | Sí |
+| Ver el **costo** de un producto, el **precio del proveedor** y el **margen** del análisis de facturas (1b(a), 2026-10-22) | **No** | **No** | Sí | Sí | Sí |
+| **Abonos por vencer** (Facturación › Clientes) y escribirle al cliente por WhatsApp | **No** | Sí | Sí | Sí | Sí |
+| Cerrar **saldos de centavos** de redondeo (Contabilidad › Clientes) | **No** | **No** | Sí | Sí | Sí |
+| **Productos repetidos** y **Nombres en MAYÚSCULAS** (Ventas › Productos; F5) | **No** | **No** | **No** | Sí | Sí |
+| Fusionar clientes repetidos (Socios › Configuración › Posibles duplicados) | **No** | **No** | **No** | Sí | Sí |
+| Factura electrónica (DGI) | Sí | Sí | Sí | Sí | Sí |
+| Facturas y notas **de proveedores** | **No** | **No** | Sí | Sí | Sí |
+| Pagar a proveedores, pagos de nómina | **No** | **No** | Sí | Sí | Sí |
+| Asientos contables varios (aquí se contabiliza la nómina) | **No** | **No** | Sí | Sí | Sí |
+| Extractos y movimientos del banco, conciliación bancaria | **No** | **No** | Sí | Sí | Sí |
+| Cuentas bancarias de los empleados | **No** | **No** | Sí | Sí | Sí |
+| Reportes contables, rentabilidad por canal | **No** | **No** | Sí | Sí | Sí |
+| Planillas, sueldos, liquidaciones | **No** | **No** | (según su grupo) | Sí | Sí |
+| El menú **Empleados** (el Directorio de compañeros) | **No** | **No** | Sí | Sí | Sí |
+| **Mis gastos por reembolsar** (registrar lo que pagó de su bolsillo; solo ve los suyos) | Sí | Sí | Sí | Sí | Sí |
+
+\* Con **«Cada vendedora ve solo sus documentos» encendido**, que es como viene. Apagado, la Vendedora ve todo, como
+antes del 2026-10-17 (la columna de Caja), pero **sigue sin cobrar**: Caja es su propio rol.
+
+**Quién cotiza, quién factura y quién cobra** (aclaración de la dueña, 2026-10-15; rol Caja y reglas contables de la
+gerencia desde el 2026-10-17): la vendedora **cotiza, confirma y factura** lo suyo; **cobra solo Caja** (el jefe
+administrativo), además de Gerencia y contabilidad. Caja ve, factura y cobra las cotizaciones, pedidos, facturas y
+cobros de clientes de toda la tienda, sin contabilidad, sin costos ni ganancia y con el tope de descuento de la
+vendedora. **Anular o pasar a borrador** una factura publicada, las **notas de crédito**, **devolver dinero**, dejar
+**saldo a favor** y aceptar un **primer abono menor a la mitad** son de **Gerencia** (Caja ya no las hace por su
+cuenta). Lo que Caja factura desde la cotización de una vendedora **sigue siendo de esa vendedora** (su «Vendedor» no
+cambia): ella lo ve, le cuenta para su meta y sale en «Ver mis ventas». El botón principal del Inicio de la vendedora
+es **Nueva cotización**; «Registrar cobro» y «Caja de hoy» salen en el Inicio de Caja y en el completo. En la factura,
+a la vendedora no le sale «Pagar»: le sale «El cobro de esta factura lo registra Caja». Una factura hecha suelta no
+tiene pedido detrás: no cuenta en «Vendido hoy» ni tiene nota de entrega.
+
+**El aviso a la vendedora** (decisión de la dueña, 2026-10-22; `dcasa_base/models/aviso_vendedora.py`): cuando Caja o
+Gerencia publican la factura de su pedido, a su bandeja de Odoo (el chat) le llega «Se facturó tu venta S00139
+(INV/2026/01117)», y cuando la venta queda cobrada (todas sus facturas pagadas y nada más por facturar; un abono no),
+«Tu venta S00139 ya está cobrada». Ya no le llega el «Te asignaron Asiento contable Borrador de factura» de Odoo. Una
+sola vez por factura y por venta, y nunca por lo que ella misma hizo.
+
+## Cada vendedora ve solo lo suyo (y cómo volver atrás)
+
+Pedido de la dueña (2026-10-16: «los vendedores deberían solo poder ver las facturas que ellos hacen»; 2026-10-17:
+«que esta opción se pueda habilitar o deshabilitar… si el día de mañana esto genera algún problema operativo se puede
+retroceder fácilmente»).
+
+- **Qué ve la vendedora:** sus cotizaciones, pedidos, facturas, notas de crédito y cobros, y los que **no tienen
+  vendedora** (una cotización de Juan sin asignar), para que alguien los atienda. Cuando una vendedora confirma
+  uno sin vendedora, pasa a ser suyo y las demás ya no lo ven; si lo confirma Caja, sigue sin vendedora (lo ven todas y
+  no cuenta para la meta de nadie). Lo que ella crea queda siempre a su nombre, aunque la ficha del cliente diga otra
+  vendedora. **Cobrar:** desde el 2026-10-17 la vendedora **no cobra** (decisión de la gerencia A5: el cobro solo en
+  Caja); sigue facturando. No se le quitó «Facturación» (la necesita para facturar): el servidor le niega cada camino
+  de cobro (`dcasa_base/models/cobros.py`).
+- **Los pedidos de la web entran sin vendedora** (decisión de la dueña, 2026-10-17; `website_dcasa/models/pedido_web.py`):
+  los ven todas y **la vendedora que lo confirma se lo queda** (con el interruptor encendido o apagado); si lo confirma
+  Caja o Gerencia, o la tienda sola (pago en línea), sigue sin vendedora. Ni el «Vendedor» del sitio web ni la vendedora
+  de la ficha del cliente se lo ponen (antes Odoo se lo daba al administrador y las vendedoras no lo veían). El
+  «Vendedor» del sitio (*Ajustes › Sitio web*) queda vacío (la migración 19.0.1.15.0 lo vacía una vez); si un
+  administrador lo vuelve a poner, los pedidos web van a esa persona, como en Odoo. El **vendedor del programa** (link
+  `/v/CÓDIGO`, `sale.order.dcasa_vendedor_id`) es otra cosa y no cambia: el carrito lo anota, pasa a la factura y su
+  comisión sigue igual. El aviso de un **apartado web por vencer** sin vendedora le llega a **Caja** (si nadie tiene
+  Caja, a Gerencia).
+- **Qué ven Caja y Gerencia:** todo.
+- **Lo que no cambia:** las notas de entrega (todas despachan), las oportunidades del CRM (compartidas), la
+  contabilidad (contador y lector ven todo, como antes) y Juan.
+- **Dar el rol Caja** (no se le pone solo a nadie): *Ajustes › Usuarios y compañías › Usuarios* › abrir a la persona
+  que cobra › en **D'CASA** elegir **Caja** › Guardar. Vale al momento. También con Brian (un administrador): «ponle el
+  rol cajero a …». La Guía lo explica en «Darle acceso al sistema a una persona del equipo».
+- **El interruptor «Cada vendedora ve solo sus documentos»** (viene **encendido**): Gerencia lo tiene en *Ventas ›
+  Configuración › Permisos de las vendedoras*; los administradores, también en *Ajustes › Ventas*; y Brian
+  («que las vendedoras vuelvan a ver todo»). **Apagado, todas las vendedoras vuelven a ver todo como antes**, al
+  momento, sin tocar la ficha de nadie; se vuelve a encender igual. La Guía: «Elegir si cada vendedora ve solo sus
+  documentos».
+
+**El Inicio de la vendedora** (pedido de la dueña, 2026-10-14) trae solo lo suyo: lo que **ella** vendió hoy y sus
+cotizaciones abiertas. No ve lo que está por cobrarse, lo cobrado hoy, las barras ni los totales de la tienda; sus
+herramientas son Productos, Facturas, Conversaciones, Escáner, **Nueva cotización** (el botón principal: la vendedora arma el
+borrador y la factura se hace en caja desde esa cotización) y Nuevo cliente. Lo mismo vale para **Ventas › Hoy ›
+Ventas de hoy** y para el resumen de ventas de Brian: ella ve solo sus ventas; Gerencia, administradores y contabilidad
+ven las de toda la tienda. Una venta cuenta cuando está facturada por completo y con la factura publicada (detalle en
+`docs/OPERACION.md`, «Inicio»). La vendedora tampoco ve ninguna pantalla de Nómina: solo **Mis gastos por reembolsar**,
+con sus propios gastos. Ya no ve tampoco la app **Empleados** (el Directorio de compañeros): la ven Gerencia,
+administradores, contabilidad y quien administra al personal. Es solo de menú (`dcasa_equipo/data/menu_empleados_data.xml`
+deja a `hr.menu_hr_root` con ese conjunto de grupos): los permisos de datos no cambian, los chats y las menciones siguen
+mostrando los nombres, y «Mis gastos por reembolsar» es otra app que no depende de ese menú.
+
+**Costos y ganancia** (decidido con la dueña, 2026-10-16): el costo de lo vendido y la ganancia (en el Inicio, en el menú
+**Estadísticas › Mejor margen**, en las líneas de venta y en Brian) los ven solo **Gerencia y administradores**. La
+Vendedora no los ve en ninguna pantalla y el servidor se los niega si los pide por la conexión de datos (esos campos
+llevan el grupo). Brian tampoco le da a quien no es Gerencia la ganancia ni el costo del proveedor.
+
+**Comparar y ventas por vendedora** (2026-10-17): el bloque **Comparar** del Inicio, el selector de **vendedora** y
+«Por vendedora» son solo de **Gerencia y administradores** (los mismos que ven la ganancia). El servidor lo exige en
+`dcasa.tablero.comparar_ventas` y rechaza que cualquier otro pida las ventas de otra persona (`ventas_del_periodo` o
+`grafica_de_ventas` con un `vendedor` ajeno), también por Brian. La vendedora no ve el interruptor «Facturado · Con abonos
+· Completadas» ni los íconos ⓘ, y la gráfica de la tienda se le niega en el servidor: su Inicio no cambió (sigue con sus
+pedidos facturados por completo). Las facturas del Inicio de Gerencia se suman con `sudo` siempre filtrado a facturas y
+notas de crédito de cliente; la lista que abre cada cifra la ve cada quien con sus permisos.
+
+**Compras › Reponer** (2026-10-19 y 22): verla, bajar su **Excel** y poner o cambiar el **tiempo de llegada** de un
+proveedor es solo de **Gerencia y administradores**. El servidor lo exige en cada llamada (`dcasa.reponer`, también el
+Excel en `/dcasa/reponer/excel` y las herramientas `que_reponer` y `poner_tiempo_llegada` de Brian); la Vendedora no ve
+el menú y, si lo pide por la conexión de datos, se le niega. El Excel lo arma el servidor: el «Exportar» general de Odoo
+es de los administradores; Gerencia lo trae desde 2026-11-19, pero solo baja facturas, pagos y ventas (desde 2026-11-20).
+
+**El costo del producto, el precio del proveedor y el margen, cerrados (etapa 1b(a), 2026-10-22,
+`dcasa_base/models/costos_cerrados.py`):** el campo «Costo» de la ficha del producto (y el costo unitario y el valor
+total de Inventario), los **precios de proveedor** (lo que cobra el proveedor) y el **margen** y el valor de inventario del
+análisis de facturas (`account.invoice.report`) los ven solo **Gerencia, administradores, contabilidad (lector,
+contador, gerente contable), compras, inventario (administrador)**, quien administra Ventas y quien crea productos. La
+Vendedora, Caja y **bodega** (Inventario usuario) no: no salen en ninguna pantalla (Odoo quita esos campos de todas las
+vistas de esos modelos, también las de otros módulos) y el servidor se los niega por la conexión de datos (leer,
+buscar u ordenar por el costo, agrupar o sumar el margen, la lista de campos para filtros y exportar). Lo que **no**
+cambia: Inventario, Compras y Contabilidad siguen leyendo el costo **por dentro** para valorar entregas, recepciones y el
+costo de ventas, así que la Vendedora y bodega siguen vendiendo, facturando, entregando y recibiendo igual (pruebas en
+`dcasa_base/tests/test_costos_cerrados.py`). Por eso no se le puso `groups` al campo de Odoo: haría fallar esos procesos.
+**Queda abierto (para otra tarea):** el valor de los movimientos de inventario (`stock.move`: valor y precio unitario) y
+los apuntes del costo de ventas dentro de una factura que la vendedora sí ve se pueden pedir por la conexión de datos.
+
+El menú Estadísticas completo (resumen, por día, lo más vendido, mejor margen, lo que no se mueve) es de Gerencia y
+administradores; «Lo más vendido» solo muestra ventas y unidades, no costos, y quien vende ya ve los pedidos.
+
+**Por día, Estadísticas y Movimientos** (2026-10-22): *Ventas › Hoy › Ventas por día*, *Facturación › Clientes ›
+Facturado por día* y *Estadísticas › Resumen* son de **Gerencia y administradores** (`sales_team.group_sale_manager` o
+`base.group_system`, los mismos de Comparar); *Inventario › Movimientos*, de quien administra Inventario (Gerencia lo
+incluye) y los administradores (`stock.group_stock_manager` o `base.group_system`). Los menús llevan esos grupos y el
+servidor los exige otra vez en cada llamada (`dcasa.tablero.por_dia`, `ventas_del_dia`, `cobros_del_periodo`,
+`estadisticas`, `opciones_por_dia`; `dcasa.movimientos.*`) antes de leer: la Vendedora no los ve ni recibe las cifras por la conexión de
+datos, y Brian tampoco se las da (`ventas_por_dia`, `movimientos_de_producto`).
+
+**Valor del inventario** (2026-11-02, «solo para gerencia o administración»): *Inventario › Valor del inventario*,
+*Estadísticas › Valor del inventario* y su atajo del Inicio son de **Gerencia y administradores**
+(`sales_team.group_sale_manager` o `base.group_system`, como la ganancia). El servidor lo exige en cada llamada
+(`dcasa.tablero.valor_del_inventario`) y Brian también (`valor_del_inventario`): ni la Vendedora, ni Caja, ni
+contabilidad lo reciben. Lo cobrado por forma de pago del día, la semana, la quincena o el mes (tarjeta de Por día,
+`cobros_del_periodo`, 2026-11-19) y de periodos pasados en Estadísticas va con los mismos permisos; Caja sigue viendo solo la «Caja de hoy» de su Inicio.
+
+**Tope de descuento (10 % para la Vendedora)** — cerrado en esta revisión: se mide siempre al crear la línea (aunque el precio
+llegue por el contexto de la llamada), al cambiar de producto o de unidad de medida, y al tocar las banderas de anticipo o
+combo; esas banderas ya no eximen por sí solas (un anticipo de Odoo no lleva producto; la marca de premio canjeado solo la
+pone el sistema). Si Gerencia ya autorizó un descuento mayor en un pedido, la Vendedora puede seguir agregando notas, flete
+o quitando líneas: se le bloquea solo lo que **empeora** el descuento, no lo que ya estaba.
+
+**Existencias:** la cantidad (y lo reservado) de una existencia no la escribe a mano nadie que no sea Gerencia o el sistema,
+con o sin el modo inventario. Recibir y entregar siguen igual (Odoo los corre por dentro con permisos del sistema).
+
+**Fotos del producto y Marketing** (2026-10-22, `dcasa_marketing`, [MARKETING.md](MARKETING.md)): las fotos las
+cambia **quien puede editar ese producto** (`check_access('write')` en `product.template`, comprobado en el servidor en
+cada método `dcasa_fotos_*`): hoy Gerencia, administradores y la Vendedora (que ya editaba la foto principal; Odoo le
+negaba las «Imágenes extra» porque `product.image` solo lo escriben Ventas administrador y los editores del sitio, y
+aquí se escriben con `sudo` después de esa comprobación). **Decisión de la dueña (2026-10-22): las vendedoras sí
+cambian fotos.** Además, el rol **Marketing** (`dcasa_marketing.group_marketing`) cambia las fotos de cualquier
+producto que ve aunque no edite el producto (`_dcasa_puede_editar_fotos`; la foto principal se le escribe con `sudo`
+tras la comprobación y el cambio queda a su nombre). Quien solo ve productos (p. ej. bodega sin Ventas) las ve y las
+descarga; el servidor le niega los cambios aunque los pida a mano (`AccessError`). **Marketing** es de Ventas
+administrador (Gerencia), administradores y el rol Marketing (`GRUPOS` en `dcasa_marketing/models/marketing.py`: el
+servidor lo exige en `dcasa.marketing._exigir`, y el menú, el acceso del Inicio y la herramienta
+`movimiento_de_productos` de Brian usan los mismos grupos). Sus cifras son unidades, no dinero.
+
+**Fusión de contactos:** solo Gerencia, de a una persona; las fusiones masivas automáticas son del administrador del
+sistema. Los puntos y el código de socio pasan completos a la ficha que queda y ésta deja una nota con lo que se le unió.
+
+**Descuento con la clave de Gerencia (D1, 2026-10-22, `dcasa_base/models/descuento_autorizacion.py`):** la Vendedora y
+Caja piden desde la cotización un descuento mayor a su tope; cada persona de Gerencia (Ventas administrador) recibe por
+Telegram **su propia clave**. La clave se guarda solo como huella (nadie la lee, ni el administrador), vale una vez,
+solo para quien la pidió, esa cotización y ese total, vence a los minutos de Ajustes de Ventas y se bloquea con cinco
+claves equivocadas (los intentos se cuentan aunque la pantalla no dé error). El descuento lo aplica el servidor con
+`sudo` **después** de comprobar todo eso y que quien la usa puede editar la cotización; es el único camino que pasa del
+tope sin Gerencia. Cada quien ve sus solicitudes; Gerencia, todas. Después, el tope del pedido entero impide empeorar lo
+autorizado.
+
+«Contador» es quien tiene Contabilidad en su ficha de usuario. Gerencia ya incluye Contabilidad y Nómina.
+El lector contable (solo lectura) ve todo lo contable pero no cambia nada, igual que antes.
+
+Lo que la vendedora **no** puede, por ejemplo: abrir la factura de un proveedor aunque conozca su número o su
+enlace, ver cuánto se le pagó a un proveedor, ver el asiento de la nómina, ni ver los movimientos del banco.
+Si lo intenta, Odoo le dice que no tiene permiso, o simplemente no le muestra nada.
+
+**Devolver dinero a un cliente** (una nota de crédito pagada en efectivo o por Yappy) y la **nota de crédito** misma
+las hace solo **Gerencia** (o un administrador) desde el 2026-10-17; la vendedora, Caja y el contador ya no.
+
+**El pago en línea (Yappy, Tilopay…) tampoco lo mueve la vendedora** (revisiones RV7, RV8 y RV8b): por Facturación Odoo le deja *escribir*
+y *crear* una transacción de pago (`payment.transaction`), y con un `write` podía dejarla «hecha» (el cron confirmaba el pedido y creaba el
+cobro sin dinero). Desde entonces, quien no es Caja, Gerencia, contabilidad o administrador **no escribe NADA ni crea** en una transacción,
+ni la devuelve, captura o anula (R7-1, R8-2, R8-6, R9-3). Tampoco puede **ligar o soltar cobros del pedido ni de la factura**
+(`transaction_ids`: es la otra mitad de la misma relación; un cobro ajeno ligado hacía que Bodega soltara una entrega sin cobrar y que el
+dinero de un cliente se aplicara a la factura de otro): **cerrado en tres pasos**: el `write` (R8-1), y en R9-1 y R9-2 el pedido o la
+factura que *nacen* ya con el cobro (por `default_transaction_ids` del contexto, o un recibo creado a mano) y el cambio de tipo de un
+documento de cliente (`move_type`; una nota de crédito, solo Gerencia). Lo que escribe el sistema (la pasarela, el aviso del proveedor, el
+cron, `sale._create_invoices`) corre con `sudo` y no cambia (`dcasa_base/models/cobros.py`).
+
+## Cómo está armado (para quien programa)
+
+### El problema de Odoo
+
+Odoo da a quien tiene Facturación (`account.group_account_invoice`, que la Vendedora y la Caja incluyen para
+poder cobrar) reglas de registro con dominio `[(1, '=', 1)]` sobre `account.move` y `account.move.line`:
+todos los asientos y todos los apuntes, sean de clientes, de proveedores o varios. Las reglas de grupo se
+suman con «o», así que con una sola que abra todo, las otras no sirven. `account.payment`, los extractos
+(`account.bank.statement`, `account.bank.statement.line`) y las conciliaciones no tenían reglas de grupo:
+bastaba el permiso del modelo. Por el menú no se veían, pero por un enlace, `/json/2` o `call_kw` sí.
+
+### Qué hace `dcasa_reglas_contables.xml`
+
+1. **Estrecha** las reglas estándar que abrían todo a Facturación:
+   `account.account_move_see_all` y `account.account_move_rule_group_invoice` (asientos),
+   `account.account_move_line_see_all` y `account.account_move_line_rule_group_invoice` (apuntes),
+   `account.account_analytic_line_rule_billing_user` (líneas analíticas),
+   `account.ir_rule_res_partner_bank_billing_officers` (cuentas bancarias; sin las de empleados cuando Recursos
+   Humanos está instalado) y `sale.account_invoice_report_rule_see_all` / `..._see_personal` (el análisis de
+   facturas, que incluye compras y sus costos).
+   Asientos (desde el 2026-10-16, **lo suyo**): su factura, nota o recibo de cliente (`invoice_user_id` = ella, o
+   sin vendedora) **o** el asiento de su cobro de cliente (`origin_payment_id`: entrante y registrado por ella o de
+   sus facturas). Apuntes: los de esos asientos. Analítica: la de sus facturas de clientes.
+2. **Agrega reglas** de grupo para Facturación: sus pagos entrantes (los que registró, `create_uid`, o los de sus
+   facturas, `invoice_ids`), extractos y movimientos bancarios ninguno (`id = 0`), conciliaciones solo si las dos
+   puntas son apuntes que ella ya ve, y líneas analíticas solo de sus facturas de clientes (para todo empleado: con
+   `dcasa_contabilidad` todos entran a la analítica).
+2b. **«Toda la tienda, solo de clientes»** para `sales_team.group_sale_salesman_all_leads` (Caja, Gerencia y, con el
+   interruptor apagado, la Vendedora) y `account.group_account_readonly`: asientos, apuntes, cobros, conciliaciones
+   y analítica de clientes de toda la tienda, el mismo dominio que Facturación tenía antes del 2026-10-16.
+3. **Devuelve todo** a quien tiene contabilidad: reglas `[(1, '=', 1)]` para `account.group_account_user` y
+   `account.group_account_manager` (lectura y escritura), y para `account.group_account_readonly` solo lectura.
+   El manager se pone aparte porque, sin `dcasa_contabilidad`, no implica al contador.
+4. **No toca** las reglas globales de varias empresas (`*_comp_rule`), la de Compras sobre facturas de
+   proveedor (`purchase.purchase_user_account_move_rule`) ni las de Ventas sobre facturas de clientes.
+
+### Por qué `<function>` y no `<record>` (base nueva y base existente)
+
+Las reglas estándar están en datos `noupdate="1"`. Odoo, al **actualizar** un módulo, no reescribe un
+registro `noupdate` ni cuando otro módulo lo declara (`_load_records`: `update and noupdate` lo salta), y el
+indicador `noupdate` de un `xmlid` ya existente tampoco cambia. Un `<record id="account.account_move_see_all">`
+valdría para una base nueva y **no** para producción. Por eso las reglas estándar se cambian con
+`<function model="ir.rule" name="write">` dentro de un bloque `noupdate="0"`: corre en cada instalación y en
+cada actualización (el contenedor corre `-u` en cada despliegue con versión nueva), sin migración, y se puede
+repetir sin efecto. Si algún día se vuelve a abrir una regla a mano en Ajustes técnicos, el siguiente
+despliegue la vuelve a cerrar.
+
+La regla de cuentas bancarias evalúa `'hr.employee' in user.env` al usarse, así que no depende del orden en que
+se instalen `dcasa_base` y Recursos Humanos.
+
+### Cómo se comprueba
+
+- `test_permisos_contables.py`: la vendedora y el cajero facturan (también desde una orden de venta), ven el cobro
+  que registra Caja y su conciliación con la factura, imprimen y preparan el envío (la nota de crédito, solo Gerencia:
+  `test_reglas_gerencia.py`); **no** leen,
+  cuentan ni agrupan (`search`, `search_count`, `search_read`, `read_group`, `read`) ni escriben ni borran
+  facturas de proveedor, notas de proveedor, asientos varios, pagos salientes, movimientos bancarios,
+  conciliaciones de proveedor ni líneas analíticas de gastos, ni crean ninguno; Gerencia, contador, gerente
+  contable y administrador ven y pueden hacer todo lo que su permiso de modelo permite (se compara contra
+  `has_access`); el lector solo lee; las reglas sobreviven a una actualización (se vuelven a abrir a mano y se
+  corre el archivo en modo `update`); y una exploración del código propio comprueba que ningún `sudo()` sobre
+  asientos entregue algo que no sea de clientes.
+- En una base existente: `odoo-bin -d <base> -u dcasa_base` y mirar *Ajustes › Técnico › Reglas de registro*.
+
+### «Solo lo suyo», Caja y el interruptor (2026-10-16 y 2026-10-17)
+
+- **Roles** (`security/dcasa_roles.xml`): la Vendedora implica «Ventas: solo sus documentos»
+  (`sales_team.group_sale_salesman`), Facturación e Inventario. **Caja** (`dcasa_base.group_caja`) = Vendedora +
+  «Ventas: todos los documentos» (`sales_team.group_sale_salesman_all_leads`), sin contabilidad, costos ni descuento
+  sin tope; Gerencia incluye Caja. Un solo selector «Tommalo» (en D'CASA se llamaba «D'CASA»): Vendedora → Caja → Gerencia. Caja no se asigna sola.
+- **Qué es «suyo»:** pedidos y cotizaciones, `sale.order.user_id`; facturas, notas y recibos, `account.move.invoice_user_id`
+  (nunca quién lo creó: Caja crea la factura desde la cotización de la vendedora); cobros, los que registró o los de sus
+  facturas. Lo sin vendedora lo ven todas (lo que hace Odoo).
+- **Reglas:** Odoo ya cierra pedidos, líneas, análisis de ventas y de facturas a «solo sus documentos». Las facturas,
+  cobros, apuntes, conciliaciones y analítica las cierra `dcasa_reglas_contables.xml`; `dcasa_reglas_ventas.xml` deja
+  las oportunidades compartidas y estrecha la regla de `sale_stock` que le dejaba a Inventario leer todas las líneas de
+  pedido; `dcasa_socios/security/dcasa_reglas_socios.xml` (compras con puntos y comisiones) y
+  `dcasa_fe_pa/security/dcasa_reglas_fe.xml` (documento electrónico e intentos) hacen lo mismo en sus módulos.
+- **Dueña del documento** (`models/sale_order.py`, `models/account_move.py`): quien solo ve lo suyo
+  (`res.users._dcasa_solo_lo_suyo`) queda siempre como vendedora de lo que crea y de lo sin vendedora que confirma. Si
+  no, Odoo pondría a la vendedora de la ficha del cliente (o la de `default_user_id`) y la creación fallaría porque ella
+  no podría ver lo que acaba de crear. Juan, la web y los procesos automáticos corren con `sudo` y no cambian.
+- **Lo que se leía con `sudo`:** la ficha y los documentos para adjuntar de Conversaciones ahora buscan como quien mira.
+  Brian corre como el usuario y agrega `alcance` a sus cifras de facturas (docs/BRIAN.md).
+- **El interruptor** (`models/res_users.py`, `models/solo_lo_suyo.py`, `views/solo_lo_suyo_views.xml`): su estado ES
+  si el rol Vendedora implica «Ventas: todos los documentos». Encendido no la implica; apagado, sí, y todas las reglas
+  «toda la tienda» le vuelven a aplicar a la Vendedora (es lo de antes, sin tocar ninguna ficha: Odoo 19 calcula los
+  grupos implícitos al vuelo). `_dcasa_poner_restriccion` exige Gerencia o administrador **en el servidor**.
+  `dcasa_roles.xml` **no nombra** esa implicación (ni `(4, …)` ni `(3, …)`): si la nombrara, cada despliegue (`-u`)
+  movería el interruptor. La base de antes (que la tenía) la pierde **una vez** en la migración `19.0.1.8.0`, que
+  además le quita «todos los documentos» puesto a mano a la Vendedora sin Caja, Ventas administrador ni lectura
+  contable, y avisa en el registro si nadie tiene Caja. El menú «Cobros de hoy (caja)» cuelga de «todos los
+  documentos», así que también vuelve a la Vendedora con el interruptor apagado.
+- **Pruebas** (`tests/test_solo_lo_suyo.py`): la Vendedora A no encuentra nada de B por `search`, `search_count`,
+  `search_read`, `_read_group`, `name_search`, leer por número, `_render_qweb_pdf`, `/report/pdf`, `/web/content`
+  (adjunto) ni `mail.message`; sí ve lo suyo y lo sin vendedora; confirmar lo sin vendedora es tomarlo; la ficha que
+  dice B no traba a A; A despacha lo de B; Caja ve, factura, cobra e imprime todo y la vendedora no cambia (la nota de
+  crédito la hace Gerencia desde el 2026-10-17); Gerencia, contador y lector ven todo; las dos posiciones del
+  interruptor, el ida y vuelta (sin cambiar el grupo de ninguna persona), que guardar otro ajuste o desplegar no lo
+  mueve, y que la Vendedora y Caja no pueden
+  moverlo; la migración. Además en `dcasa_socios`, `dcasa_fe_pa`, `dcasa_conversaciones`, `dcasa_interfaz`,
+  `dcasa_invoice`, `dcasa_brian` y `dcasa_nomina` (`test_solo_lo_suyo.py` o junto a sus pruebas).
+- **Lo que queda fuera a propósito:** las notas de entrega (todas despachan; no llevan precios), las transacciones de
+  pago en línea (Odoo se las abre a todo el que vende; casi todas son de la web), los enlaces del portal con `access_token` (son del cliente)
+  y las facturas cargadas del sistema anterior (`dcasa_migracion` no les pone vendedora: Odoo les pone la de la ficha
+  del cliente o a quien hizo la carga, así que en general las ven Caja y Gerencia; comprobado en una base de prueba
+  migrada desde `3b678a6`, no con la de producción).
+- **Lo que una vendedora todavía alcanza a ver de lo de otra, porque se comparte a propósito** (revisión adversarial,
+  2026-10-17; decisión de la dueña si alguno molesta): el número del pedido y de la factura en la **nota de entrega**
+  (también en la fácil de leer, que lee la factura con `sudo` para que cualquiera la imprima); lo que se habló y los
+  PDF que se le mandaron al cliente en **Conversaciones** (las conversaciones son de todo el equipo); las notas
+  automáticas de la **oportunidad** del CRM («se envió S0…», «se pagó la factura INV/…»); los **puntos de Socios** del
+  cliente y los del **programa de vendedores** (cada movimiento dice «Compra INV/…» y los puntos, que siguen al monto);
+  el aviso **«Parece repetido»** (da el número del otro pedido del mismo cliente, día y total); y el **«Total por
+  cobrar»** del cliente y el «Facturado este mes» del equipo de ventas (cifras de Odoo que suman toda la tienda; no
+  salen en las pantallas de la vendedora, solo pidiéndolas por la conexión de datos).
+- **Cifras que se suman por SQL** (no pasan por las reglas): «Ventas atribuidas» del Resumen de Conversaciones se acota a
+  mano a lo suyo para quien ve solo lo suyo (`dcasa.juan.panel._ventas_atribuidas`, revisión adversarial 2026-10-17).
+  Cualquier suma nueva por SQL de facturas o pedidos tiene que hacer lo mismo.
+
+### Reglas contables de la gerencia (2026-10-17)
+
+Decisiones A3, A5, A6, A7 y C1 de [DECISIONES_CONTABLES.md](DECISIONES_CONTABLES.md). Todo se comprueba **en el
+servidor** (esconder el botón no basta); el superusuario y lo que corre con `sudo` (la web, Juan, el cron, la carga del
+sistema anterior) no cambian; lo de proveedores tampoco.
+
+- **Quién cobra** (`dcasa_base/models/cobros.py`, `res.users._dcasa_puede_cobrar`): Caja (`dcasa_base.group_caja`,
+  que Gerencia incluye), contabilidad (`account.group_account_user` o `account.group_account_manager`) y
+  administradores (`base.group_system`). No es «todos los documentos»: con el interruptor apagado la Vendedora ve todo
+  pero sigue sin cobrar. Caminos cerrados: el asistente «Pagar» (`account.payment.register._create_payments`, que usan
+  también Brian e integraciones), el botón «Pagar» de la factura y de la lista (`account.move.line.action_register_payment`),
+  crear, publicar, cambiar, pasar a borrador, cancelar o borrar un `account.payment` de cliente, aplicar o quitar un
+  cobro desde la factura (`js_assign_outstanding_line`, `js_remove_outstanding_partial`) y cruzar a mano lo que debe un
+  cliente (`account.move.line.reconcile`, `account.partial.reconcile` crear y borrar, que es lo que hace `remove_move_reconcile`). En la
+  pantalla: el campo `dcasa_puede_cobrar` esconde «Pagar» y muestra «El cobro de esta factura lo registra Caja»; el
+  Inicio no le da «Registrar cobro»; Brian no le ofrece `registrar_pago` (grupos «alguno de», `registro.py`) y su
+  prompt le dice que los cobros los registra Caja; la Guía no le muestra «Registrar el cobro», «Registrar un abono» ni
+  «Cobrar una compra que financia Tafi o Crediviva» (tienen `grupos`).
+- **Solo Gerencia** (`res.users._dcasa_es_gerencia`: `dcasa_base.group_gerencia` o `base.group_system`):
+  `button_draft`, `button_cancel` y `write({'state': 'draft'|'cancel'})` de una factura, nota o recibo de cliente
+  publicado; `action_reverse` y crear o publicar (`_post`) una nota de crédito de cliente (también la que deja en
+  borrador una devolución de un pedido); un `account.payment` saliente a un cliente (y «Pagar» una nota de crédito); en
+  el asistente, cobrar de más dejando la diferencia abierta (saldo a favor) o «marcar como pagada» con una diferencia.
+  El contador sin Gerencia queda fuera de estas (la decisión dice «solo Gerencia»); está en
+  [PRIORIDADES.md › Para la contadora (y la gerencia)](PRIORIDADES.md#para-la-contadora-y-la-gerencia), por si la gerencia quiere otra cosa.
+- **Lo que solo daría error no se ofrece** (2026-10-18; `dcasa_base/views/account_move_views.xml`, campos
+  `dcasa_es_gerencia` y `dcasa_puede_cobrar`): en una factura, nota o recibo de cliente publicado, a quien no es Gerencia
+  (Caja y el contador incluidos) no le salen «Nota de crédito» ni «Restablecer a borrador» (una cancelada sí vuelve a
+  borrador, como deja el servidor); en una nota, «Pagar» solo a Gerencia; «Créditos pendientes: Agregar» solo a quien
+  cobra. Del menú «Acción» salen «Pagar», «Revertir» y «Cambiar a factura/nota de crédito» para quien no es Gerencia,
+  contabilidad ni administrador (también el botón «Revertir» de un asiento). En los pagos de clientes, «Publicar»,
+  «Restablecer a borrador» y «Cancelar» solo a quien puede (`account.payment.dcasa_puede_tocar`) y la Vendedora no ve
+  «Nuevo» (`account.payment.get_view`); en el globito de un pago de la factura, «Desconciliar» solo a quien cobra
+  (`static/src/xml/pagos.xml`). En «Pagar», a quien no es Gerencia no se le ofrece qué hacer con la diferencia (queda
+  abierta) y, si cobra de más, el asistente lo avisa antes («Estás cobrando más de lo que falta…»). La Guía muestra
+  «Borrar una factura de prueba que ya dio puntos» (pasa por «Restablecer a borrador») solo a Gerencia. El servidor lo
+  sigue negando igual por RPC o Brian (`TestBotonesSoloAQuienPuede`).
+- **Pagos en línea** (si algún día la tienda cobra en línea): al publicar la factura de un pedido ya pagado en la web,
+  Odoo cruza solo ese pago con la factura; eso no es «registrar un cobro» y se deja pasar
+  (`pago_en_linea_de_su_factura`). Con «ver solo lo suyo» encendido la vendedora no ve ese pago: la factura se publica
+  por cobrar y Caja le aplica el cobro desde la factura (comprobado en una base de prueba).
+- **Primer abono** (`dcasa_invoice/models/primer_abono.py`): si la factura de cliente no tiene pagos (una nota de
+  crédito aplicada no cuenta), el primer pago del asistente es al menos `ANTICIPO_MINIMO` (la mitad) de su total, salvo
+  que la complete; si no, `UserError` con «El primer abono debe ser de al menos la mitad: $X. Si es menos, lo registra
+  Gerencia.» (Gerencia y administradores pasan). Un pago agrupado de varias facturas se revisa al final y se deshace
+  entero si alguna quedó por debajo. El asistente lo avisa antes (`dcasa_aviso_primer_abono`). La conciliación bancaria
+  y aplicar un cobro que ya estaba no se frenan: los ganchos de conciliación (`_reconcile_pre_hook`/`_post_hook`) dejan
+  una nota en la factura («Primer abono de $X: es menos de la mitad… Que Gerencia lo revise» o «Lo autorizó y lo
+  registró … (Gerencia)»). Lo cargado del sistema anterior y lo que corre con `sudo` no deja notas.
+- **Vencimiento del abono**: `_dcasa_estado_abono` suma `dcasa_invoice.abono_dias` días continuos (30) al primer
+  abono; de ahí leen el papel, las Condiciones, «Mi cuenta», los correos y Brian (`ver_factura`, `facturas_pendientes`).
+- **Tafi y Crediviva** (`dcasa_base.crear_diarios_financiamiento`): diarios de banco `TAFI` y `CRVIV`, una vez por base
+  (parámetro `dcasa_base.diarios_financiamiento_creados`), sin pisar uno que ya exista con ese código o ese nombre.
+- **Pruebas**: `dcasa_base/tests/test_reglas_gerencia.py` (cada camino de cobro, anular, borrador, notas, devolución,
+  saldo a favor, Tafi y Crediviva y su migración), `dcasa_invoice/tests/test_primer_abono.py` y `test_estado_abono.py`
+  (30 días, cambio de mes, migración del parámetro), `dcasa_contabilidad/tests/test_primer_abono_banco.py`,
+  `dcasa_brian/tests/test_reglas_gerencia.py` y `website_dcasa/tests/test_pedidos_web_sin_vendedora.py`.
+
+### Campos que Odoo calcula con SQL directo (`models/campos_contables.py`)
+
+Las reglas de registro no frenan un campo que Odoo calcula saltándose las reglas (`bypass_access`); solo lo frena
+el grupo del campo, y esos campos traían «Facturación» (que la vendedora tiene para cobrar). Se les pide
+contabilidad (`account.group_account_readonly` o `account.group_account_manager`):
+
+- `res.partner.debit`: lo que la tienda le debe a cada proveedor.
+- `account.journal.kanban_dashboard` y `kanban_dashboard_graph`: facturas de proveedor por pagar y retrasadas,
+  y el saldo del banco y de la caja (las tarjetas del tablero de Facturación).
+
+### Lo que queda abierto a propósito o fuera de este cambio
+
+- **Devoluciones de dinero a un cliente** (pago saliente a un cliente): solo Gerencia y administradores
+  (`models/cobros.py`, decisión A7). Las reglas de Facturación y de Caja ya solo dejan ver cobros entrantes.
+- **Órdenes de compra**: Odoo le da lectura a quien tiene Inventario (recibe mercancía contra la orden) y
+  lectura y **escritura** a quien tiene Facturación (para enlazar facturas de proveedor), sin reglas de registro.
+  No es contabilidad, pero es de jefe (precios de proveedor). No se cerró aquí porque recibir mercancía contra una
+  orden lee la orden; si se quiere cerrar la escritura, es una regla de grupo con `perm_read = False` más una
+  regla «todo» para Compras y contabilidad, probada con una recepción contra orden de compra.
+- **Analítica con `dcasa_contabilidad`**: ese módulo hace a todo empleado miembro de
+  `analytic.group_analytic_accounting`, que da lectura **y escritura** a cuentas, planes y modelos de
+  distribución analítica. Las líneas con montos ya están protegidas aquí; la configuración conviene cerrarla en ese
+  módulo (permiso solo para contabilidad).
+- **Precios de proveedor de los productos** (`product.supplierinfo`) los lee todo empleado: se trata junto con los
+  costos de los productos (ver `models/product.py`).
+
+---
+
+## Roles y grupos (mapa completo)
+
+Puesto al día el 2026-11-06 contra `security/*.xml` y `security/ir.model.access.csv` de cada módulo. En la ficha del
+usuario, la sección **D'CASA** tiene **tres selectores**: el rol (Vendedora, Caja o Gerencia), **Nómina** (Administra la
+nómina) y **Marketing**. Nómina y Marketing se suman a cualquier rol.
+Los roles se arman con grupos estándar de Odoo; casi no hay permisos nuevos.
+
+| Rol | Grupo (xmlid) | Qué incluye | Qué ve y hace |
+|---|---|---|---|
+| **Vendedora** | `dcasa_base.group_vendedora` | Ventas «todos los documentos», Facturación (`account.group_account_invoice`), Inventario usuario | Cotiza, confirma y factura lo suyo (no cobra: «el cobro solo en Caja», 2026-10-17), despacha, atiende Conversaciones y Socios. Descuento hasta el tope. No ve nada contable de un jefe, ni costos, ni ganancia, ni Nómina (solo **Mis gastos por reembolsar**), ni Empleados. Su Inicio muestra solo lo suyo. |
+| **Caja** | `dcasa_base.group_caja` | Vendedora + Ventas «todos los documentos» (`sales_team.group_sale_salesman_all_leads`) | Ve, factura y **cobra** todas las cotizaciones, pedidos, facturas y cobros de clientes. Sin contabilidad ni costos; descuento con tope. Anular, notas de crédito, devoluciones y un primer abono menor a la mitad: Gerencia. No se le asigna a nadie al instalar: lo da un administrador (ver arriba, «Dar el rol Caja»). |
+| **Gerencia** | `dcasa_base.group_gerencia` | Vendedora + gerente de Ventas + contador (`account.group_account_user`) + gerente de Inventario y de Compras + gestor de productos + **Administra la nómina** | Todo lo de la tienda: descuentos sin tope, existencias a mano, fusión de contactos, costos y ganancia, Estadísticas, Comparar ventas, reglas del programa de vendedores. El usuario `admin` nace en Gerencia. No incluye Ajustes técnicos ni gestión de usuarios ni el diseñador del sitio. |
+| **Contabilidad** | `account.group_account_user` / `account.group_account_manager` / `account.group_account_readonly` | Grupos de Odoo | Todo lo contable (reglas «todo» en `dcasa_reglas_contables.xml`); el lector solo lee. Ven el menú Empleados. |
+| **Administra la nómina** | `dcasa_nomina.group_nomina` | Gerente de RR. HH. + contador | Planillas, sueldos, liquidaciones, reembolsos, bono por meta y **la comisión del sitio web** (ventas del sitio, reglas, quiénes reciben, libro y liquidaciones; quien cobra en una liquidación no la aprueba, aunque cambie su ficha: los usuarios ligados quedan fijos en cada versión del reparto; también anula versiones que todavía no rigen y anota ajustes con motivo). Gerencia lo incluye, y solo Gerencia ve *Pedidos de la página para revisar*; el administrador técnico solo no ve nada de esto. Como incluye al contador, también **cobra** (A5) y puede **confirmar un cobro de Yappy** con el botón «Confirmar que el dinero entró» y leer el celular de Yappy ([YAPPY.md](YAPPY.md) §3.4; no es un permiso nuevo y no se cambió). |
+| **Marketing** | `dcasa_marketing.group_marketing` (decisión de la dueña, 2026-10-22) | Solo usuario interno (`base.group_user`): ningún grupo de Ventas, Contabilidad ni Inventario | La app **Marketing** completa (stock por categoría, más vendidos, movimiento, quietos, fotos que faltan), cambiar las fotos de cualquier producto, **Camila** (armar y aprobar la campaña de correo, [CAMILA.md](CAMILA.md)) y las herramientas de marketing de Brian. Sus cifras son unidades, no dinero: sin costos, contabilidad ni ventas de otros (de una campaña ve cuántas ventas, no cuánto). |
+| **Administradores** | `base.group_system` | Ajustes técnicos y usuarios | Lo anterior más: Registro de acciones, Consumo y Ajustes de Brian; Accesos al panel; Cargar datos del sistema anterior; Correo a clientes. Su doble factor es obligatorio con `DCASA_2FA_OBLIGATORIO=1`. |
+| **Bodega** | *no hay grupo propio*: `stock.group_stock_user` (usuario) o `stock.group_stock_manager` (gerente) de Odoo | — | Usuario: entregas, recepciones, el panel **Bodega** (despachar y validar entregas; también lo tienen la Vendedora y Gerencia) y **Escáner** (buscar). Gerente: además *Códigos de barras* e *Historial de etiquetas*. Contar existencias y cambiar precios en el Escáner: solo Gerencia. |
+| **Juan** (usuario técnico) | `dcasa_conversaciones.group_juan` | Ningún otro grupo | Solo ve las herramientas de Juan; sin permisos internos, sin clave de API ni contraseña. |
+| **Sofía** (no es un rol: va con Ventas) | `sales_team.group_sale_salesman` y `sales_team.group_sale_manager` (`addons/dcasa_sofia/security/`) | — | Cada vendedora ve **solo las propuestas que son para ella** (nunca las de repartir) y lee los mensajes; Gerencia de ventas ve todas, el historial de revisiones y **edita los mensajes** (CRM › Configuración › Sofía). Nadie crea, edita ni borra propuestas a mano: aprobar o descartar va por los botones de Sofía ([SOFIA.md](SOFIA.md)). |
+| **Portal** (cliente con cuenta de la tienda) | `base.group_portal` | — | Su `/my` (lleva a `/mi-cuenta`), sus pedidos y facturas en PDF, cambiar contraseña y direcciones. |
+| **Público** (visitante, socio con PIN) | `base.group_public` | — | Sitio, tienda, carrito, `/socios` y `/mi-cuenta` con celular + PIN (una marca en la sesión, no un usuario de Odoo). |
+
+Quién ve cada menú y cada pantalla de los módulos propios: [MODULOS.md](MODULOS.md).
+
+## Interruptores
+
+Lo que se enciende o se apaga sin tocar código (o con un cambio de una línea). Todos vienen como se indica en este commit.
+
+| Interruptor | Dónde | De fábrica | Qué hace |
+|---|---|---|---|
+| Tope de descuento de la Vendedora | *Ajustes de Ventas › Descuento máximo de la vendedora* (`dcasa.descuento_max_vendedora`) | 10 % | Tope sobre el pedido entero; Gerencia sin tope |
+| `DCASA_2FA_OBLIGATORIO` / `DCASA_2FA_ALCANCE` | `edge/wrangler.jsonc` | `1` / `admins` en los dos entornos | Doble factor obligatorio (rescate: `DCASA_2FA_RESCATE`) |
+| `DCASA_PUERTA_OBLIGATORIA` | `edge/wrangler.jsonc` | producción `0`, staging `1` | Puerta del equipo `0` → `avisar` → `1`; sin los cuatro secretos queda apagada aunque diga `1` |
+| `DCASA_PUERTA_EXIGIR_CORREO` | `edge/wrangler.jsonc` | `0` | El correo de Access debe ser el del usuario de Odoo |
+| `TIENDA_ESTATICA` | `edge/wrangler.jsonc` | producción `off`, staging `on` | Caché de páginas anónimas en el borde |
+| Turnstile | `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET` (`DCASA_TURNSTILE=off` lo apaga) | apagado | Captcha invisible en login, formularios y `/socios` |
+| `DCASA_ROBOTS_IA` | variable | `equilibrada` | robots.txt para rastreadores de IA |
+| Programa de vendedores | `vendedores.programaActivo` en `addons/dcasa_socios/data/puntos.json` | encendido | Comisiones del programa |
+| Canje de vendedores externos / en efectivo | `canje.externosHabilitado` / `efectivoHabilitado` en `puntos.json` | **apagados** | Esperan dictamen del abogado y la contadora; Ajustes los muestra de solo lectura y el servidor los ignora |
+| Correo a clientes | `RESEND_API_KEY` + *Ventas › Configuración › Correo a clientes* (`dcasa_correo.enviar_a_clientes`, `al_pagar`) | **apagado** (en producción, encendido desde el 2026-10-27) | Factura, abono y bienvenida por correo |
+| Campañas de correo (Camila) | `RESEND_CAMPANAS_API_KEY` (secreto del panel de Cloudflare, permiso «Full access») + `DCASA_ENTORNO=produccion` | **apagado** (sin la clave) | Enviar la campaña de cada 15 días a quien dijo que sí ([CAMILA.md](CAMILA.md)); sin la clave se arma y se prueba, pero no sale |
+| Pagos con tarjeta y Yappy (Tilopay) | *Facturación › Configuración › Proveedores de pago › Tilopay* (estado del proveedor: Deshabilitado / Modo de prueba / Habilitado; lo cambia quien tiene **Ajustes técnicos**, hoy el administrador, que además es Gerencia) + `TILOPAY_API_KEY`, `TILOPAY_API_USER`, `TILOPAY_API_PASSWORD` y `TILOPAY_ENTORNO` (panel de Cloudflare) | **apagado** | Se ofrece en la tienda solo con las **tres llaves**: claves cargadas, interruptor de Odoo y `TILOPAY_ENTORNO` de acuerdo (Habilitado ↔ `produccion`, Modo de prueba ↔ `prueba`). «Probar conexión»: Gerencia o administrador. Ver [TILOPAY.md](TILOPAY.md) |
+| Factura electrónica DGI | `l10n_pa_fe_activo` de la empresa (`dcasa_fe_pa`) | **apagada** y el módulo no se instala | Envío al PAC |
+| Constructor visual del sitio | `dcasa_interfaz.sitio_editable` (Ajustes técnicos) | **apagado** | El sitio se edita por código |
+| Black Weekend | `DCASA_BLACK_WEEKEND` y su ventana | producción `0`, staging `1` | Campaña visible |
+| Brian de la tienda (el chat de la web) | *Sitio web › Brian de la tienda* (`dcasa_brian_tienda.activo`) | **encendido** (aprobado 2026-11-13) | La burbuja de Brian en lugar de la de WhatsApp; presupuesto propio (30 USD al mes de fábrica) y topes ([BRIAN_TIENDA.md](BRIAN_TIENDA.md)) |
+| Juan: canales y bot | *Conversaciones › Configuración › Ajustes de Juan* | WhatsApp QR y Telegram sí; API oficial, Messenger e Instagram no (en producción, la API oficial encendida desde el 2026-11-02) | Qué canales atiende el asistente ([JUAN_CANALES.md](JUAN_CANALES.md)) |
+| Tope de gasto de IA de Brian | *Brian › Ajustes* | 0 (sin tope) | Corta las llamadas al modelo al llegar |
+| Busca con una foto (tienda web) | *Sitio web › Busca con una foto* (`dcasa_buscar_foto.activo`, `dcasa_buscar_foto.tope_*` y `dcasa_buscar_foto.tope_mes_usd`) | **encendido** (la dueña dijo que sí, 2026-11-13); 10 por visitante y 30 por conexión en una hora, 200 por día; 5 USD de IA de la foto en el mes (y nada con el gasto de Juan por encima del 80 % de su tope) | La cámara en la búsqueda del sitio y de `/shop`; apagado, no sale y `/shop/foto` da 404 ([CATALOGO.md](CATALOGO.md#busca-con-una-foto)) |
+| Salidas de emergencia del arranque | `DCASA_PERMITIR_BAJAR`, `DCASA_HUMO=0` (panel del Worker) | sin poner | Solo mientras hagan falta ([OPERACION.md](OPERACION.md)) |
+
+## Reglas no negociables de Socios y Vendedores
+
+Resumen de [`CLAUDE.md`](../CLAUDE.md); el detalle está en [SOCIOS.md](SOCIOS.md) y [VENDEDORES.md](VENDEDORES.md).
+
+**Socios** (reglas de DCasa-Referidos):
+
+1. Ninguna cifra fuera de `addons/dcasa_socios/data/puntos.json`; un `null` o `PENDIENTE` no se rellena a ojo.
+2. No hay columna de saldo: el saldo es la suma de `dcasa.movimiento`.
+3. El libro no se edita ni se borra (ACL de solo lectura para todos; lo escribe el sistema): se corrige con asientos
+   contrarios con motivo.
+4. El referido se paga con la primera compra que da puntos; el padrino se escribe una vez.
+5. Un cliente y un socio son la misma ficha (`res.partner`), llave = celular.
+6. `DCASA_PIN_PEPPER` jamás se rota.
+
+**Vendedores:**
+
+1. Las cifras de fábrica viven solo en la sección `vendedores` de `puntos.json`; Gerencia y administradores las ajustan
+   en *Ajustes › Programa de vendedores* como una capa con versión y vigencia hacia adelante (`dcasa.vend.reglas`). El
+   código lee siempre `dcasa.vend.reglas._vigentes()`.
+2. Libro propio e inmutable (`dcasa.vend.movimiento`); el saldo es la suma.
+3. Nada se paga por afiliar ni por reclutar; solo por ventas **pagadas**; un solo nivel; un solo patrocinador.
+4. Un tope o un error del programa **nunca** hace fallar una venta (la comisión corre en un savepoint tras el pago).
+5. Canje de externos y en efectivo apagados hasta el dictamen; el servidor los ignora aunque alguien los mande.
+6. La escalera de comisión solo cambia hacia adelante; lo ya acreditado no se recalcula.
+
+## Superficie RPC (lista blanca)
+
+Odoo deja llamar por `/web/dataset/call_kw` (y `/json/2`) a **todo método público** de un modelo, sin mirar el ACL al
+despachar. Un método público que usa `sudo()` sin exigir grupo sería una puerta abierta. Por eso:
+
+- `addons/dcasa_base/tests/test_superficie_rpc.py` recorre todos los modelos y **falla** si un método público definido en
+  `addons/` no está en `LISTA_BLANCA` con su motivo (441 entradas al 2026-10-22; las que más: `dcasa_conversaciones`
+  80, `dcasa_socios` 54, `dcasa_base` 34, `dcasa_nomina` 28, `dcasa_contabilidad` 26, `dcasa_brian` 25; las 11 de
+  `dcasa_marketing` exigen editar el producto o ser Gerencia antes de cualquier `sudo`; el panel «Armar combo»
+  de `dcasa_catalogo` suma 17, todas sin sudo y con `check_access` de la cotización). También falla si una entrada ya
+  no es pública, si falta un motivo, o si un botón de vista apunta a un método `@api.model`.
+- Los modelos abstractos `brian.herramientas`, `brian.proveedores`, `brian.politica`, `dcasa.mantenimiento`,
+  `dcasa.fe.pac`, `dcasa.fe.pac.simulado` y `dcasa.correo` no exponen **nada**.
+- Desde internet, el borde además bloquea `/jsonrpc`, `/xmlrpc*`, `/json/2*`, `/web/database/*`, `/doc-bearer*` y
+  `/dcasa/juan/*` ([ARQUITECTURA.md §2.8](ARQUITECTURA.md)).
+- Regla para todo método nuevo: hacerlo privado (`_nombre` o `@api.private`) o exigir el grupo en el servidor **antes**
+  de cualquier `sudo()`, y anotarlo con su motivo.
+
+## Privacidad
+
+- **Datos personales solo en Odoo.** Nombres, correos, celulares, cédulas y facturas de clientes y del equipo nunca van al
+  repositorio, a documentos ni a pruebas (hay pruebas que buscan correos reales dentro de los módulos). La carga del
+  sistema anterior viaja por la pantalla de Odoo, nunca por Git.
+- **Permiso de novedades por correo** (`dcasa_camila`, 2026-11-06): solo se le escribe una campaña a quien dijo que
+  sí, con cuándo, por dónde, con quién y **a qué correo** (si cambia de correo, hay que volver a preguntar); una baja
+  es final y vale para **ese correo en cualquier ficha** (repetidas, archivadas o contactos hijos). La casilla se marca
+  de una ficha a la vez; desmarcarla quita el permiso sin baja. El enlace «Sí, quiero» solo va al pie del correo que
+  recibe la propia ficha (no a un contacto hijo ni a varios) y Gerencia lo puede apagar. A Resend solo sube el
+  **correo** (sin nombre ni nada más) de quien tiene permiso; a la IA que escribe el texto solo le llegan datos de
+  productos (nombre, categoría, atributos, descripción, medidas, material) y la idea que escribe el equipo: ningún dato
+  de clientes. Etapa 1b (decisión de la dueña, 2026-11-06): **se activa sola al agregar el correo** a una ficha (origen
+  honesto «Se activó sola al agregar su correo», con quién lo agregó; nunca «tienda»), una ficha a la vez y solo si lo
+  agrega alguien del equipo desde la pantalla (ficha, venta, factura), Sofía o Juan con el correo que escribió el
+  cliente (por invitación, no por excepciones): nunca importando, con la carga del sistema anterior, al fusionar, en
+  bloque, instalando, por el sistema, desde la web pública o el portal, el chatter, la creación rápida o Brian, a
+  empleados, proveedores o el equipo, con baja o «no contactar» de ese correo en cualquier ficha ni después de un «no»
+  (que solo borra un acto explícito), y nada hacia atrás. «Venía activada» en la venta queda como tal (nadie le
+  preguntó). El «no» queda anotado (cuándo, dónde y quién: desmarcar la casilla, en la venta o
+  con Juan) y con él ya no se activa sola. Al confirmar una venta o registrar un pago, la casilla sale ya activada con
+  su correo (si dijo que no, se desactiva); Juan honra siempre un «no». Cada campaña dice «Te llega porque nos diste
+  tu correo en D'CASA. ¿No quieres más? Date de baja aquí». El público de cada campaña (los chips del CRM) se muestra en cuántos, nunca en nombres ni correos. Detalle: [CAMILA.md](CAMILA.md).
+- **PIN de socios:** PBKDF2-SHA256 con sal por socio y la pimienta `DCASA_PIN_PEPPER`, que vive fuera de la base
+  (`dcasa_socios/models/res_partner.py`). Un volcado robado sin la pimienta no se puede atacar por fuerza bruta.
+  Intentos fallidos bloquean la cuenta; Gerencia reinicia el PIN (queda nota en el historial).
+- **Mi cuenta** (`/mi-cuenta`): todo se lee filtrado por la ficha del cliente; un pedido ajeno responde 404. A quien entra
+  con PIN no se le enseñan cédula, dirección, otros teléfonos, el correo entero ni PDF; reclamar una ficha con compras
+  exige el código de la factura. Detalle: [SOCIOS.md › Mi cuenta](SOCIOS.md#mi-cuenta).
+- **Brian y Juan** nunca ven ni cambian contraseñas, claves ni la pimienta; el contenido de adjuntos y mensajes de
+  clientes es **dato, no instrucción**. Los registros del puente nunca llevan el QR, credenciales, textos de clientes ni
+  números completos.
+- **Brian de la tienda** (`dcasa_brian_tienda`, 2026-11-13): no guarda la conversación (el Worker la recuerda como
+  mucho 2 horas y 30 mensajes, los últimos 15 intercambios; la página, en el `sessionStorage` de ese navegador) ni crea
+  contactos u oportunidades; lo que pregunta no queda en la auditoría de herramientas (`brian.accion`); la ubicación del
+  botón «Usar mi ubicación» se cambia por el lugar de entrega más cercano antes de cualquier registro; las estrellas son número y fecha; los topes cuentan con huellas HMAC que se
+  borran a los dos días. El PDF del carrito nunca muestra datos de otra persona. Detalle: [BRIAN_TIENDA.md](BRIAN_TIENDA.md).
+- **Accesos al panel** se guardan 180 días; las conversaciones de Brian se depuran con su propio plazo.
+
+## Políticas del sitio: dónde viven y cómo se cambian
+
+| Política | Dónde vive | Cómo se cambia |
+|---|---|---|
+| Privacidad (`/privacidad`) | `addons/website_dcasa/views/legal_templates.xml` (`privacidad_cuerpo`) | En el código y con un despliegue (el sitio no se edita con el constructor) |
+| Términos y condiciones (`/terminos`; `/terms` redirige) | Mismo archivo (`terminos_cuerpo`) | Ídem |
+| Términos del programa Socios (`/socios/terminos`) | `addons/dcasa_socios/views/socios_templates.xml` (`socios_terminos`) | Ídem; las cifras salen de `puntos.json` |
+| Términos de vendedores (`/vendedores/terminos`) | `addons/dcasa_socios/views/vendedores_templates.xml` (`vendedor_terminos`) | Ídem |
+| Garantía, cambios y términos impresos en la factura | Texto inicial en `addons/dcasa_invoice/models/res_company.py` (`TEXTOS_INICIALES`), se escribe una vez | *Ajustes › Empresas › Documentos D'CASA* (no se vuelve a pisar) |
+| Condiciones de abono (hoja de dos copias) | Texto inicial en `addons/dcasa_abonos/models/condiciones.py` (`CONDICIONES_INICIALES`) | *Ajustes › Empresas › Documentos D'CASA* |
+| Plazo de los apartados por la web | Parámetro `website_dcasa.apartado_dias` | *Sitio web › Configuración › Ajustes* |
+| Lo que Juan dice de garantía y compra | Fichas de conocimiento: **ninguna** de fábrica (`dcasa_conversaciones/data/conocimiento_data.xml` está vacío desde el 2026-11-18) | *Conversaciones › Conocimiento del bot*, con la revisión de la dueña |
+
+Regla para todas: no prometen plazos, garantías ni condiciones que el dueño no haya fijado; se revisan con un abogado.
+La ficha de producto de Odoo trae promesas propias («devolución de 30 días») que `website_dcasa` apaga en cada
+despliegue.

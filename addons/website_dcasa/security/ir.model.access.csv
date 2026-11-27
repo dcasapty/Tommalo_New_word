@@ -1,0 +1,12 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_dcasa_imagen_variante_admin,dcasa.imagen.variante admin,model_dcasa_imagen_variante,base.group_system,1,0,0,1
+access_dcasa_resena_gerencia,dcasa.resena gerencia,model_dcasa_resena,dcasa_base.group_gerencia,1,0,0,0
+access_dcasa_resena_admin,dcasa.resena admin,model_dcasa_resena,base.group_system,1,0,0,1
+access_dcasa_campana_gerencia,dcasa.campana gerencia,model_dcasa_campana,dcasa_base.group_gerencia,1,1,1,0
+access_dcasa_campana_admin,dcasa.campana admin,model_dcasa_campana,base.group_system,1,1,1,1
+access_dcasa_campana_descuento_gerencia,dcasa.campana.descuento gerencia,model_dcasa_campana_descuento,dcasa_base.group_gerencia,1,1,1,0
+access_dcasa_campana_descuento_admin,dcasa.campana.descuento admin,model_dcasa_campana_descuento,base.group_system,1,1,1,0
+access_dcasa_portada_diapositiva_gerencia,dcasa.portada.diapositiva gerencia,model_dcasa_portada_diapositiva,dcasa_base.group_gerencia,1,1,1,1
+access_dcasa_portada_diapositiva_admin,dcasa.portada.diapositiva admin,model_dcasa_portada_diapositiva,base.group_system,1,1,1,1
+access_dcasa_portada_ajustes_gerencia,dcasa.portada.ajustes gerencia,model_dcasa_portada_ajustes,dcasa_base.group_gerencia,1,1,1,0
+access_dcasa_portada_ajustes_admin,dcasa.portada.ajustes admin,model_dcasa_portada_ajustes,base.group_system,1,1,1,1

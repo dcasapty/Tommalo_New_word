@@ -1,0 +1,27 @@
+// Interfaz de Odoo con la marca de Tommalo: Montserrat para todo (docs/MARCA_TOMMALO.md).
+//
+// Un solo archivo variable (de 100 a 900, solo latino: el español entra entero) que sirve al panel y a la web; los PDF
+// usan los .ttf fijos (wkhtmltopdf no lee woff2). Licencia: fonts/OFL-Montserrat.txt.
+@font-face {
+    font-family: "Montserrat";
+    src: url("/dcasa_base/static/src/fonts/montserrat-latin-var.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+// Menús: tocar una opción en el celular no debe seleccionar el texto (salía la
+// «gota» de selección del teléfono encima del menú de aplicaciones).
+.o_main_navbar,
+.o_main_navbar .dropdown-menu,
+.o_navbar_apps_menu .dropdown-item {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+}
+
+// Lo seleccionado con el dedo o el ratón: el naranja de la marca, suave (la letra navy se sigue leyendo encima).
+::selection {
+    background: rgba(212, 212, 212, .35);
+}

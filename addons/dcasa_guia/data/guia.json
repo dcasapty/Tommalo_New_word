@@ -1,0 +1,4796 @@
+{
+ "$comentario": "LA GUÍA DEL NEGOCIO («¿Qué necesitas hacer hoy?»). Cada tarea dice, en palabras sencillas, qué quiere hacer la persona y qué logra al llegar a esa pantalla. La fuente única: la pantalla de la Guía, la herramienta buscar_en_guia de Brian y las pruebas leen este archivo. Una tarea solo se muestra si la persona puede abrir su pantalla (los mismos permisos del menú). No se inventan fechas ni montos de impuestos: donde hay una fecha límite, la nota manda a confirmarla con el contador.",
+ "$destino": "{\"menu\": \"modulo.xmlid_del_menu\", \"contexto\": {...}} abre ese menú (con filtros opcionales search_default_*); {\"nuevo\": \"modelo\", \"contexto\": {...}} abre un formulario nuevo; null = no hay pantalla (solo explicación o una pregunta para Brian).",
+ "version": 1,
+ "empezar": [
+  "resumen",
+  "facturas-vencidas",
+  "itbms",
+  "renta",
+  "cierre-mes",
+  "cobrar-cliente",
+  "cotizacion-nueva",
+  "planilla",
+  "banco-conciliar",
+  "usuario-nuevo"
+ ],
+ "categorias": [
+  {
+   "clave": "vender",
+   "titulo": "Vender y cobrar",
+   "icono": "fa-shopping-bag",
+   "detalle": "Cotizaciones, ventas del día, cobros y devoluciones."
+  },
+  {
+   "clave": "facturar",
+   "titulo": "Facturas y pagos",
+   "icono": "fa-file-text-o",
+   "detalle": "Facturas a clientes y de proveedores, pagos, cheques y correcciones."
+  },
+  {
+   "clave": "bancos",
+   "titulo": "Bancos",
+   "icono": "fa-university",
+   "detalle": "Subir el movimiento del banco y comprobar que todo cuadra."
+  },
+  {
+   "clave": "reportes",
+   "titulo": "Cómo va el negocio",
+   "icono": "fa-line-chart",
+   "detalle": "Reportes en palabras claras: ganancias, deudas, dinero y cierre de mes."
+  },
+  {
+   "clave": "impuestos",
+   "titulo": "Impuestos y obligaciones",
+   "icono": "fa-balance-scale",
+   "detalle": "Declaración de renta, ITBMS, seguro social y lo que le toca a una empresa en Panamá."
+  },
+  {
+   "clave": "personal",
+   "titulo": "Personal y nómina",
+   "icono": "fa-users",
+   "detalle": "Colaboradores, planilla, vacaciones, décimo tercer mes y liquidaciones."
+  },
+  {
+   "clave": "productos",
+   "titulo": "Productos e inventario",
+   "icono": "fa-cubes",
+   "detalle": "Crear productos, ver existencias, recibir mercancía y contar inventario."
+  },
+  {
+   "clave": "compras",
+   "titulo": "Compras y proveedores",
+   "icono": "fa-truck",
+   "detalle": "Pedirle mercancía a un proveedor y llevar sus precios."
+  },
+  {
+   "clave": "clientes",
+   "titulo": "Clientes, socios y vendedores",
+   "icono": "fa-star",
+   "detalle": "Fichas de clientes, programa Socios, vendedores y seguimiento."
+  },
+  {
+   "clave": "tienda",
+   "titulo": "Tienda en línea y conversaciones",
+   "icono": "fa-globe",
+   "detalle": "Pedidos de la web, carritos, mensajes de clientes y Juan."
+  },
+  {
+   "clave": "administrar",
+   "titulo": "Administrar el sistema",
+   "icono": "fa-cog",
+   "detalle": "Accesos de las personas, datos de la empresa, Brian y rastro de cambios."
+  }
+ ],
+ "tareas": [
+  {
+   "id": "cotizacion-nueva",
+   "categoria": "vender",
+   "grupo": "Vender",
+   "titulo": "Hacerle una cotización a un cliente",
+   "logras": "Armas el pedido con los productos y el precio, y se lo mandas al cliente o lo imprimes. Cuando el cliente confirma, la cotización pasa a ser una venta.",
+   "destino": {
+    "nuevo": "sale.order"
+   },
+   "nota": "Arriba van el cliente y sus datos y, enseguida, los productos. Las direcciones de factura y de entrega, el vencimiento, la lista de precios, los términos de pago y el teléfono fijo están en «Más datos», el botón que va justo antes de los productos: tócalo para verlos o cambiarlos y vuelve a tocarlo para esconderlos (ese celular o computadora recuerda cómo lo dejaste). Se abre solo, y el botón te avisa, cuando la entrega o la factura van a una dirección distinta a la del cliente o cuando falta llenar un dato de ahí.",
+   "palabras": [
+    "cotizar",
+    "presupuesto",
+    "pedido",
+    "proforma",
+    "venta nueva",
+    "cotizacion",
+    "mas datos",
+    "direccion de entrega",
+    "lista de precios",
+    "vencimiento"
+   ]
+  },
+  {
+   "id": "combo-armar",
+   "categoria": "vender",
+   "grupo": "Vender",
+   "titulo": "Armar un combo cama + colchón en una cotización",
+   "logras": "Escoges la cama y te salen los colchones de su misma medida que hay en existencia, con su precio normal, su precio en combo y lo que ahorra el cliente. Con un toque se agregan los dos a la cotización; después puedes cambiar la cama o el colchón, o quitar el combo.",
+   "destino": {
+    "menu": "sale.menu_sale_quotations"
+   },
+   "pasos": [
+    {
+     "texto": "Abre la cotización (o haz una nueva con «Nuevo») y escoge el cliente.",
+     "destino": {
+      "menu": "sale.menu_sale_quotations"
+     }
+    },
+    {
+     "texto": "En «Líneas de la orden», toca «Armar combo cama + colchón», junto a «Agregar un producto». En el celular es el botón «Armar combo».",
+     "destino": null
+    },
+    {
+     "texto": "Busca la cama por nombre, código o medida y tócala.",
+     "destino": null
+    },
+    {
+     "texto": "Toca el colchón que quiere el cliente: se agregan la cama y el colchón, y el colchón va a su precio en combo. Con «¿Cuántos combos?» pones más de uno.",
+     "destino": null
+    },
+    {
+     "texto": "Para cambiar la cama o el colchón, o quitar el combo, vuelve a tocar «Armar combo». Al terminar, toca «Listo».",
+     "destino": null
+    }
+   ],
+   "nota": "El precio en combo lo pone Gerencia en cada colchón; si un colchón no lo tiene, va a su precio normal. Si quitas la cama o la cambias por otra de otra medida, el colchón vuelve solo a su precio normal. También cuenta si agregas la cama y el colchón de la misma medida como productos sueltos.",
+   "palabras": [
+    "combo",
+    "cama y colchon",
+    "cama con colchon",
+    "armar combo",
+    "juego de cama",
+    "colchon de la misma medida",
+    "precio combo",
+    "cambiar colchon"
+   ]
+  },
+  {
+   "id": "cotizaciones",
+   "categoria": "vender",
+   "grupo": "Vender",
+   "titulo": "Ver las cotizaciones que están abiertas",
+   "logras": "Ves cuáles cotizaciones siguen esperando respuesta del cliente, para darles seguimiento o confirmarlas.",
+   "destino": {
+    "menu": "sale.menu_sale_quotations"
+   },
+   "palabras": [
+    "pendientes",
+    "seguimiento",
+    "confirmar cotizacion",
+    "cambiar estado"
+   ]
+  },
+  {
+   "id": "descuento-con-clave",
+   "categoria": "vender",
+   "grupo": "Vender",
+   "titulo": "Dar un descuento mayor a tu tope, con la clave de Gerencia",
+   "logras": "Desde la cotización le pides el descuento a Gerencia; le llega una clave por Telegram, tú la escribes y el descuento se aplica solo. La clave vale una sola vez, solo para esa cotización y ese monto, y vence a los pocos minutos.",
+   "destino": {
+    "menu": "sale.menu_sale_quotations"
+   },
+   "pasos": [
+    {
+     "texto": "Abre la cotización (todavía sin confirmar).",
+     "destino": {
+      "menu": "sale.menu_sale_quotations"
+     }
+    },
+    {
+     "texto": "Debajo de los productos toca «Pedir descuento a Gerencia».",
+     "destino": null
+    },
+    {
+     "texto": "Escribe cuánto (un % sobre el total o un importe fijo) y por qué, y toca «Pedir la clave a Gerencia». Ves cuánto quedaría el total.",
+     "destino": null
+    },
+    {
+     "texto": "Cuando Gerencia te dé la clave de 6 números, escríbela y toca «Aplicar el descuento».",
+     "destino": null
+    }
+   ],
+   "nota": "Si Telegram no está conectado, la pantalla te lo dice: pídele a Gerencia que lo apruebe en persona desde su usuario. Hasta tu tope lo pones tú, con el botón «Descuento».",
+   "palabras": [
+    "descuento",
+    "clave",
+    "autorizar descuento",
+    "rebaja",
+    "tope de descuento",
+    "descuento mayor",
+    "codigo de gerencia"
+   ]
+  },
+  {
+   "id": "descuentos-por-autorizar",
+   "categoria": "vender",
+   "grupo": "Vender",
+   "titulo": "Aprobar o rechazar los descuentos que piden las vendedoras",
+   "logras": "Ves quién pidió más descuento que su tope, en qué cotización, cuánto y por qué; lo apruebas (se aplica solo) o lo rechazas. También queda el historial de quién autorizó cada uno.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_descuentos_por_autorizar"
+   },
+   "nota": "La clave que te llega por Telegram es solo tuya: si estás de acuerdo, dásela a quien la pidió. Los minutos que vale se cambian en Ajustes de Ventas.",
+   "palabras": [
+    "autorizar descuento",
+    "aprobar descuento",
+    "clave de descuento",
+    "descuentos pedidos",
+    "telegram"
+   ],
+   "grupos": [
+    "sales_team.group_sale_manager",
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "ventas-hoy",
+   "categoria": "vender",
+   "grupo": "Hoy",
+   "titulo": "Ver cuánto se vendió hoy",
+   "logras": "La lista de las ventas de hoy ya facturadas por completo. Si eres vendedora, solo las tuyas; Gerencia ve las de todas.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_ventas_hoy"
+   },
+   "palabras": [
+    "cierre de caja",
+    "facturado",
+    "hoy",
+    "mis ventas",
+    "vendido",
+    "ventas del dia"
+   ]
+  },
+  {
+   "id": "ventas-por-dia",
+   "categoria": "vender",
+   "tambien": [
+    "reportes"
+   ],
+   "grupo": "Hoy",
+   "titulo": "Ver cuánto se vendió cada día del mes",
+   "logras": "El mes como un calendario (en el celular, una lista de días) con lo vendido cada día y cuántas ventas fueron. Tocas un día y ves cada pedido o factura de ese día, con su cliente, su vendedora y su estado; tocas uno y se abre. Arriba, el total del mes y cómo va contra el mes pasado. A la derecha, justo encima de las facturas del día, una sola tarjeta «Cobrado por forma de pago» (efectivo, Yappy, tarjeta…) que cambia por día, semana, quincena o mes. Todas las cifras suben hasta su valor al abrir y cada vez que cambian. Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_ventas_por_dia"
+   },
+   "pasos": [
+    {
+     "texto": "Arriba eliges el mes y qué contar: «Vendido» (los pedidos confirmados, el día que se confirmaron), «Facturado» (todas las facturas, igual que Contabilidad; las notas de crédito restan), «Con abonos» o «Completadas», las mismas del Inicio. Al lado puedes elegir una vendedora.",
+     "destino": {
+      "menu": "dcasa_interfaz.menu_dcasa_ventas_por_dia"
+     }
+    },
+    {
+     "texto": "Toca un día del calendario: a la derecha (en el celular, debajo del día) sale cada venta de ese día. «Ver en lista» las abre todas en una lista.",
+     "destino": null
+    },
+    {
+     "texto": "En la tarjeta «Cobrado por forma de pago», arriba de las facturas del día, elige «Día», «Semana», «Quincena» o «Mes»: el título dice cuál es y cada ficha (efectivo, Yappy, tarjeta…) abre sus cobros. La semana va de lunes a domingo, la quincena es del 1 al 15 o del 16 al fin del mes, y el mes es el que estás viendo. Si el periodo todavía no termina, cuenta hasta hoy. En un mes que ya pasó, sin ningún día elegido, la tarjeta muestra el mes completo hasta que toques un día.",
+     "destino": null
+    }
+   ],
+   "nota": "Las ventas van sin ITBMS; el total con ITBMS sale aparte, y lo cobrado va con ITBMS (es el dinero que entró, la misma cuenta de la Caja de hoy; no cambia con «Vendido», «Facturado» ni con la vendedora). «Contra» compara con los mismos días del mes pasado (el último hasta la misma hora de hoy) o, si el mes ya terminó, con el mes anterior completo, igual que Comparar del Inicio.",
+   "brian": "¿Cuánto se vendió el martes?",
+   "palabras": [
+    "por dia",
+    "dia por dia",
+    "ventas por dia",
+    "calendario",
+    "cuanto se vendio el",
+    "que se hizo ese dia",
+    "ventas del mes",
+    "vendido",
+    "metodo de pago",
+    "forma de pago",
+    "cobrado por dia",
+    "cobrado por semana",
+    "cobrado por quincena",
+    "cobrado del mes",
+    "cobros de la semana",
+    "cobros de la quincena"
+   ]
+  },
+  {
+   "id": "cobros-hoy",
+   "categoria": "vender",
+   "grupo": "Hoy",
+   "titulo": "Ver cuánto dinero entró hoy (caja)",
+   "logras": "Los cobros del día separados por forma de pago: efectivo, Yappy y tarjeta. Sirve para cuadrar la caja.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_cobros_hoy"
+   },
+   "palabras": [
+    "caja",
+    "efectivo",
+    "yappy",
+    "tarjeta",
+    "cobros del dia",
+    "cuadrar"
+   ],
+   "nota": "Para los días anteriores, la semana, la quincena o el mes por forma de pago: Ventas por día (toca un día y mira la tarjeta «Cobrado por forma de pago») o Estadísticas."
+  },
+  {
+   "id": "cobrar-cliente",
+   "categoria": "vender",
+   "grupo": "Cobrar",
+   "titulo": "Registrar el cobro de un cliente",
+   "logras": "Anotas que el cliente te dio dinero y de qué forma. Ojo: un cobro anotado aquí no se une solo a su factura. Si el cliente paga una factura o hace un abono, mejor abre la factura y toca «Pagar» (mira «Registrar un abono de un cliente»).",
+   "destino": {
+    "nuevo": "account.payment",
+    "contexto": {
+     "default_payment_type": "inbound",
+     "default_partner_type": "customer"
+    }
+   },
+   "palabras": [
+    "pago",
+    "recibir plata",
+    "cobrar factura",
+    "cobro suelto"
+   ],
+   "nota": "Los cobros los registra Caja (y Gerencia o contabilidad). Una vendedora no cobra: lleva la factura a Caja.",
+   "grupos": [
+    "dcasa_base.group_caja",
+    "account.group_account_user",
+    "account.group_account_manager",
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "registrar-abono",
+   "categoria": "vender",
+   "grupo": "Cobrar",
+   "titulo": "Registrar un abono de un cliente",
+   "logras": "El cliente paga su factura por partes: cada abono queda unido a su factura y el papel sale como ABONO, con lo que ya pagó y el saldo que le falta. La factura es la misma de siempre: solo cambia el papel.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+   },
+   "pasos": [
+    {
+     "texto": "Abre la factura del cliente (si es su primer abono, primero publica la factura completa).",
+     "destino": {
+      "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+     }
+    },
+    {
+     "texto": "Toca «Pagar».",
+     "destino": null
+    },
+    {
+     "texto": "Escribe el monto del abono (lo que el cliente te dio hoy), elige cómo pagó y toca «Crear pago». El primer abono debe ser de al menos la mitad del total: si es menos, lo registra Gerencia (el cuadro te lo avisa).",
+     "destino": null
+    },
+    {
+     "texto": "Sale el cuadro «Imprimir documentos»: imprime el papel de ABONO con el saldo por pagar y, en el primer abono, las «Condiciones de abono» en dos hojas: la COPIA CLIENTE se la lleva el cliente y la COPIA EMPRESA se queda en la tienda (las dos con la raya para la firma y la cédula del cliente). La nota de entrega se imprime cuando termine de pagar.",
+     "destino": null
+    }
+   ],
+   "palabras": [
+    "abono",
+    "abonar",
+    "pago parcial",
+    "pagar por partes",
+    "saldo",
+    "cuanto le falta",
+    "condiciones de abono",
+    "copia cliente",
+    "primer abono",
+    "anticipo",
+    "mitad"
+   ],
+   "nota": "El cliente tiene un plazo para terminar de pagar que cuenta desde su primer abono: la fecha exacta la pone el sistema en el papel de ABONO, en las «Condiciones de abono» y en «Mi cuenta». Cuando termina de pagar, la factura vuelve a salir como factura pagada, con todos sus abonos.",
+   "grupos": [
+    "dcasa_base.group_caja",
+    "account.group_account_user",
+    "account.group_account_manager",
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "abonos-por-vencer",
+   "categoria": "vender",
+   "grupo": "Cobrar",
+   "titulo": "Ver los abonos que vencen pronto y recordárselos al cliente",
+   "logras": "Ves las facturas en abono que vencen en los próximos días o que ya vencieron, con lo que le falta a cada cliente, y le escribes por WhatsApp desde tu teléfono con el recordatorio listo.",
+   "destino": {
+    "menu": "dcasa_abonos.menu_dcasa_abonos_por_vencer"
+   },
+   "nota": "Con el correo encendido, al cliente también le llega un correo unos días antes de que venza (uno solo por abono). El WhatsApp lo mandas tú: el sistema no le escribe solo por WhatsApp.",
+   "palabras": [
+    "abonos por vencer",
+    "vence el abono",
+    "recordar abono",
+    "cobranza",
+    "abono vencido",
+    "le falta pagar"
+   ],
+   "tambien": [
+    "clientes"
+   ]
+  },
+  {
+   "id": "cobro-financiera",
+   "categoria": "vender",
+   "grupo": "Cobrar",
+   "titulo": "Cobrar una compra que financia Tafi o Crediviva",
+   "logras": "Anotas en la factura que la compra la paga una financiera (Tafi o Crediviva), igual que un cobro en efectivo o con Yappy, para que la factura quede pagada o en abono.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+   },
+   "pasos": [
+    {
+     "texto": "Abre la factura del cliente.",
+     "destino": {
+      "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+     }
+    },
+    {
+     "texto": "Toca «Pagar».",
+     "destino": null
+    },
+    {
+     "texto": "En «Diario» elige «Tafi (financiamiento)» o «Crediviva (financiamiento)», escribe lo que financia y toca «Crear pago».",
+     "destino": null
+    }
+   ],
+   "palabras": [
+    "tafi",
+    "crediviva",
+    "financiamiento",
+    "financiera",
+    "credito",
+    "a plazos"
+   ],
+   "nota": "La cuenta contable de estas dos formas de pago la revisa la contadora.",
+   "grupos": [
+    "dcasa_base.group_caja",
+    "account.group_account_user",
+    "account.group_account_manager",
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "apartados",
+   "categoria": "vender",
+   "grupo": "Hoy",
+   "titulo": "Ver los apartados que están por vencer",
+   "logras": "Los productos que un cliente separó desde la web y todavía no ha pagado. Así sabes cuáles se liberan pronto.",
+   "destino": {
+    "menu": "website_dcasa.menu_dcasa_apartados"
+   },
+   "palabras": [
+    "separar",
+    "reservas",
+    "apartado",
+    "vencen"
+   ]
+  },
+  {
+   "id": "por-facturar",
+   "categoria": "vender",
+   "grupo": "Facturar",
+   "titulo": "Ver qué ventas faltan por facturar",
+   "logras": "Las ventas confirmadas que todavía no tienen factura. Desde ahí creas la factura con un clic.",
+   "destino": {
+    "menu": "sale.menu_sale_order_invoice"
+   },
+   "palabras": [
+    "facturar pedido",
+    "crear factura",
+    "pendiente de factura"
+   ]
+  },
+  {
+   "id": "devolucion-cliente",
+   "categoria": "vender",
+   "grupo": "Corregir",
+   "titulo": "Devolverle el dinero a un cliente (nota de crédito)",
+   "logras": "Registras la devolución sin borrar la factura original: queda una nota de crédito que descuenta la venta y devuelve el ITBMS. Las notas de crédito, devolver dinero y dejar saldo a favor los hace solo Gerencia.",
+   "destino": {
+    "menu": "account.menu_action_move_out_refund_type"
+   },
+   "palabras": [
+    "devolucion",
+    "reembolso",
+    "cliente devuelve",
+    "anular venta"
+   ],
+   "nota": "Una factura ya publicada no se borra: se corrige con una nota de crédito.",
+   "grupos": [
+    "dcasa_base.group_gerencia",
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "listas-precios",
+   "categoria": "vender",
+   "grupo": "Precios",
+   "titulo": "Ver o cambiar las listas de precios",
+   "logras": "Las listas de precios que el sistema aplica a las ventas.",
+   "destino": {
+    "menu": "sale.menu_product_pricelist_main"
+   },
+   "palabras": [
+    "precios",
+    "descuentos",
+    "tarifas"
+   ]
+  },
+  {
+   "id": "facturas-clientes",
+   "categoria": "facturar",
+   "grupo": "Facturas de clientes",
+   "titulo": "Ver las facturas de los clientes",
+   "logras": "Las facturas de ventas, con su estado (borrador, publicada, pagada) y lo que falta por cobrar.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+   },
+   "palabras": [
+    "facturas",
+    "ventas facturadas",
+    "buscar factura"
+   ],
+   "nota": "Con «Cada vendedora ve solo sus documentos» encendido (así viene), la vendedora ve las suyas y las que no tienen vendedora; Caja y Gerencia ven todas. La vendedora no hace facturas sueltas: hace una cotización (Ventas › Nueva cotización) y la factura sale del pedido, así Caja la encuentra para cobrar."
+  },
+  {
+   "id": "facturado-por-dia",
+   "categoria": "facturar",
+   "tambien": [
+    "reportes"
+   ],
+   "grupo": "Facturas de clientes",
+   "titulo": "Ver cuánto se facturó cada día del mes",
+   "logras": "El mes como un calendario con lo facturado cada día (las notas de crédito restan, igual que en Contabilidad) y cuántas facturas fueron. Tocas un día y ves cada factura de ese día con su cliente, su vendedora y si está pagada; tocas una y se abre. Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_facturado_por_dia"
+   },
+   "nota": "Es la misma pantalla de Ventas por día, abierta en «Facturado». También la abres desde el Inicio con «Ver por día».",
+   "brian": "¿Cuánto se facturó ayer?",
+   "palabras": [
+    "facturado por dia",
+    "facturas por dia",
+    "dia por dia",
+    "calendario",
+    "cuanto se facturo",
+    "facturacion del mes",
+    "notas de credito"
+   ]
+  },
+  {
+   "id": "factura-borrador",
+   "categoria": "facturar",
+   "grupo": "Cambiar el estado de algo",
+   "titulo": "Una factura quedó en borrador y necesito confirmarla",
+   "logras": "Ves solo las facturas en borrador. Ábrela y toca «Confirmar»: desde ahí cuenta en la contabilidad y en el ITBMS.",
+   "destino": {
+    "menu": "account.menu_action_move_out_invoice_type",
+    "contexto": {
+     "search_default_draft": 1
+    }
+   },
+   "palabras": [
+    "confirmar factura",
+    "publicar",
+    "borrador",
+    "cambiar estado",
+    "pasar a publicada"
+   ]
+  },
+  {
+   "id": "factura-anular",
+   "categoria": "facturar",
+   "grupo": "Cambiar el estado de algo",
+   "titulo": "Corregir o anular una factura ya publicada",
+   "logras": "Abres la factura y la revierten con una nota de crédito (o la restableces a borrador si el mes sigue abierto). Así queda rastro de lo que pasó y la contabilidad sigue cuadrando.",
+   "destino": {
+    "menu": "account.menu_action_move_out_invoice_type"
+   },
+   "palabras": [
+    "anular",
+    "cancelar factura",
+    "error en factura",
+    "revertir",
+    "restablecer a borrador",
+    "cambiar estado"
+   ],
+   "nota": "Solo Gerencia pasa a borrador o anula una factura publicada (a los demás el sistema se lo niega). Si el mes ya está cerrado, primero hay que reabrirlo en «Cerrar el mes».",
+   "grupos": [
+    "dcasa_base.group_gerencia",
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "factura-proveedor",
+   "categoria": "facturar",
+   "grupo": "Facturas de proveedores",
+   "titulo": "Anotar una factura que me mandó un proveedor",
+   "logras": "Registras lo que le debes: el sistema la suma a «A quién le debo» y a los gastos del mes.",
+   "destino": {
+    "menu": "account.menu_action_move_in_invoice_type"
+   },
+   "palabras": [
+    "gasto",
+    "compra",
+    "cuenta por pagar",
+    "factura de compra"
+   ]
+  },
+  {
+   "id": "pagar-proveedor",
+   "categoria": "facturar",
+   "grupo": "Facturas de proveedores",
+   "titulo": "Pagarle a un proveedor",
+   "logras": "Registras el pago (transferencia, efectivo o cheque) y la factura del proveedor queda como pagada.",
+   "destino": {
+    "menu": "account.menu_action_account_payments_payable"
+   },
+   "palabras": [
+    "pago a proveedor",
+    "transferencia",
+    "pagar factura"
+   ]
+  },
+  {
+   "id": "cheque",
+   "categoria": "facturar",
+   "grupo": "Facturas de proveedores",
+   "titulo": "Imprimir un cheque",
+   "logras": "Sale el cheque con el monto en letras y el talón con las facturas que paga.",
+   "destino": {
+    "menu": "account.menu_action_account_payments_payable"
+   },
+   "pasos": [
+    {
+     "texto": "Abre el pago al proveedor (o crea uno) y elige el método «Cheque» en el diario Banco.",
+     "destino": {
+      "menu": "account.menu_action_account_payments_payable"
+     }
+    },
+    {
+     "texto": "Dentro del pago toca «Imprimir cheque».",
+     "destino": null
+    }
+   ],
+   "palabras": [
+    "cheque",
+    "imprimir cheque",
+    "monto en letras"
+   ]
+  },
+  {
+   "id": "nota-credito-proveedor",
+   "categoria": "facturar",
+   "grupo": "Facturas de proveedores",
+   "titulo": "Un proveedor me devuelve dinero o me hace un descuento",
+   "logras": "Registras la nota de crédito del proveedor para que lo que le debes baje.",
+   "destino": {
+    "menu": "account.menu_action_move_in_refund_type"
+   },
+   "palabras": [
+    "reembolso proveedor",
+    "devolucion proveedor",
+    "descuento proveedor"
+   ]
+  },
+  {
+   "id": "cobros-recibidos",
+   "categoria": "facturar",
+   "grupo": "Pagos",
+   "titulo": "Ver los pagos que han hecho los clientes",
+   "logras": "La lista de pagos recibidos, para revisar uno o buscar quién pagó qué.",
+   "destino": {
+    "menu": "account.menu_action_account_payments_receivable"
+   },
+   "palabras": [
+    "pagos recibidos",
+    "quien pago"
+   ]
+  },
+  {
+   "id": "facturas-vencidas",
+   "categoria": "facturar",
+   "grupo": "Cobrar",
+   "titulo": "Saber quién me debe y qué está vencido",
+   "logras": "Ves cada cliente con lo que debe y desde hace cuánto, en tramos (al día, 1–30 días, etc.), para saber a quién llamar. Lo vencido se mide contra la fecha «Al» que elijas.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_por_cobrar"
+   },
+   "palabras": [
+    "morosos",
+    "deudores",
+    "cuentas por cobrar",
+    "cobranza",
+    "me deben"
+   ],
+   "tambien": [
+    "reportes"
+   ]
+  },
+  {
+   "id": "factura-electronica",
+   "categoria": "facturar",
+   "grupo": "DGI",
+   "titulo": "Facturación electrónica de la DGI",
+   "logras": "Aquí se verá cuando una factura se envíe a la DGI con su CUFE y su código QR.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_fe"
+   },
+   "palabras": [
+    "sfep",
+    "cufe",
+    "pac",
+    "dgi",
+    "factura electronica"
+   ],
+   "nota": "Todavía está en desarrollo: exige contratar un proveedor autorizado (PAC). Hasta entonces las facturas se emiten como siempre.",
+   "tambien": [
+    "impuestos"
+   ]
+  },
+  {
+   "id": "banco-importar",
+   "categoria": "bancos",
+   "grupo": "Banco",
+   "titulo": "Subir el movimiento de mi banco (extracto)",
+   "logras": "Cargas el archivo que baja de la banca en línea y el sistema lo lee sin duplicar lo que ya estaba.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_importar_extracto"
+   },
+   "palabras": [
+    "estado de cuenta",
+    "csv",
+    "banco general",
+    "bac",
+    "yappy",
+    "importar banco"
+   ]
+  },
+  {
+   "id": "banco-conciliar",
+   "categoria": "bancos",
+   "grupo": "Banco",
+   "titulo": "Comprobar qué pagos ya cuadraron con el banco (conciliar)",
+   "logras": "A la izquierda los movimientos del banco, a la derecha las facturas y pagos que los explican: los unes y queda cuadrado.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_conciliacion"
+   },
+   "palabras": [
+    "conciliacion",
+    "cuadrar banco",
+    "reconciliar"
+   ]
+  },
+  {
+   "id": "banco-reglas",
+   "categoria": "bancos",
+   "grupo": "Banco",
+   "titulo": "Que el sistema reconozca solo ciertos movimientos del banco",
+   "logras": "Creas una regla (por ejemplo: si dice «COMISION», va a la cuenta de gastos bancarios) y se aplica sola.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_reglas_conciliacion"
+   },
+   "palabras": [
+    "regla",
+    "automatico",
+    "comisiones",
+    "cargos"
+   ]
+  },
+  {
+   "id": "banco-formato",
+   "categoria": "bancos",
+   "grupo": "Banco",
+   "titulo": "Mi banco manda un archivo que el sistema no entiende",
+   "logras": "Le enseñas al sistema qué columna es la fecha, cuál el monto y cuál la descripción, una sola vez.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_formatos_extracto"
+   },
+   "palabras": [
+    "formato",
+    "csv",
+    "columnas"
+   ]
+  },
+  {
+   "id": "resumen",
+   "categoria": "reportes",
+   "grupo": "De un vistazo",
+   "titulo": "Ver cómo va el negocio (resumen contable)",
+   "logras": "En una pantalla: dinero en bancos y caja (con la fecha a la que corresponde), lo que te deben y lo que debes, el ITBMS del periodo y lo acumulado por pagar o a favor, y las ventas y la utilidad comparadas con el periodo anterior.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_resumen"
+   },
+   "palabras": [
+    "como voy",
+    "resumen",
+    "tablero",
+    "indicadores",
+    "cuanto gane"
+   ]
+  },
+  {
+   "id": "ganancias",
+   "categoria": "reportes",
+   "grupo": "Ganar o perder",
+   "titulo": "¿Gané o perdí? (Estado de resultados)",
+   "logras": "Ves las ventas, los costos y los gastos del periodo que elijas y lo que queda de ganancia.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_estado_resultados"
+   },
+   "palabras": [
+    "utilidad",
+    "perdida",
+    "ganancia",
+    "pyg",
+    "estado de resultados"
+   ]
+  },
+  {
+   "id": "balance",
+   "categoria": "reportes",
+   "grupo": "Lo que tengo y lo que debo",
+   "titulo": "Ver lo que tengo y lo que debo (Balance general)",
+   "logras": "Una foto de la empresa a una fecha: lo que tiene, lo que debe y lo que queda para los dueños.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_balance_general"
+   },
+   "palabras": [
+    "activos",
+    "pasivos",
+    "patrimonio",
+    "capital",
+    "balance"
+   ]
+  },
+  {
+   "id": "flujo",
+   "categoria": "reportes",
+   "grupo": "Dinero",
+   "titulo": "Ver a dónde se fue el dinero (flujo de efectivo)",
+   "logras": "Cuánto dinero entró y salió en el periodo y por qué: operación, inversión o préstamos.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_flujo_efectivo"
+   },
+   "palabras": [
+    "efectivo",
+    "liquidez",
+    "entradas y salidas",
+    "flujo de caja"
+   ]
+  },
+  {
+   "id": "por-pagar",
+   "categoria": "reportes",
+   "grupo": "Dinero",
+   "titulo": "Ver a quién le debo y cuándo vence",
+   "logras": "Cada proveedor con lo que le debes y desde cuándo, para pagar a tiempo.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_por_pagar"
+   },
+   "palabras": [
+    "cuentas por pagar",
+    "deudas",
+    "proveedores",
+    "vencimientos"
+   ]
+  },
+  {
+   "id": "presupuestos",
+   "categoria": "reportes",
+   "grupo": "Planear",
+   "titulo": "Comparar lo planeado con lo gastado (presupuestos)",
+   "logras": "Pones cuánto piensas vender o gastar por cuenta y el sistema te dice cuánto llevas, cuánto queda y si te pasaste (en gastos) o cumpliste la meta (en ventas). Los totales separan ingresos, gastos y resultado, y filtras por Hoy, Este mes, Este trimestre, etc.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_presupuestos"
+   },
+   "palabras": [
+    "presupuesto",
+    "planeado",
+    "gasto maximo"
+   ]
+  },
+  {
+   "id": "rentabilidad",
+   "categoria": "reportes",
+   "grupo": "Planear",
+   "titulo": "Saber si deja más la tienda física o la tienda en línea",
+   "logras": "Ventas y utilidad separadas por canal. La fila «Sin asignar» muestra lo que no se repartió a ningún canal.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_analitica"
+   },
+   "palabras": [
+    "canal",
+    "analitica",
+    "rentabilidad",
+    "que sucursal vende mas"
+   ]
+  },
+  {
+   "id": "analisis-facturas",
+   "categoria": "reportes",
+   "grupo": "Ventas",
+   "titulo": "Analizar las ventas por producto, cliente o vendedor",
+   "logras": "Una tabla que puedes girar para ver qué se vende más, a quién y quién lo vendió.",
+   "destino": {
+    "menu": "account.menu_action_account_invoice_report_all"
+   },
+   "palabras": [
+    "mas vendido",
+    "por cliente",
+    "por vendedor",
+    "analisis",
+    "pivote"
+   ]
+  },
+  {
+   "id": "libro-mayor",
+   "categoria": "reportes",
+   "grupo": "Para el contador",
+   "titulo": "Ver todos los movimientos de una cuenta (libro mayor)",
+   "logras": "Cada asiento que tocó una cuenta, con su saldo. Es lo primero que pide un contador cuando algo no cuadra.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_libro_mayor"
+   },
+   "palabras": [
+    "mayor",
+    "cuenta contable",
+    "asientos",
+    "movimientos"
+   ]
+  },
+  {
+   "id": "balance-comprobacion",
+   "categoria": "reportes",
+   "grupo": "Para el contador",
+   "titulo": "Comprobar que la contabilidad cuadra (balance de comprobación)",
+   "logras": "Lista cada cuenta con sus débitos y créditos; si todo está bien, el total de los dos lados es igual.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_balance_comprobacion"
+   },
+   "palabras": [
+    "cuadra",
+    "comprobacion",
+    "debitos y creditos"
+   ]
+  },
+  {
+   "id": "cierre-mes",
+   "categoria": "reportes",
+   "grupo": "Cerrar",
+   "titulo": "Cerrar el mes",
+   "logras": "El sistema revisa una lista (bancos conciliados, cobros o pagos registrados que aún esperan su movimiento, facturas en borrador, ventas sin facturar, ITBMS) y, si todo está bien, bloquea el mes para que nadie cambie números viejos.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_cierre_mes"
+   },
+   "palabras": [
+    "cierre",
+    "bloquear mes",
+    "cerrar periodo",
+    "reabrir mes",
+    "fin de mes"
+   ],
+   "tambien": [
+    "impuestos"
+   ]
+  },
+  {
+   "id": "pista-auditoria",
+   "categoria": "reportes",
+   "grupo": "Para el contador",
+   "titulo": "Ver quién cambió qué en la contabilidad",
+   "logras": "Un registro de cada cambio en los asientos: quién, cuándo y qué.",
+   "destino": {
+    "menu": "account.account_audit_trail_menu"
+   },
+   "palabras": [
+    "auditoria",
+    "historial de cambios",
+    "quien cambio"
+   ]
+  },
+  {
+   "id": "renta",
+   "categoria": "impuestos",
+   "grupo": "Una vez al año",
+   "titulo": "Preparar la declaración de renta",
+   "logras": "Dejas listos los números del año para declarar el impuesto sobre la renta de la empresa: ganancias, lo que tienes y debes, y el ITBMS.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_estado_resultados"
+   },
+   "pasos": [
+    {
+     "texto": "Cierra los meses del año, uno por uno, para que nadie cambie números.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_cierre_mes"
+     }
+    },
+    {
+     "texto": "Mira si ganaste o perdiste en el año: elige las fechas de tu año fiscal.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_estado_resultados"
+     }
+    },
+    {
+     "texto": "Mira lo que tienes y lo que debes al cierre del año.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_balance_general"
+     }
+    },
+    {
+     "texto": "Revisa quién te debe.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_por_cobrar"
+     }
+    },
+    {
+     "texto": "Revisa a quién le debes.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_por_pagar"
+     }
+    },
+    {
+     "texto": "Revisa el ITBMS del año.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_itbms"
+     }
+    },
+    {
+     "texto": "Entrégale esos reportes a tu contador (o úsalos al declarar en el portal de la DGI).",
+     "destino": null
+    }
+   ],
+   "nota": "El sistema no presenta la declaración por ti: la presenta tu contador, o tú en el portal de la DGI. Aquí dejas los números listos. La fecha límite depende del cierre de tu año fiscal: confírmala con tu contador.",
+   "palabras": [
+    "declaracion de renta",
+    "isr",
+    "impuesto sobre la renta",
+    "dgi",
+    "declarar",
+    "cierre de ano",
+    "fiscal"
+   ],
+   "brian": "¿Qué necesito tener listo para la declaración de renta de la empresa?"
+  },
+  {
+   "id": "itbms",
+   "categoria": "impuestos",
+   "grupo": "Cada mes",
+   "titulo": "Saber cuánto ITBMS toca declarar",
+   "logras": "Ves cuánto ITBMS cobraste en tus ventas y cuánto pagaste en tus compras en el periodo que elijas (la diferencia es lo de ese periodo). Y, aparte, el acumulado al día que elijas: lo que debes en total a la DGI, contando los meses anteriores y descontando lo que ya pagaste. Si tienes de más, aparece como «Saldo a favor».",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_itbms"
+   },
+   "nota": "Normalmente se declara cada mes. Confirma con tu contador la fecha y el formulario, y cómo manejar el saldo a favor y las retenciones.",
+   "palabras": [
+    "7%",
+    "acumulado",
+    "cuanto debo en total",
+    "declaracion mensual",
+    "dgi",
+    "impuesto",
+    "impuesto de ventas",
+    "iva",
+    "saldo a favor",
+    "total"
+   ],
+   "brian": "¿Cuánto ITBMS debo este mes?"
+  },
+  {
+   "id": "impuestos-revisar",
+   "categoria": "impuestos",
+   "grupo": "Configuración",
+   "titulo": "Revisar los impuestos que usa el sistema (ITBMS 7 %)",
+   "logras": "La lista de impuestos con su porcentaje y a qué cuenta va cada uno.",
+   "destino": {
+    "menu": "account.menu_action_tax_form"
+   },
+   "palabras": [
+    "itbms",
+    "porcentaje",
+    "tasa de impuesto"
+   ]
+  },
+  {
+   "id": "seguro-social",
+   "categoria": "impuestos",
+   "grupo": "Cada quincena",
+   "titulo": "Calcular el seguro social, el seguro educativo y el ISR de los colaboradores",
+   "logras": "La planilla quincenal calcula lo que se le descuenta a cada colaborador y lo que paga la empresa, y deja el asiento contable listo.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_planillas"
+   },
+   "nota": "Las tasas de la ley las valida tu contador antes de poder confirmar una planilla.",
+   "palabras": [
+    "css",
+    "caja de seguro social",
+    "seguro educativo",
+    "planilla",
+    "sipe",
+    "isr empleados"
+   ],
+   "tambien": [
+    "personal"
+   ]
+  },
+  {
+   "id": "decimo-tercer",
+   "categoria": "impuestos",
+   "grupo": "Tres veces al año",
+   "titulo": "Pagar el décimo tercer mes",
+   "logras": "El sistema calcula el décimo tercer mes de cada colaborador y deja el pago listo.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_decimo"
+   },
+   "nota": "Se paga en partidas durante el año: confirma las fechas con tu contador.",
+   "palabras": [
+    "decimo",
+    "13",
+    "partida",
+    "bono",
+    "treceavo"
+   ],
+   "tambien": [
+    "personal"
+   ]
+  },
+  {
+   "id": "otras-obligaciones",
+   "categoria": "impuestos",
+   "grupo": "Pregúntale a tu contador",
+   "titulo": "Otras obligaciones de una empresa en Panamá",
+   "logras": "El sistema no las maneja, pero conviene tenerlas presentes: por ejemplo el aviso de operación, la tasa única y los impuestos municipales. Tu contador sabe cuáles te aplican y cuándo vencen.",
+   "destino": null,
+   "palabras": [
+    "aviso de operacion",
+    "tasa unica",
+    "municipio",
+    "registro publico",
+    "obligaciones",
+    "licencia"
+   ],
+   "nota": "Esto es solo un recordatorio: las fechas y montos los confirma tu contador."
+  },
+  {
+   "id": "entregar-contador",
+   "categoria": "impuestos",
+   "grupo": "Una vez al año",
+   "titulo": "Pasarle los números a mi contador",
+   "logras": "Reúnes en orden lo que un contador pide casi siempre: cierre de mes, balance de comprobación, libro mayor, estado de resultados y balance general.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_balance_comprobacion"
+   },
+   "pasos": [
+    {
+     "texto": "Cierra el mes que vas a entregar.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_cierre_mes"
+     }
+    },
+    {
+     "texto": "Imprime o descarga el balance de comprobación.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_balance_comprobacion"
+     }
+    },
+    {
+     "texto": "Imprime o descarga el libro mayor.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_libro_mayor"
+     }
+    },
+    {
+     "texto": "Imprime o descarga el estado de resultados.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_estado_resultados"
+     }
+    },
+    {
+     "texto": "Imprime o descarga el balance general.",
+     "destino": {
+      "menu": "dcasa_contabilidad.menu_balance_general"
+     }
+    }
+   ],
+   "palabras": [
+    "contador",
+    "contabilidad",
+    "entregar",
+    "reportes para contador"
+   ]
+  },
+  {
+   "id": "zip-comprobantes",
+   "categoria": "impuestos",
+   "grupo": "Una vez al año",
+   "titulo": "Guardar todos los comprobantes del año en un ZIP",
+   "logras": "Bajas en un ZIP, por carpetas y con un índice, las facturas, notas de crédito, recibos, compras y gastos del año, para guardarlos los 5 años que pide la DGI.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_comprobantes_zip"
+   },
+   "palabras": [
+    "zip",
+    "comprobantes",
+    "respaldo",
+    "dgi",
+    "cinco años",
+    "guardar facturas",
+    "archivo"
+   ],
+   "tambien": [
+    "reportes"
+   ]
+  },
+  {
+   "id": "colaborador-nuevo",
+   "categoria": "personal",
+   "grupo": "Personas",
+   "titulo": "Agregar un colaborador nuevo",
+   "logras": "Creas su ficha con el sueldo y los datos que necesita la planilla. Desde ahí se le calculan quincenas, vacaciones y décimo tercer mes.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_colaboradores"
+   },
+   "palabras": [
+    "empleado",
+    "contratar",
+    "nuevo empleado",
+    "alta",
+    "sueldo"
+   ]
+  },
+  {
+   "id": "directorio",
+   "categoria": "personal",
+   "grupo": "Personas",
+   "titulo": "Ver quién trabaja en la empresa",
+   "logras": "El directorio del equipo con cargo, departamento y contacto. Lo ven Gerencia, administradores, contabilidad y quien administra al personal.",
+   "destino": {
+    "menu": "hr.menu_hr_employee"
+   },
+   "palabras": [
+    "equipo",
+    "empleados",
+    "organigrama",
+    "departamentos"
+   ]
+  },
+  {
+   "id": "planilla",
+   "categoria": "personal",
+   "grupo": "Pagar",
+   "titulo": "Preparar la planilla quincenal",
+   "logras": "Calcula el sueldo, el seguro social, el seguro educativo y el ISR de cada colaborador y deja el asiento listo.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_planillas"
+   },
+   "palabras": [
+    "quincena",
+    "pagar sueldos",
+    "nomina",
+    "planilla"
+   ]
+  },
+  {
+   "id": "vacaciones",
+   "categoria": "personal",
+   "grupo": "Pagar",
+   "titulo": "Registrar las vacaciones de un colaborador",
+   "logras": "Calculas cuántos días le corresponden y cuánto se le paga.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_vacaciones"
+   },
+   "palabras": [
+    "descanso",
+    "dias libres",
+    "vacaciones"
+   ]
+  },
+  {
+   "id": "liquidacion",
+   "categoria": "personal",
+   "grupo": "Pagar",
+   "titulo": "Liquidar a un colaborador que se va",
+   "logras": "Calculas lo que se le debe: vacaciones, décimo tercer mes proporcional y prima de antigüedad.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_liquidaciones"
+   },
+   "palabras": [
+    "renuncia",
+    "despido",
+    "prima de antiguedad",
+    "finiquito",
+    "salida"
+   ]
+  },
+  {
+   "id": "reembolso-aprobar",
+   "categoria": "personal",
+   "grupo": "Gastos",
+   "titulo": "Aprobar el reembolso de un gasto de un colaborador",
+   "logras": "El colaborador sube la foto del gasto; tú lo apruebas y se suma a su planilla.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_reembolsos"
+   },
+   "palabras": [
+    "gastos",
+    "reintegro",
+    "comprobante",
+    "aprobar gasto"
+   ]
+  },
+  {
+   "id": "adelanto-empleado",
+   "categoria": "personal",
+   "grupo": "Pagar",
+   "titulo": "Darle un adelanto o un préstamo a un colaborador",
+   "logras": "Registras cuánto se le da y en cuántas quincenas lo paga; Gerencia lo autoriza y cada planilla le descuenta la cuota sola, sin pasar nunca de lo que debe.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_prestamos"
+   },
+   "palabras": [
+    "adelanto",
+    "prestamo",
+    "anticipo",
+    "vale",
+    "descuento de planilla",
+    "cuanto debe"
+   ]
+  },
+  {
+   "id": "comprobante-pago",
+   "categoria": "personal",
+   "grupo": "Pagar",
+   "titulo": "Imprimir o mandar por correo el comprobante de pago de cada colaborador",
+   "logras": "Cada colaborador recibe su comprobante de pago en PDF con lo que ganó, lo que se le descontó y lo que recibe.",
+   "nota": "Por correo solo sale con los correos a clientes encendidos; si no, imprímelo y entrégalo en mano.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_planillas"
+   },
+   "palabras": [
+    "comprobante",
+    "talonario",
+    "colilla",
+    "volante de pago",
+    "recibo de pago"
+   ]
+  },
+  {
+   "id": "bono-meta-ventas",
+   "categoria": "personal",
+   "grupo": "Bono por meta",
+   "titulo": "Ver el bono por meta de ventas de cada vendedora",
+   "logras": "Ves cuánto cobró cada vendedora en el mes, si llegó a la meta y cuánto le toca de bono; el bono entra solo en la primera planilla del mes siguiente.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_meta_bonos"
+   },
+   "palabras": [
+    "bono",
+    "comision",
+    "meta de ventas",
+    "vendedoras",
+    "uno por ciento",
+    "incentivo"
+   ],
+   "tambien": [
+    "vender"
+   ]
+  },
+  {
+   "id": "meta-ventas-cifras",
+   "categoria": "personal",
+   "grupo": "Bono por meta",
+   "titulo": "Cambiar la meta de ventas o el porcentaje del bono",
+   "logras": "Pones la meta del mes, el porcentaje del bono y el ritmo diario desde el mes que elijas; los meses ya pagados no cambian.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_meta_reglas"
+   },
+   "palabras": [
+    "meta",
+    "objetivo de ventas",
+    "porcentaje del bono",
+    "30 mil",
+    "ritmo diario"
+   ]
+  },
+  {
+   "id": "meta-ventas-departamento",
+   "categoria": "personal",
+   "grupo": "Bono por meta",
+   "titulo": "Elegir qué departamento participa en la meta de ventas",
+   "logras": "Marcas en el departamento «Participa en la meta de ventas»; quien esté ahí y tenga usuario entra solo en el bono.",
+   "nota": "Para que cuente lo que vende una persona, su ficha de empleado tiene que tener su usuario (pestaña Ajustes, «Usuario relacionado»).",
+   "destino": {
+    "menu": "hr.menu_hr_department_kanban"
+   },
+   "palabras": [
+    "departamento de ventas",
+    "quien participa",
+    "vendedoras del bono"
+   ]
+  },
+  {
+   "id": "reembolso-pedir",
+   "categoria": "personal",
+   "grupo": "Gastos",
+   "titulo": "Pedir que me devuelvan un gasto que pagué yo",
+   "logras": "Si pagaste algo de tu bolsillo para la empresa, lo registras con la foto del recibo y se te devuelve en la próxima planilla.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_mis_reembolsos"
+   },
+   "palabras": [
+    "mis gastos",
+    "mis gastos por reembolsar",
+    "recibo",
+    "reintegro"
+   ]
+  },
+  {
+   "id": "tasas-nomina",
+   "categoria": "personal",
+   "grupo": "Reglas",
+   "titulo": "Revisar las tasas de la ley que usa la nómina",
+   "logras": "Las tasas del seguro social, del seguro educativo y del ISR, con la fecha desde la que valen.",
+   "destino": {
+    "menu": "dcasa_nomina.menu_parametros"
+   },
+   "palabras": [
+    "tasas",
+    "css",
+    "isr",
+    "reglas de nomina"
+   ]
+  },
+  {
+   "id": "producto-nuevo",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Crear un producto nuevo",
+   "logras": "Lo das de alta con nombre, precio, categoría y foto. Si quieres, lo publicas también en la tienda en línea.",
+   "destino": {
+    "nuevo": "product.template"
+   },
+   "palabras": [
+    "articulo",
+    "crema",
+    "agregar producto",
+    "alta de producto"
+   ]
+  },
+  {
+   "id": "precio-combo-colchon",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Poner el precio en combo de un colchón",
+   "logras": "Para cada colchón, en cada medida, pones el precio al que se vende cuando va con una cama de su misma medida. Así la vendedora arma el combo en la cotización y el precio sale solo.",
+   "destino": {
+    "menu": "dcasa_catalogo.menu_precios_combo"
+   },
+   "pasos": [
+    {
+     "texto": "Abre «Precios en combo»: salen los colchones agrupados por medida (Twin, Full, Queen, King).",
+     "destino": {
+      "menu": "dcasa_catalogo.menu_precios_combo"
+     }
+    },
+    {
+     "texto": "En la columna «Precio en combo» escribe el precio sin ITBMS, menor que el precio normal, y guarda. Si lo dejas vacío, ese colchón va a su precio normal.",
+     "destino": null
+    },
+    {
+     "texto": "Mira la columna «Revisar»: avisa si falta la medida o si el precio en combo ya no es menor que el normal.",
+     "destino": null
+    },
+    {
+     "texto": "Con el filtro «Camas», revisa que cada cama tenga su medida: a una cama sin medida no le salen colchones.",
+     "destino": null
+    }
+   ],
+   "nota": "Solo Gerencia lo cambia. Vale para lo que se cotice desde ese momento: las cotizaciones que ya estaban no cambian solas. El texto del Excel de cada cama («Combo con colchón …») queda solo de referencia; no se usa para calcular.",
+   "palabras": [
+    "precio en combo",
+    "precio combo colchon",
+    "combo",
+    "colchon",
+    "medida de la cama",
+    "precio especial colchon"
+   ]
+  },
+  {
+   "id": "promocion-por-pares",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Poner una promoción «2 por…» en un producto (por ejemplo, 2 cajas juntas más baratas)",
+   "logras": "Escribes cuánto cuestan 2 juntas y el sistema cobra así cada par: en la tienda en línea, en la cotización que arma Juan y en las ventas del panel. Una suelta va a su precio normal: 3 son un par más una normal.",
+   "destino": {
+    "menu": "sale.menu_product_template_action"
+   },
+   "pasos": [
+    {
+     "texto": "Abre «Productos» y toca el producto.",
+     "destino": {
+      "menu": "sale.menu_product_template_action"
+     }
+    },
+    {
+     "texto": "En «Precio por par» escribe lo que cuestan 2 juntas, sin ITBMS (por ejemplo 15.00), y guarda. Si el producto tiene variantes, se pone en cada una, desde «Variantes».",
+     "destino": null
+    },
+    {
+     "texto": "Para quitar la promoción, deja «Precio por par» vacío (o en 0) y guarda.",
+     "destino": null
+    }
+   ],
+   "nota": "Solo Gerencia lo cambia. Tiene que ser menor que el precio de 2 sueltas y poder partirse en dos al centavo (35.00 sí, 35.01 no), porque cada una del par se cobra a la mitad. La ficha de la tienda, el carrito y la cotización lo dicen solos («Promoción: 2 cajas por…»). No se suma a otra rebaja: si la campaña del sitio deja la caja más barata, va la campaña. Vale desde que lo guardas; las cotizaciones que ya estaban se ponen al día cuando les cambias la cantidad.",
+   "palabras": [
+    "promocion",
+    "promo",
+    "oferta",
+    "2 por",
+    "dos por",
+    "el par",
+    "precio por par",
+    "2 cajas"
+   ]
+  },
+  {
+   "id": "combo-cama-colchon",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Crear o cambiar un combo fijo de cama y colchón (producto «COMBO»)",
+   "logras": "Un combo junta la cama y el colchón con un solo precio. Al venderlo, la cotización y la factura muestran cada pieza y la entrega descuenta la cama y el colchón del inventario.",
+   "destino": {
+    "menu": "sale.menu_product_template_action"
+   },
+   "pasos": [
+    {
+     "texto": "Abre la lista de productos y toca «Nuevo». Para cambiar un combo que ya existe, búscalo por su nombre: empieza con «COMBO».",
+     "destino": {
+      "menu": "sale.menu_product_template_action"
+     }
+    },
+    {
+     "texto": "Escribe el nombre (por ejemplo «COMBO CAMA KING … + COLCHÓN …») y el precio del combo completo, sin ITBMS: no el de cada pieza.",
+     "destino": null
+    },
+    {
+     "texto": "En «Tipo de producto» escoge «Combo».",
+     "destino": null
+    },
+    {
+     "texto": "En «Opciones de los combos» crea un grupo para la cama y otro para el colchón, y en cada uno agrega el producto que va. Si el cliente puede escoger entre varios colchones, ponlos todos en el mismo grupo; el «Precio extra» es lo que se suma si escoge ese.",
+     "destino": null
+    },
+    {
+     "texto": "Guarda. El combo solo se puede vender si todas sus piezas están a la venta.",
+     "destino": null
+    }
+   ],
+   "nota": "El precio del combo se reparte solo entre la cama y el colchón, así que al venderlo no se cambia a mano: se rebaja con el descuento. Si Cowork te entregó el archivo de combos, se carga en Ajustes › Cargar datos del sistema anterior, sin crear las piezas. Lo más práctico ahora es armar el combo en la cotización («Armar combo cama + colchón») con el precio en combo de cada colchón; los combos fijos que ya existen siguen funcionando.",
+   "palabras": [
+    "combo",
+    "cama y colchon",
+    "juego de cama",
+    "cama con colchon",
+    "paquete",
+    "armar combo"
+   ]
+  },
+  {
+   "id": "productos-lista",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Ver y ordenar los productos por stock, precio o categoría",
+   "logras": "La lista de productos para buscar, filtrar y ordenar. Sirve para armar campañas o revisar precios.",
+   "destino": {
+    "menu": "sale.menu_product_template_action"
+   },
+   "palabras": [
+    "catalogo",
+    "lista de productos",
+    "inventario",
+    "precios"
+   ]
+  },
+  {
+   "id": "productos-repetidos",
+   "categoria": "productos",
+   "grupo": "Productos",
+   "titulo": "Unir productos que están repetidos",
+   "logras": "Ves los productos que parecen el mismo (mismo código, código de barras o nombre), eliges cuál ficha queda y lo de la otra pasa a ella: existencias, precios de proveedor, fotos y códigos. La otra se archiva con su historia.",
+   "destino": {
+    "menu": "dcasa_catalogo.menu_dcasa_productos_repetidos"
+   },
+   "nota": "Antes de unir, la pantalla te dice exactamente qué va a pasar. Si hay algo a medias (una cotización, una compra o una entrega sin terminar), primero hay que terminarlo.",
+   "palabras": [
+    "producto repetido",
+    "productos duplicados",
+    "unir productos",
+    "mismo codigo",
+    "fusionar productos"
+   ]
+  },
+  {
+   "id": "nombres-mayusculas",
+   "categoria": "productos",
+   "grupo": "Productos",
+   "titulo": "Poner en MAYÚSCULAS los nombres de los productos",
+   "logras": "Ves cómo quedarán los nombres que todavía no están en mayúsculas y los cambias todos con un botón. Los productos nuevos ya se guardan en mayúsculas solos. El cliente los sigue leyendo con mayúscula solo al inicio de cada palabra (Crema de Prueba) en la tienda, Juan, los correos y los papeles.",
+   "destino": {
+    "menu": "dcasa_catalogo.menu_dcasa_producto_mayusculas"
+   },
+   "palabras": [
+    "mayusculas",
+    "nombres de productos",
+    "ordenar nombres",
+    "nombre en mayuscula"
+   ]
+  },
+  {
+   "id": "marketing",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Ver qué se vende, qué está quieto y qué fotos faltan (Marketing)",
+   "logras": "En una sola pantalla: los productos con más y menos stock por categoría, los más vendidos, los que más se movieron y los más quietos en la semana, 15 días o el mes, y los que no tienen foto. Sirve para decidir qué empujar en una campaña.",
+   "palabras": [
+    "marketing",
+    "campaña",
+    "mas vendidos",
+    "quietos",
+    "no se vende",
+    "movimiento",
+    "rotacion",
+    "productos sin foto",
+    "publicidad",
+    "que empujar"
+   ],
+   "destino": {
+    "menu": "dcasa_marketing.menu_marketing"
+   },
+   "nota": "También la tienes como acceso directo «Marketing» en el Inicio. Es de Gerencia y de quien tiene el rol Marketing."
+  },
+  {
+   "id": "rotacion-inventario",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Ver qué productos no se mueven y cuánto dinero hay parado (Rotación)",
+   "logras": "Ves cuántos días lleva cada producto sin venderse (menos de 30, de 30 a 59, de 60 a 89, de 90 a 179 y 180 o más), cuánto dinero hay parado en los que no se mueven, cuáles son los productos ancla (los que más venden), qué pasaría si rebajas un porcentaje que tú escribes y, para decidir qué empujar y qué rebajar, cuáles son las estrellas (se venden bien y dejan buen margen) y cuáles ni se mueven ni dejan margen. Todo se baja a Excel.",
+   "palabras": [
+    "rotacion",
+    "inventario",
+    "no se mueve",
+    "quieto",
+    "parado",
+    "capital",
+    "dinero parado",
+    "sin vender",
+    "dias sin vender",
+    "30 60 90 dias",
+    "rebajar",
+    "bajar precio",
+    "liquidar",
+    "producto ancla",
+    "ancla",
+    "margen",
+    "cobertura",
+    "sin rotacion",
+    "excel de rotacion",
+    "margen y rotacion",
+    "estrellas",
+    "que empujar",
+    "que rebajar",
+    "buen margen",
+    "vende mucho deja poco"
+   ],
+   "destino": {
+    "menu": "dcasa_marketing.menu_dcasa_rotacion"
+   },
+   "pasos": [
+    {
+     "texto": "Abre Inventario › Rotación (también la ves desde Marketing, con el botón «Rotación del inventario»).",
+     "destino": {
+      "menu": "dcasa_marketing.menu_dcasa_rotacion"
+     }
+    },
+    {
+     "texto": "Arriba ves el dinero que costó la mercancía que hay y cuánto de eso lleva 90 días o más sin venderse. Debajo, una barra por cada grupo de días sin vender: toca una para ver sus productos.",
+     "destino": null
+    },
+    {
+     "texto": "En «¿Qué productos quieres ver?» eliges 30, 60, 90 o 180 días o más sin vender, los que nunca se han vendido, los que llegaron hace poco, los que tienen un pedido abierto o los ancla. También puedes elegir una categoría, buscar por nombre o código y ordenar la lista.",
+     "destino": null
+    },
+    {
+     "texto": "Debajo, en «Por margen y rotación», eliges Estrellas, los que venden mucho y dejan poco, los de buen margen que se mueven poco, o los que ni se mueven ni dejan margen. Los cortes son la mitad de arriba de tu tienda y la pantalla dice los números. Lo que llegó hace poco o ya tiene un pedido confirmado no entra en ningún cuadro, porque todavía no se puede juzgar. Es solo para Gerencia y los administradores.",
+     "destino": null
+    },
+    {
+     "texto": "Para ver qué pasaría con una rebaja, escribe el porcentaje en «Si se rebaja». Te dice cuánto entraría a caja, cuánto queda sobre el costo y cuántos productos quedarían por debajo del costo. Es solo una cuenta: no cambia ningún precio.",
+     "destino": null
+    },
+    {
+     "texto": "Toca «Descargar Excel» para bajar la lista que estás viendo, completa, con todas sus columnas.",
+     "destino": null
+    }
+   ],
+   "brian": "¿Qué productos llevan más de 90 días sin venderse y cuánto dinero tengo parado en ellos?",
+   "nota": "Lo que llegó hace menos de 30 días y todavía no se vende sale como «Llegó hace poco», y lo que tiene un pedido confirmado sin facturar sale como «Pedido abierto»: ninguno de los dos se ofrece para rebajar. Los productos ancla se cuidan, no se rebajan sin pensarlo. El dinero (costos, capital y márgenes) lo ven solo Gerencia y los administradores; quien tiene el rol Marketing ve unidades y días."
+  },
+  {
+   "id": "movimiento-productos",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Ver qué productos se mueven más o menos y comparar dos periodos (Movimiento)",
+   "logras": "Eliges un periodo (7, 15, 30, 60 o 90 días, este mes, el mes pasado o fechas tuyas) y lo comparas con el de justo antes, con el mismo tramo del año pasado o con fechas tuyas. Ves cuántas unidades y pedidos se vendieron en cada uno y qué productos subieron, bajaron, se enfriaron o están quietos, para decidir qué anunciar en publicidad y redes. Todo se baja a Excel.",
+   "palabras": [
+    "movimiento",
+    "mas vendidos",
+    "menos vendidos",
+    "lo que mas se mueve",
+    "lo que menos se mueve",
+    "comparar periodos",
+    "comparar ventas",
+    "este mes contra el mes pasado",
+    "ano pasado",
+    "subio",
+    "bajo",
+    "se enfrio",
+    "que anunciar",
+    "publicidad",
+    "redes sociales",
+    "campana",
+    "pedidos por producto",
+    "rotacion por tiempo",
+    "excel de movimiento"
+   ],
+   "destino": {
+    "menu": "dcasa_marketing.menu_dcasa_movimiento"
+   },
+   "pasos": [
+    {
+     "texto": "Abre Inventario › Movimiento (también la ves desde Marketing, con el botón «Comparar periodos»).",
+     "destino": {
+      "menu": "dcasa_marketing.menu_dcasa_movimiento"
+     }
+    },
+    {
+     "texto": "En «1 · ¿Qué periodo miras?» toca uno de los botones. En «2 · ¿Contra cuál lo comparas?» elige el periodo de justo antes, el mismo del año pasado o tus propias fechas. Arriba de los resultados te dice las fechas exactas de los dos.",
+     "destino": null
+    },
+    {
+     "texto": "Mira el resumen (cuántas unidades, pedidos y productos se vendieron ahora y antes) y la gráfica: la línea oscura es este periodo y la gris el de comparación.",
+     "destino": null
+    },
+    {
+     "texto": "En «3 · ¿Qué productos quieres ver?» elige los que más venden, los que subieron, los que bajaron, los que se enfriaron o los quietos con existencias. Cada producto dice cuánto vendió ahora y antes, cuánto cambió y para cuántos días alcanza lo que hay. Puedes elegir una categoría, buscar por nombre o código y ordenar la lista.",
+     "destino": null
+    },
+    {
+     "texto": "Con la lista que te sirva, toca «Crear campaña con los primeros 8» (Camila arma el correo) o «Ver estos en Productos» para sacar las fotos y publicar en redes. Antes de anunciar un producto mira que no esté agotado y que le alcance lo que hay.",
+     "destino": null
+    },
+    {
+     "texto": "Toca «Descargar Excel» para bajar la lista que estás viendo, completa.",
+     "destino": null
+    }
+   ],
+   "brian": "¿Qué productos subieron este mes frente al mes pasado?",
+   "nota": "Las ventas son las facturas publicadas (las notas de crédito restan), igual que en Marketing y Rotación. Los dos periodos se cuentan con el primer y el último día incluidos. Si en el periodo de comparación no hubo ventas, la pantalla lo avisa. El dinero (lo vendido en $ y el capital parado) lo ven solo Gerencia y los administradores; quien tiene el rol Marketing ve unidades y pedidos."
+  },
+  {
+   "id": "camila-campana",
+   "categoria": "clientes",
+   "tambien": [
+    "productos"
+   ],
+   "grupo": "Correo",
+   "titulo": "Preparar y enviar una campaña de correo de novedades (Camila)",
+   "logras": "Tocas «Nueva campaña» (desde una idea, lo nuevo, lo más vendido, lo quieto, lo que más hay o en blanco) y Camila arma el correo con productos que hay en tienda, con foto y publicados en la web, con el precio de hoy de la tienda en línea. La IA escribe con los datos reales de cada producto («Escribir con IA»); «Cambiar» abre una ventana para buscar otro producto. Eliges los botones (WhatsApp, la tienda en línea o los dos), a quién va con los chips (compraron, cotizaron, tibios, calientes…), miras «Previsualizar» en celular o computadora, te mandas una prueba y tocas «Enviar a N clientes». Solo les llega a los clientes que dijeron que sí.",
+   "nota": "A cada cliente le llega un correo de campaña cada 15 días como mucho (la pantalla dice cuántos quedan fuera y por qué) y solo sale desde producción. También se arma desde el tablero de Marketing con «Crear campaña con estos». Para enviar hace falta la clave de campañas de Resend (la crea y la pega quien administra el sistema). Es del rol Marketing, de Gerencia y de los administradores.",
+   "destino": {
+    "menu": "dcasa_camila.menu_camila"
+   },
+   "brian": "¿Cómo va la campaña de correo?",
+   "palabras": [
+    "camila",
+    "campana de correo",
+    "correo de novedades",
+    "mail marketing",
+    "email marketing",
+    "boletin",
+    "newsletter",
+    "enviar correo a clientes",
+    "promociones por correo",
+    "resend",
+    "darse de baja",
+    "vino del correo",
+    "crear campana con estos",
+    "publico de la campana"
+   ]
+  },
+  {
+   "id": "camila-permiso",
+   "categoria": "clientes",
+   "grupo": "Correo",
+   "titulo": "Novedades por correo: se activan solas con su correo y se quitan si dice que no",
+   "logras": "Cuando le agregas el correo a la ficha de un cliente, la casilla «Quiere recibir novedades y promociones por correo» se activa sola y la ficha dice «Se activó sola al agregar su correo». Si el cliente te dice que no, la desmarcas: queda anotado y ya no se activa sola. Al confirmar una venta o registrar un pago te sale la casilla ya activada con su correo: si el cliente dijo que no, la desactivas y tocas «Listo» (si no tiene correo, te pregunta «Sí» o «No» y te lo pide). Si pide que no le escriban más, tocas «Darle de baja».",
+   "nota": "Si el cliente te dijo que sí de verdad, toca «El cliente dijo que sí» en su ficha. Juan también guarda el correo que el cliente le escribe y le avisa que le llegarán las novedades; si el cliente le dice que no, Juan las quita. Nunca se activan solas importando clientes, ni a quien se dio de baja, pidió que no lo contacten o ya dijo que no. Cada correo de novedades dice por qué le llega y trae el enlace para darse de baja. Desmarcarla no es la baja: la baja es final para ese correo.",
+   "destino": {
+    "menu": "contacts.res_partner_menu_contacts"
+   },
+   "palabras": [
+    "permiso de correo",
+    "novedades por correo",
+    "acepta correos",
+    "quiere promociones",
+    "suscribir",
+    "dar de baja",
+    "no quiere correos",
+    "consentimiento correo",
+    "pregunta al confirmar",
+    "pregunta al cobrar",
+    "novedades en la venta",
+    "se activa sola",
+    "dijo que no",
+    "quitar novedades"
+   ]
+  },
+  {
+   "id": "camila-abrieron-en-cero",
+   "categoria": "clientes",
+   "grupo": "Correo",
+   "titulo": "¿Por qué Abrieron sale en 0?",
+   "logras": "Entiendes por qué la tabla de campañas de Camila dice 0 en «Abrieron» y «Tocaron» y enciendes en Resend el conteo de aperturas y clics solo para las campañas, sin tocar las facturas.",
+   "nota": "Resend trae el conteo apagado. No lo enciendas en el dominio de las facturas (tudominio.com): las facturas también llevarían el píxel y sus enlaces cambiarían. Las campañas que ya salieron con el conteo apagado siempre dirán 0, porque el píxel y los enlaces se ponen al enviar. Camila lo revisa sola y lo avisa arriba de su pantalla; el remitente de las campañas lo cambian Gerencia o un administrador.",
+   "destino": {
+    "menu": "dcasa_camila.menu_camila"
+   },
+   "brian": "¿Por qué la campaña de correo dice 0 en Abrieron?",
+   "pasos": [
+    {
+     "texto": "En Resend › Domains, agrega el subdominio de las campañas (por ejemplo novedades.tudominio.com) y copia sus registros en Cloudflare › DNS con la nube gris («DNS only») hasta que Resend diga «Verified».",
+     "destino": null
+    },
+    {
+     "texto": "En Resend, abre ese subdominio › Configuration › Enable tracking metrics: escribe «links» como subdominio y enciende aperturas y clics.",
+     "destino": null
+    },
+    {
+     "texto": "En Cloudflare › DNS, agrega el CNAME que te da Resend para «links», también con la nube gris («DNS only»), y en Resend toca «Verify DNS Records».",
+     "destino": null
+    },
+    {
+     "texto": "En Marketing › Camila, al final, escribe en «Remitente de las campañas» un correo de ese subdominio y toca «Guardar». Si falta algo, el aviso de arriba lo dice; «Revisar ahora» vuelve a mirar.",
+     "destino": {
+      "menu": "dcasa_camila.menu_camila"
+     }
+    }
+   ],
+   "palabras": [
+    "abrieron en cero",
+    "aperturas",
+    "clics",
+    "tocaron",
+    "conteo de aperturas",
+    "open tracking",
+    "click tracking",
+    "enable tracking metrics",
+    "pixel",
+    "remitente de las campanas",
+    "subdominio de campanas",
+    "dns only",
+    "nube gris"
+   ]
+  },
+  {
+   "id": "fotos-producto",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Ver, subir, ordenar o recortar las fotos de un producto",
+   "logras": "Tocas la foto del producto y se abre en grande: la cambias, la recortas, la giras o eliges cuál es la principal. En «Todas» subes varias a la vez y las ordenas arrastrando.",
+   "palabras": [
+    "foto",
+    "fotos",
+    "imagen",
+    "imagenes",
+    "subir fotos",
+    "recortar",
+    "galeria",
+    "foto principal",
+    "cambiar foto",
+    "ordenar fotos",
+    "camara"
+   ],
+   "destino": {
+    "menu": "sale.menu_product_template_action"
+   },
+   "pasos": [
+    {
+     "texto": "Abre la lista de productos y busca el producto por su nombre o su código.",
+     "destino": {
+      "menu": "sale.menu_product_template_action"
+     }
+    },
+    {
+     "texto": "Toca su foto (en la lista o dentro del producto): se abre en grande. Pasas a las demás con las flechas o deslizando el dedo, y la acercas pellizcando.",
+     "destino": null
+    },
+    {
+     "texto": "Para cambiarla usa «Reemplazar» (o «Tomar otra» con la cámara del celular), «Recortar», «Girar» o «Hacer principal».",
+     "destino": null
+    },
+    {
+     "texto": "Para subir varias toca «Todas» y luego «Elegir fotos» (puedes marcar varias) o arrástralas desde la computadora. Ordénalas arrastrando o con las flechas: la primera es la principal.",
+     "destino": null
+    }
+   ],
+   "nota": "En Marketing › Fotos encuentras rápido los productos sin foto o con una sola, y les subes las fotos ahí mismo."
+  },
+  {
+   "id": "precios-en-bloque",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Cambiar el precio o las existencias de muchos productos a la vez",
+   "logras": "Brian lo hace por ti: le dices qué productos y qué cambio, te muestra lo que va a hacer y espera tu confirmación.",
+   "destino": null,
+   "brian": "Quiero cambiar el precio de varios productos a la vez. ¿Cómo te lo pido?",
+   "palabras": [
+    "masivo",
+    "en bloque",
+    "subir precios",
+    "actualizar precios",
+    "cambio masivo"
+   ]
+  },
+  {
+   "id": "categorias-producto",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Ordenar los productos en categorías",
+   "logras": "Las categorías agrupan los productos para encontrarlos y para los reportes.",
+   "destino": {
+    "menu": "sale.menu_product_categories"
+   },
+   "palabras": [
+    "clasificar",
+    "tipos de producto"
+   ]
+  },
+  {
+   "id": "existencias",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Ver cuánto hay en existencia",
+   "logras": "Cuánto hay de cada producto en este momento.",
+   "destino": {
+    "menu": "stock.menu_product_stock"
+   },
+   "palabras": [
+    "stock",
+    "cuantos hay",
+    "disponible",
+    "bodega"
+   ]
+  },
+  {
+   "id": "movimientos-inventario",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Ver todo lo que entró y salió de un producto",
+   "logras": "Buscas un producto por su nombre, su código o su código de barras y ves su historia en palabras: «Entró por la compra… de…», «Salió por la venta… a…», ajustes, devoluciones y traslados, con lo que entró en verde y lo que salió en rojo, lo que quedó después, quién lo hizo y cuándo. Tocas uno y se abre su venta o su compra. Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_movimientos"
+   },
+   "nota": "Sin buscar nada, ves los últimos movimientos de todos los productos. Puedes filtrar por fechas y por tipo (compras, ventas, devoluciones, ajustes, traslados).",
+   "brian": "¿Qué movimientos tuvo este producto?",
+   "palabras": [
+    "movimientos",
+    "historial",
+    "kardex",
+    "entradas y salidas",
+    "que paso con",
+    "trazabilidad",
+    "devoluciones",
+    "traslados"
+   ]
+  },
+  {
+   "id": "recibir-mercancia",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Recibir mercancía de un proveedor",
+   "logras": "Confirmas lo que llegó y el stock sube solo.",
+   "destino": {
+    "menu": "stock.in_picking"
+   },
+   "palabras": [
+    "recepcion",
+    "llego mercancia",
+    "entrada de inventario"
+   ]
+  },
+  {
+   "id": "entregas",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Ver las entregas que están pendientes",
+   "logras": "Las ventas ya confirmadas que faltan por entregar al cliente.",
+   "destino": {
+    "menu": "stock.out_picking"
+   },
+   "palabras": [
+    "despachos",
+    "entregar a cliente",
+    "delivery",
+    "por entregar"
+   ]
+  },
+  {
+   "id": "despachar-bodega",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Despachar una entrega en bodega",
+   "logras": "Ves en un solo panel las entregas que faltan por despachar o por retirar en la tienda, abres la del cliente (tocándola o escaneando el QR de su nota de entrega), marcas lo que sale y la validas. Si falta algo, lo demás queda pendiente para después.",
+   "destino": {
+    "menu": "dcasa_barras.menu_dcasa_bodega"
+   },
+   "pasos": [
+    {
+     "texto": "Abre Bodega (también está en el Inicio). Arriba eliges «Para despachar (envío)» o «Para retirar en tienda».",
+     "destino": {
+      "menu": "dcasa_barras.menu_dcasa_bodega"
+     }
+    },
+    {
+     "texto": "Escanea el QR de la nota de entrega (con el lector o con el botón «Cámara»), o busca por cliente, número o pedido y toca «Abrir».",
+     "destino": null
+    },
+    {
+     "texto": "Marca cada producto que sale: tócalo o escanea su código.",
+     "destino": null
+    },
+    {
+     "texto": "Toca «Validar entrega». Si falta algo, te pregunta si entregas solo lo marcado: lo demás queda pendiente en una entrega nueva.",
+     "destino": null
+    },
+    {
+     "texto": "Si hace falta, imprime la nota de entrega desde ahí mismo.",
+     "destino": null
+    }
+   ],
+   "nota": "Solo salen los pedidos que ya tienen pago o abono: si escaneas el QR de uno sin pago, el panel te dice que no se entrega. Lo usa quien trabaja con Inventario (bodega, vendedoras y Gerencia), en tablet, celular o computadora. Si una entrega dice «Sin definir», el pedido no dice si se envía o se retira: la vendedora lo indica con el método de entrega del pedido. En el Inicio, el panel «Entregas pendientes» muestra estas mismas entregas y el mismo número que Bodega; las que todavía esperan pago o abono salen en un renglón aparte, debajo, y al tocarlo ves cuáles son.",
+   "palabras": [
+    "bodega",
+    "despachar",
+    "despacho",
+    "entregar al cliente",
+    "retiro",
+    "retirar en tienda",
+    "nota de entrega",
+    "qr de la nota",
+    "validar entrega",
+    "tablet",
+    "envio",
+    "entregas pendientes"
+   ]
+  },
+  {
+   "id": "inventario-fisico",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Contar el inventario y corregir diferencias",
+   "logras": "Cuentas lo que hay en la bodega, el sistema te muestra la diferencia y corrige las existencias; te pide el motivo y queda en la bitácora de bodega.",
+   "destino": {
+    "menu": "stock.menu_action_inventory_tree"
+   },
+   "palabras": [
+    "conteo",
+    "ajuste de inventario",
+    "inventario ciclico",
+    "faltantes"
+   ],
+   "nota": "Lo hace Gerencia."
+  },
+  {
+   "id": "valor-inventario",
+   "categoria": "productos",
+   "tambien": [
+    "reportes"
+   ],
+   "grupo": "Inventario",
+   "titulo": "Ver cuánto vale el inventario (al costo y a precio de venta)",
+   "logras": "Cuánto vale la mercancía que hay hoy: al costo (con el costo de cada producto), a precio de venta sin ITBMS y la ganancia esperada, con las unidades. Debajo, por categoría, los productos con más dinero y lo que falta cargar (productos sin costo, sin precio o en negativo); tocas cualquiera y ves sus productos. Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_valor_inventario"
+   },
+   "nota": "El costo es el de la ficha de cada producto, la misma valuación del inventario de Odoo; lo que está en negativo no se cuenta. La ganancia esperada supone que todo se vende a precio de lista, sin descuentos ni combos. También lo abres desde el Inicio y desde Estadísticas.",
+   "brian": "¿Cuánto vale el inventario?",
+   "palabras": [
+    "valor del inventario",
+    "valor de la mercancia",
+    "cuanto vale el inventario",
+    "costo del inventario",
+    "inventario al costo",
+    "mercancia en bodega",
+    "valoracion",
+    "costo de la mercancia"
+   ]
+  },
+  {
+   "id": "mermas",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Dar de baja una merma, un daño, una muestra o un regalo",
+   "logras": "Lo que sale de la bodega sin venderse baja de las existencias con su código y su costo, y queda listo para reclamarle al proveedor si fue un daño.",
+   "nota": "Lo da de baja Gerencia. Las cuentas contables de las mermas las elige la contadora en Ajustes de bodega y mermas.",
+   "destino": {
+    "menu": "dcasa_existencias.menu_mermas"
+   },
+   "palabras": [
+    "merma",
+    "dañado",
+    "roto",
+    "muestra",
+    "regalo",
+    "desecho",
+    "dar de baja",
+    "perdida"
+   ],
+   "tambien": [
+    "compras"
+   ],
+   "brian": "Se rompió un producto al bajarlo del camión, ¿cómo lo doy de baja?"
+  },
+  {
+   "id": "mermas-mes",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Ver las mermas del mes y si pasan del tope de la gerencia",
+   "logras": "Ves cuánto suman las mermas, daños, muestras y regalos del mes y del año, contra lo comprado, y si pasan del tope que puso la gerencia.",
+   "destino": {
+    "menu": "dcasa_existencias.menu_resumen_mermas"
+   },
+   "palabras": [
+    "mermas del mes",
+    "tope",
+    "medio por ciento",
+    "perdidas",
+    "cuanto se daño"
+   ],
+   "tambien": [
+    "reportes"
+   ]
+  },
+  {
+   "id": "reclamo-proveedor",
+   "categoria": "compras",
+   "grupo": "Proveedores",
+   "titulo": "Reclamarle a un proveedor la mercancía que llegó dañada",
+   "logras": "Sacas en PDF, con la marca, la lista de lo dañado o perdido de un proveedor para mandársela, y después lo marcas como reclamado.",
+   "destino": {
+    "menu": "dcasa_existencias.menu_resumen_mermas"
+   },
+   "pasos": [
+    {
+     "texto": "Abre las mermas del mes y pulsa «Reclamo a un proveedor (PDF)».",
+     "destino": {
+      "menu": "dcasa_existencias.menu_resumen_mermas"
+     }
+    },
+    {
+     "texto": "Elige el proveedor y las fechas, imprime el PDF y mándaselo.",
+     "destino": null
+    },
+    {
+     "texto": "Cuando se lo mandes, pulsa «Marcar como reclamadas».",
+     "destino": null
+    }
+   ],
+   "palabras": [
+    "reclamo",
+    "proveedor",
+    "dañado",
+    "nota de credito proveedor",
+    "reposicion"
+   ]
+  },
+  {
+   "id": "bitacora-bodega",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Ver quién cambió las existencias y por qué",
+   "logras": "La bitácora de bodega muestra cada ajuste de existencias: cuánto había, cuánto quedó, el motivo y quién lo hizo.",
+   "destino": {
+    "menu": "dcasa_existencias.menu_bitacora"
+   },
+   "palabras": [
+    "bitacora",
+    "quien movio",
+    "ajustes",
+    "historial de ajustes",
+    "faltante",
+    "sobrante"
+   ]
+  },
+  {
+   "id": "ajustes-bodega",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Elegir las cuentas de las mermas y encender las alertas de bodega",
+   "logras": "Pones las cuentas contables de las mermas y, si quieres, enciendes las alertas diarias por Telegram (productos por agotarse, ajustes grandes, mes sin cerrar) con tus propios umbrales.",
+   "nota": "Las alertas vienen apagadas y sin umbrales: llegan solo las que enciendas.",
+   "destino": {
+    "menu": "dcasa_existencias.menu_config"
+   },
+   "palabras": [
+    "alertas",
+    "telegram",
+    "stock bajo",
+    "umbral",
+    "cuenta de mermas",
+    "avisos de bodega"
+   ],
+   "tambien": [
+    "administrar"
+   ]
+  },
+  {
+   "id": "escaner",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Usar el escáner de códigos de barras",
+   "logras": "Pasas el lector por el producto y el sistema lo reconoce para contar, recibir o buscar.",
+   "nota": "También lo tienes como acceso directo «Escáner» en el Inicio.",
+   "destino": {
+    "menu": "dcasa_barras.menu_dcasa_escaner"
+   },
+   "palabras": [
+    "codigo de barras",
+    "lector",
+    "scanner",
+    "pistola"
+   ]
+  },
+  {
+   "id": "etiquetas",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Asignar una etiqueta con código a un producto",
+   "logras": "Le pones a cada producto una etiqueta numerada y queda ligada en el sistema.",
+   "destino": {
+    "menu": "dcasa_barras.menu_dcasa_barras_asignacion"
+   },
+   "palabras": [
+    "etiqueta",
+    "rollo",
+    "codigo de barras",
+    "asignar"
+   ]
+  },
+  {
+   "id": "reabastecer",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Ver qué productos se están acabando",
+   "logras": "La lista de lo que está por debajo del mínimo para pedirle más al proveedor.",
+   "destino": {
+    "menu": "stock.menu_reordering_rules_replenish"
+   },
+   "palabras": [
+    "reorden",
+    "agotado",
+    "se acaba",
+    "pedir mas"
+   ],
+   "brian": "¿Qué productos se están acabando?"
+  },
+  {
+   "id": "orden-compra",
+   "categoria": "compras",
+   "grupo": "Pedir",
+   "titulo": "Pedirle mercancía a un proveedor",
+   "logras": "Armas la orden de compra, se la mandas y, cuando llega la mercancía, el stock sube.",
+   "destino": {
+    "menu": "purchase.menu_purchase_form_action"
+   },
+   "palabras": [
+    "comprar",
+    "orden de compra",
+    "pedido a proveedor",
+    "reponer"
+   ]
+  },
+  {
+   "id": "reponer-proveedor",
+   "categoria": "compras",
+   "grupo": "Pedir",
+   "titulo": "Ver cuánto pedirle a un proveedor y qué pedir ya",
+   "logras": "Buscas el proveedor escribiendo parte de su nombre, su teléfono, su RUC o un producto que te vende, y eliges cuántos meses de ventas mirar (de fábrica, 5) y los meses de reserva. Por cada producto ves cuánto se vende al mes, para cuánto alcanza lo disponible (sin lo ya vendido que espera entrega) y lo que viene en camino, cuánto tarda en llegar y cuánto pedir; lo urgente sale primero como «Pedir ya». Lo puedes ver por proveedor y bajar en Excel.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_reponer"
+   },
+   "palabras": [
+    "reponer",
+    "reposicion",
+    "cuanto pedir",
+    "que pedir",
+    "pedir ya",
+    "ritmo de venta",
+    "cuando se me acaba",
+    "en cuanto tiempo me quedo sin",
+    "consumo de los ultimos meses",
+    "pedido a china",
+    "articulos vendidos",
+    "lo que se vendio",
+    "que le pido al proveedor",
+    "listado de ventas por producto",
+    "excel de reponer"
+   ],
+   "nota": "Sin el tiempo de llegada del proveedor no calcula cuánto pedir: la fila dice «Falta» y le tocas «Poner». Solo salen los productos que se vendieron en esos meses.",
+   "brian": "¿Qué le tengo que pedir ya a mi proveedor?"
+  },
+  {
+   "id": "tiempo-llegada-proveedor",
+   "categoria": "compras",
+   "grupo": "Pedir",
+   "titulo": "Poner cuánto tarda en llegar lo de un proveedor",
+   "logras": "En Compras › Reponer eliges el proveedor y tocas «Poner tiempo de llegada» (o «Cambiar»): escribes los meses o los días que tarda desde que le haces el pedido hasta que llega a la tienda. Se guarda para todos sus productos y con eso se calcula cuánto pedir y cuándo pedir ya.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_reponer"
+   },
+   "palabras": [
+    "tiempo de llegada",
+    "cuanto tarda en llegar",
+    "dias de entrega",
+    "plazo de entrega",
+    "demora del proveedor",
+    "tiempo de entrega",
+    "cuanto se demora el pedido"
+   ],
+   "brian": "Ponle el tiempo de llegada a mi proveedor"
+  },
+  {
+   "id": "proveedores",
+   "categoria": "compras",
+   "grupo": "Proveedores",
+   "titulo": "Ver o agregar un proveedor",
+   "logras": "La lista de proveedores con sus datos y lo que se les debe.",
+   "destino": {
+    "menu": "account.menu_account_supplier"
+   },
+   "palabras": [
+    "proveedor nuevo",
+    "suplidor",
+    "fabricante"
+   ]
+  },
+  {
+   "id": "precios-proveedor",
+   "categoria": "compras",
+   "grupo": "Proveedores",
+   "titulo": "Ver lo que cuesta cada producto con cada proveedor",
+   "logras": "Los precios de compra de cada proveedor, para comparar.",
+   "destino": {
+    "menu": "purchase.menu_product_pricelist_action2_purchase"
+   },
+   "palabras": [
+    "costos",
+    "precio de compra",
+    "comparar proveedores"
+   ]
+  },
+  {
+   "id": "analisis-compras",
+   "categoria": "compras",
+   "grupo": "Reportes",
+   "titulo": "Analizar cuánto estoy comprando",
+   "logras": "Compras por proveedor, por producto y por mes.",
+   "destino": {
+    "menu": "purchase.purchase_report"
+   },
+   "palabras": [
+    "gastos de compra",
+    "reporte de compras"
+   ]
+  },
+  {
+   "id": "cliente-nuevo",
+   "categoria": "clientes",
+   "grupo": "Clientes",
+   "titulo": "Agregar un cliente",
+   "logras": "Lo registras con su celular y su correo: sin ellos no se puede confirmar la venta. Si no tiene celular, escribe su teléfono fijo (7 números) en «Teléfono fijo», debajo del celular. Si de verdad no tiene correo, marca «Cliente no tiene correo electrónico». El celular es su llave en Socios.",
+   "destino": {
+    "nuevo": "res.partner"
+   },
+   "palabras": [
+    "crear cliente",
+    "alta de cliente",
+    "contacto nuevo",
+    "celular y correo",
+    "telefono fijo",
+    "no tiene celular"
+   ]
+  },
+  {
+   "id": "clientes-lista",
+   "categoria": "clientes",
+   "grupo": "Clientes",
+   "titulo": "Buscar a un cliente",
+   "logras": "Encuentras su ficha por nombre, celular, teléfono fijo o cédula, con sus ventas y sus puntos.",
+   "destino": {
+    "menu": "contacts.res_partner_menu_contacts"
+   },
+   "palabras": [
+    "buscar cliente",
+    "ficha",
+    "contactos"
+   ]
+  },
+  {
+   "id": "cliente-corregir-datos",
+   "categoria": "clientes",
+   "grupo": "Clientes",
+   "titulo": "Corregir los datos de un cliente mientras le vendes",
+   "logras": "En la cotización (o en la factura borrador), debajo de «Cliente», corriges su nombre, celular, correo o cédula y se guardan en su ficha al guardar. Para encontrarlo, escribe su celular en «Cliente»: sale con su celular al lado aunque su nombre sea el de su WhatsApp.",
+   "nota": "Si al crear un cliente su celular, su correo o su cédula ya existen, sale «Ya existe esta persona» con su ficha: toca «Es esta persona», revisa y guarda. No crees otro cliente con otro número.",
+   "destino": {
+    "menu": "sale.menu_sale_quotations"
+   },
+   "palabras": [
+    "corregir cliente",
+    "editar datos del cliente",
+    "cambiar nombre del cliente",
+    "correo mal escrito",
+    "celular repetido",
+    "ya existe esta persona",
+    "cliente de whatsapp",
+    "es esta persona"
+   ]
+  },
+  {
+   "id": "duplicados",
+   "categoria": "clientes",
+   "grupo": "Clientes",
+   "titulo": "Unir clientes que están repetidos",
+   "logras": "Ves los que parecen el mismo y los fusionas sin perder sus ventas.",
+   "destino": {
+    "menu": "dcasa_contactos.menu_duplicados"
+   },
+   "brian": "¿Hay clientes repetidos?",
+   "palabras": [
+    "repetidos",
+    "fusionar",
+    "duplicado"
+   ]
+  },
+  {
+   "id": "cliente-no-tiene-correo",
+   "categoria": "clientes",
+   "grupo": "Clientes",
+   "titulo": "Vender a un cliente que no tiene correo electrónico",
+   "logras": "En la cotización, junto al cliente, marcas «Cliente no tiene correo electrónico» y ya puedes confirmar la venta sin su correo.",
+   "nota": "Úsala solo si de verdad no tiene: primero pídele su correo, ahí le llegan su factura y sus puntos. El celular (o, si no tiene, un teléfono fijo) sigue siendo obligatorio. La misma casilla está en su ficha, debajo del correo, y queda anotado quién la marcó. Si después le escribes un correo, la casilla se desmarca sola.",
+   "destino": {
+    "menu": "sale.menu_sale_quotations"
+   },
+   "palabras": [
+    "no tiene correo",
+    "sin correo",
+    "cliente sin email",
+    "correo obligatorio",
+    "no tiene email"
+   ]
+  },
+  {
+   "id": "clientes-sin-correo",
+   "categoria": "clientes",
+   "grupo": "Clientes",
+   "titulo": "Completar los clientes a los que les falta el correo o el celular",
+   "logras": "Ves los clientes sin correo o sin celular (ni teléfono fijo) y los completas antes de su próxima venta: sin ellos no se confirma la venta ni le llega su factura.",
+   "nota": "No salen los que tienen marcada «Cliente no tiene correo electrónico» y ya tienen su celular.",
+   "destino": {
+    "menu": "dcasa_contactos.menu_clientes_sin_contacto"
+   },
+   "palabras": [
+    "falta el correo",
+    "falta el celular",
+    "completar clientes",
+    "clientes incompletos"
+   ]
+  },
+  {
+   "id": "socios",
+   "categoria": "clientes",
+   "grupo": "Socios",
+   "titulo": "Ver a los socios y sus puntos",
+   "logras": "La lista de socios con sus puntos y sus compras.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_socios"
+   },
+   "palabras": [
+    "puntos",
+    "fidelidad",
+    "club"
+   ]
+  },
+  {
+   "id": "canjes-socios",
+   "categoria": "clientes",
+   "grupo": "Socios",
+   "titulo": "Entregar un premio que un socio canjeó",
+   "logras": "Buscas el código del canje y lo marcas como entregado.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_canjes"
+   },
+   "palabras": [
+    "premio",
+    "canje",
+    "entregar premio"
+   ]
+  },
+  {
+   "id": "premios",
+   "categoria": "clientes",
+   "grupo": "Socios",
+   "titulo": "Crear o cambiar los premios de Socios",
+   "logras": "Defines qué premios se pueden canjear y por cuántos puntos.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_premios"
+   },
+   "palabras": [
+    "premios",
+    "puntos necesarios",
+    "catalogo de premios"
+   ]
+  },
+  {
+   "id": "pasivo-socios",
+   "categoria": "clientes",
+   "grupo": "Socios",
+   "titulo": "Ver cuántos puntos debe la tienda a los socios",
+   "logras": "El total de puntos acumulados y su valor, para saber cuánto compromiso hay.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_pasivo"
+   },
+   "palabras": [
+    "pasivo",
+    "deuda de puntos",
+    "cuanto cuestan los puntos"
+   ]
+  },
+  {
+   "id": "vendedor-afiliar",
+   "categoria": "clientes",
+   "grupo": "Vendedores",
+   "titulo": "Afiliar a un vendedor",
+   "logras": "Lo registras para que gane puntos cuando alguien compre con su código.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_vendedores"
+   },
+   "palabras": [
+    "vendedor nuevo",
+    "afiliar",
+    "codigo ven",
+    "programa de vendedores"
+   ]
+  },
+  {
+   "id": "comisiones",
+   "categoria": "clientes",
+   "grupo": "Vendedores",
+   "titulo": "Ver lo que han ganado los vendedores",
+   "logras": "Cada comisión con su motivo: pagada, recortada o por qué no se pagó.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_vend_comisiones"
+   },
+   "palabras": [
+    "comision",
+    "puntos de vendedor",
+    "ganancias de vendedores"
+   ]
+  },
+  {
+   "id": "canjes-vendedores",
+   "categoria": "clientes",
+   "grupo": "Vendedores",
+   "titulo": "Entregar un premio a un vendedor",
+   "logras": "Buscas el código del canje del vendedor y lo marcas como entregado.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_vend_canjes"
+   },
+   "palabras": [
+    "canje vendedor",
+    "premio vendedor"
+   ]
+  },
+  {
+   "id": "costo-vendedores",
+   "categoria": "clientes",
+   "grupo": "Vendedores",
+   "titulo": "Ver cuánto me cuesta el programa de vendedores",
+   "logras": "El costo del programa frente a lo que vendió, para decidir si conviene seguir igual.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_vend_costo"
+   },
+   "palabras": [
+    "costo programa",
+    "rentabilidad vendedores",
+    "cuanto gasto en comisiones"
+   ]
+  },
+  {
+   "id": "vendedores-porcentajes",
+   "categoria": "clientes",
+   "grupo": "Vendedores",
+   "titulo": "Cambiar los porcentajes del programa de vendedores",
+   "logras": "Ajustas lo que gana cada vendedor, la escalera, el patrocinio, la espera y los canjes, sin tocar lo que ya se pagó.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_vend_ajustes"
+   },
+   "nota": "Cada cambio rige desde el momento en que lo guardas y queda en el historial. El canje para vendedores de afuera y el canje en efectivo no se encienden aquí: esperan el visto bueno del abogado y la contadora.",
+   "palabras": [
+    "porcentajes de vendedores",
+    "comision",
+    "escalera",
+    "cambiar comision",
+    "ajustar programa de vendedores",
+    "patrocinio",
+    "tope del mes",
+    "valores de fabrica"
+   ]
+  },
+  {
+   "id": "vendedores-historial-reglas",
+   "categoria": "clientes",
+   "grupo": "Vendedores",
+   "titulo": "Ver quién cambió los porcentajes de los vendedores y cuándo",
+   "logras": "Cada cambio de las reglas con su fecha, quién lo hizo, el valor de antes y el de ahora.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_vend_reglas"
+   },
+   "palabras": [
+    "historial de reglas",
+    "quien cambio la comision",
+    "cambios del programa",
+    "versiones de reglas"
+   ]
+  },
+  {
+   "id": "oportunidades",
+   "categoria": "clientes",
+   "grupo": "Seguimiento",
+   "titulo": "Dar seguimiento a los clientes interesados",
+   "logras": "La lista de personas que preguntaron y todavía no compran, con la próxima acción para cada una.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_oportunidades"
+   },
+   "palabras": [
+    "leads",
+    "prospectos",
+    "seguimiento",
+    "crm",
+    "por cerrar"
+   ]
+  },
+  {
+   "id": "conversaciones",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Contestarles a los clientes (WhatsApp y más)",
+   "logras": "La bandeja donde llegan los mensajes de los clientes. Juan contesta lo básico y tú tomas la conversación cuando hace falta.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_panel_conversaciones"
+   },
+   "brian": "¿Cuántos clientes esperan respuesta ahora?",
+   "palabras": [
+    "whatsapp",
+    "mensajes",
+    "chat",
+    "juan"
+   ]
+  },
+  {
+   "id": "juan-palomitas",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "¿Qué significan las palomitas de los mensajes?",
+   "logras": "Sabes si el cliente ya recibió y leyó lo que le mandamos por WhatsApp. Una palomita gris: salió. Dos palomitas grises: le llegó a su teléfono. Dos palomitas azules: lo leyó. Un triángulo rojo con «No llegó»: WhatsApp no lo pudo entregar; pasa el mouse encima para ver por qué.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_panel_conversaciones"
+   },
+   "nota": "Las palomitas salen solas en los mensajes de Juan y de las vendedoras, también en los que ya están abiertos en la pantalla. Si el cliente desactivó la confirmación de lectura en su WhatsApp, nunca se ponen azules. En Telegram no hay palomitas: Telegram no se las da a los bots. Si un mensaje dice «No llegó» porque pasaron más de 24 horas, WhatsApp solo deja escribirle con una plantilla aprobada: llámalo o espera a que escriba.",
+   "palabras": [
+    "palomitas",
+    "visto",
+    "leido",
+    "entregado",
+    "chulito",
+    "check",
+    "no llego",
+    "doble check"
+   ]
+  },
+  {
+   "id": "juan-cita-del-cliente",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Saber a qué mensaje se refiere el cliente cuando dice «este»",
+   "logras": "Cuando el cliente responde a un mensaje en su WhatsApp, arriba de lo que escribió ves un recuadro con el mensaje al que responde y quién lo dijo (Juan, tú, otra vendedora o el cliente). Un toque en el recuadro te lleva a ese mensaje. Juan también lo ve, así que entiende «este».",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_panel_conversaciones"
+   },
+   "nota": "Si el recuadro dice «Mensaje que no está en el historial», el cliente respondió a algo muy viejo o que ya se borró. «Reenviado» quiere decir que el cliente lo pasó de otro chat (no lo escribió él). La carita pequeña en la esquina de un mensaje es la reacción del cliente; si la quita, desaparece. Una reacción no es un mensaje: no despierta a Juan ni deja la conversación esperando respuesta.",
+   "palabras": [
+    "este",
+    "cita",
+    "citado",
+    "responde a",
+    "reenviado",
+    "reaccion",
+    "emoji",
+    "carita"
+   ]
+  },
+  {
+   "id": "juan-responder-a-un-mensaje",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Responderle a un mensaje específico del cliente (citarlo)",
+   "logras": "Tu respuesta le llega al cliente con su mensaje citado arriba, como cuando respondes en WhatsApp: así sabe exactamente a qué le contestas.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_panel_conversaciones"
+   },
+   "pasos": [
+    {
+     "texto": "Abre la conversación del cliente.",
+     "destino": {
+      "menu": "dcasa_conversaciones.menu_dcasa_panel_conversaciones"
+     }
+    },
+    {
+     "texto": "En la computadora, pasa el mouse sobre el mensaje del cliente y toca «Responder», al lado del mensaje. En el celular, deja el dedo apretado sobre el mensaje y toca «Responder»."
+    },
+    {
+     "texto": "Arriba de la caja aparece «Respondes a Cliente» con su mensaje. Escribe tu respuesta y toca Enviar. Si te equivocaste, la X quita la cita."
+    }
+   ],
+   "nota": "Si ese mensaje no se puede citar en el canal, tu respuesta sale igual, sin la cita. Una nota interna no lleva cita: el cliente no la ve.",
+   "palabras": [
+    "responder",
+    "citar",
+    "contestar un mensaje",
+    "responder mensaje",
+    "cita"
+   ]
+  },
+  {
+   "id": "juan-ajustes",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Cambiar cómo contesta Juan",
+   "logras": "Prendes o apagas a Juan y ajustas lo que puede hacer: por ejemplo, si manda las cotizaciones solo, si cotiza los envíos («Juan cotiza envíos») o si de noche alguien recibe clientes («De noche nadie recibe clientes»).",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_juan_ajustes"
+   },
+   "palabras": [
+    "apagar juan",
+    "juan cotiza envios",
+    "asistente",
+    "automatico",
+    "bot",
+    "parejo",
+    "reparto",
+    "noche"
+   ]
+  },
+  {
+   "id": "juan-comentarios",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Que Juan responda los comentarios de Instagram y Facebook",
+   "logras": "Juan contesta los comentarios de tus publicaciones que preguntan algo (precio, medidas, colores, si hay, envío o ganas de comprar): debajo del comentario con una frase corta y, por mensaje privado, con la respuesta completa. Cada comentario que atiende queda en la conversación de esa persona.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_juan_ajustes"
+   },
+   "nota": "Se enciende en Ajustes de Juan, en «Comentarios de Instagram y Facebook» › «Responder comentarios»: viene apagado hasta que lo pruebes. Ahí también eliges las redes, cambias la frase pública (corta, sin enlaces y sin el nombre de nadie: es igual para todos), cuántas respuestas públicas da por hora y cuántas le da a una misma persona en 24 horas. Si lo apagas, Juan para enseguida. No contesta etiquetas de amigos, emojis, saludos ni elogios. Las quejas no las contesta: le avisa a Gerencia por Telegram (una vez al día por persona) y lo deja anotado en la conversación. Necesita Messenger (para Facebook) o Instagram encendidos en «Dónde contesta». Solo Gerencia y los administradores lo cambian.",
+   "brian": "¿Cuántos comentarios de Instagram respondió Juan esta semana?",
+   "palabras": [
+    "comentarios",
+    "comentario",
+    "instagram",
+    "facebook",
+    "publicaciones",
+    "responder comentarios",
+    "quejas",
+    "mensaje privado"
+   ]
+  },
+  {
+   "id": "juan-cotizaciones-vencen",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Elegir cuántos días queda abierta una cotización de Juan o de la web",
+   "logras": "Cambias en Ajustes de Juan los días que una cotización del chatbot o de la página web puede quedar sin confirmar antes de cancelarse sola.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_juan_ajustes"
+   },
+   "nota": "Viene en 3 días. No se borra: queda cancelada con una nota y se reabre con «Establecer como cotización». Las cotizaciones de las vendedoras no se tocan. 0 = nunca se cancelan.",
+   "brian": "¿Qué cotizaciones de Juan o de la web vencen pronto?",
+   "palabras": [
+    "cotizacion vencida",
+    "cancelar sola",
+    "cotizaciones abiertas",
+    "validez",
+    "chatbot",
+    "web"
+   ]
+  },
+  {
+   "id": "juan-conocimiento",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Enseñarle algo nuevo a Juan",
+   "logras": "Agregas información (horarios, políticas, respuestas) para que Juan conteste mejor.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_conocimiento"
+   },
+   "palabras": [
+    "conocimiento",
+    "respuestas",
+    "entrenar",
+    "preguntas frecuentes"
+   ]
+  },
+  {
+   "id": "juan-preguntas",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Ver las preguntas que Juan no supo contestar",
+   "logras": "Las preguntas que Juan no supo contestar. Vendedoras y Gerencia tocan «Contestar», escriben la respuesta y Juan la aprende al momento; si menciona precios o números, Gerencia la revisa antes.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_preguntas_pendientes"
+   },
+   "palabras": [
+    "sin respuesta",
+    "no supo",
+    "pendientes"
+   ]
+  },
+  {
+   "id": "pedidos-web",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Ver los pedidos que llegaron por la tienda en línea",
+   "logras": "Los pedidos hechos desde la web, con su pago y su entrega.",
+   "destino": {
+    "menu": "website_sale.menu_orders_orders"
+   },
+   "palabras": [
+    "ecommerce",
+    "compras web",
+    "ordenes web",
+    "pedidos online"
+   ]
+  },
+  {
+   "id": "carritos-abandonados",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Ver los carritos que se quedaron sin comprar",
+   "logras": "Las personas que llenaron el carrito y no terminaron: puedes escribirles.",
+   "destino": {
+    "menu": "website_sale.menu_orders_abandoned_orders"
+   },
+   "palabras": [
+    "carrito",
+    "abandonados",
+    "recuperar venta"
+   ]
+  },
+  {
+   "id": "publicar-producto",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Publicar o quitar un producto de la tienda en línea",
+   "logras": "Eliges qué productos se ven en la web.",
+   "destino": {
+    "menu": "website_sale.menu_catalog_products"
+   },
+   "palabras": [
+    "publicar",
+    "despublicar",
+    "mostrar en web"
+   ]
+  },
+  {
+   "id": "opiniones-aprobar",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Publicar las opiniones que dejaron los clientes",
+   "logras": "Lees lo que opinó cada cliente de un producto que compró y pagó, y decides si sale en la ficha de la tienda en línea: «Publicar» o «No publicar». Nadie puede escribirlas ni cambiarlas a mano.",
+   "destino": {
+    "menu": "website_dcasa.menu_dcasa_resenas"
+   },
+   "palabras": [
+    "reseñas",
+    "opiniones",
+    "estrellas",
+    "comentarios de clientes",
+    "aprobar opinion",
+    "calificaciones"
+   ]
+  },
+  {
+   "id": "horario-tienda",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Cambiar el horario de la tienda que sale en la página",
+   "logras": "El horario de Visítanos y del pie de la página sale de los ajustes de Juan («Horario laboral»): lo cambias ahí y se cambia en la página y en Juan a la vez.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_juan_ajustes"
+   },
+   "palabras": [
+    "horario",
+    "hora de abrir",
+    "hora de cerrar",
+    "domingo",
+    "visitanos",
+    "abierto"
+   ]
+  },
+  {
+   "id": "vista-previa",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Ver cómo se ve la tienda en el celular",
+   "logras": "El sitio en un marco de teléfono, de tableta o de computadora.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_vista_previa"
+   },
+   "palabras": [
+    "movil",
+    "responsive",
+    "sitio web",
+    "preview"
+   ]
+  },
+  {
+   "id": "carrusel-portada",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Elegir los productos y la velocidad del carrusel de la portada",
+   "logras": "Eliges qué productos salen de fondo arriba en la portada, una foto tras otra, y cuántos segundos dura cada una (arriba, en «Segundos que dura cada foto»: de 2 a 15, de fábrica 3). Con «Agregar una línea» pones un producto publicado y arrastrando eliges cuál sale primero; las demás van en orden al azar. Si dejas la lista vacía, la portada muestra la foto de siempre.",
+   "destino": {
+    "menu": "website_dcasa.menu_dcasa_portada_diapositiva"
+   },
+   "nota": "Solo salen los productos publicados en la tienda y con foto; la columna «Sale en la portada» dice cuáles. El cambio, de productos o de segundos, se ve en la página en unos segundos. El paso de una foto a la otra y el zoom lento se ajustan solos al tiempo que pongas. Lo ven y lo cambian Gerencia y los administradores.",
+   "palabras": [
+    "carrusel",
+    "velocidad de la portada",
+    "segundos de cada foto",
+    "cambiar más rápido las fotos",
+    "portada",
+    "inicio de la página",
+    "foto de la portada",
+    "fotos de arriba",
+    "banner",
+    "productos de la portada",
+    "productos destacados"
+   ]
+  },
+  {
+   "id": "buscar-foto",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Encender o apagar «Busca con una foto» en la tienda",
+   "logras": "En la tienda web sale un botón de cámara dentro de la caja de búsqueda: el cliente sube la foto de un producto (o una captura de Instagram) y le salen los productos publicados que se le parecen. Aquí lo enciendes o lo apagas, cambias cuántas fotos puede buscar cada persona, cuánto puede gastar de IA en el mes y ves cuántas búsquedas hubo.",
+   "destino": {
+    "menu": "dcasa_buscar_foto.menu_dcasa_buscar_foto"
+   },
+   "nota": "Viene encendido. Si la foto parece un comprobante o una cédula, no se busca nada. La foto nunca se guarda. Lo que gasta la lectura de las fotos lo cobra Cloudflare y se ve aparte en Costos de IA (no es deuda con Meta). Tiene su propio tope del mes, y si el gasto de Juan va por más del 80 % de su tope no se leen fotos: en esos casos la tienda dice que ahora no se puede buscar por foto. Solo Gerencia y los administradores lo cambian.",
+   "palabras": [
+    "foto",
+    "buscar por foto",
+    "busca con una foto",
+    "camara",
+    "imagen",
+    "parecidos",
+    "tienda",
+    "instagram"
+   ]
+  },
+  {
+   "id": "metodos-envio",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Configurar los métodos de entrega de la tienda",
+   "logras": "Defines cómo se entrega lo que se vende en línea y cuánto cuesta.",
+   "destino": {
+    "menu": "website_sale.menu_ecommerce_delivery"
+   },
+   "palabras": [
+    "envio",
+    "flete",
+    "delivery",
+    "entrega"
+   ]
+  },
+  {
+   "id": "brian-tienda",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Encender o apagar a Andrés, el chat de la tienda",
+   "logras": "En la tienda web sale la burbuja de Andrés (en lugar de la de WhatsApp): busca productos, calcula el envío y deja el carrito listo. Aquí lo enciendes o lo apagas, decides si fuera del horario avisa que la tienda está cerrada y si el robot de la burbuja duerme de noche, cambias el presupuesto del mes y los topes de mensajes, y ves cuánto va gastando y cómo lo califican los clientes.",
+   "destino": {
+    "menu": "dcasa_brian_tienda.menu_dcasa_brian_tienda"
+   },
+   "nota": "Viene encendido, saludando igual de día y de noche (fuera del horario no avisa que la tienda está cerrada) y con el robot dormido de noche. No guarda la conversación ni crea contactos; para atención personal ofrece WhatsApp. Si las notas de voz de Juan están encendidas, junto a «Enviar» sale un micrófono: el cliente le habla hasta un minuto y Andrés recibe lo que dijo como texto; el audio no se guarda en ningún lado. En la computadora el chat abre ya ampliado: el chat a la izquierda y, a la derecha, «Lo más buscado» (después, los productos de la conversación); quien lo prefiere lo achica con el botón de la esquina y su navegador lo recuerda. En el celular no cambia. Su gasto va en su propio renglón de Costos de IA y no se suma a «Por pagar a Meta». Solo Gerencia y los administradores lo cambian.",
+   "palabras": [
+    "chat",
+    "chat de la tienda",
+    "burbuja",
+    "asistente",
+    "tienda",
+    "web",
+    "carrito",
+    "noche",
+    "horario",
+    "tienda cerrada",
+    "andrés",
+    "andres",
+    "micrófono del chat",
+    "nota de voz del cliente",
+    "chat ampliado",
+    "tamaño del chat"
+   ]
+  },
+  {
+   "id": "campana-del-sitio",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Preparar una campaña como Black Friday (productos, precios y fechas)",
+   "logras": "Pones el nombre de la campaña y sus fechas, y eliges los productos con una casilla. A cada uno le puedes poner un precio de campaña (o un mismo descuento a varios). En esas fechas salen solos la sección en la portada, la página de la campaña, la etiqueta en las tarjetas y «Promociones» en el menú; el carrito cobra el precio de campaña y Juan y Andrés dicen ese mismo precio. Al terminar, todo vuelve solo a la normalidad.",
+   "destino": {
+    "menu": "website_dcasa.menu_dcasa_campana"
+   },
+   "nota": "El precio de campaña es sin ITBMS, como el precio de venta, y tiene que ser menor que el normal. Sin las dos fechas no se aplica ningún precio de campaña. «Empezar de cero» desmarca todos los productos y borra sus precios de campaña. Los combos cama + colchón de la cotización van a su precio de siempre, sin el precio de campaña, mientras el interruptor «La campaña también rebaja los combos» (en la misma pantalla) esté apagado, como viene. Lo ven y lo cambian Gerencia y los administradores.",
+   "palabras": [
+    "campaña",
+    "black friday",
+    "black weekend",
+    "promociones",
+    "promoción",
+    "oferta",
+    "ofertas",
+    "descuento",
+    "rebaja",
+    "precio especial",
+    "precio de campaña",
+    "cyber monday",
+    "combos",
+    "combo con campaña"
+   ]
+  },
+  {
+   "id": "meta-catalogo",
+   "categoria": "tienda",
+   "grupo": "Anuncios en Meta",
+   "titulo": "Anunciar tus productos en Facebook e Instagram",
+   "logras": "Ves la dirección del catálogo que Meta lee, qué productos van y cuáles quedan fuera y por qué.",
+   "destino": {
+    "menu": "dcasa_meta_catalogo.menu_meta_catalogo"
+   },
+   "nota": "Viene apagado: lo enciendes cuando vayas a pegar la dirección en Meta (Commerce Manager › Orígenes de datos). Los precios salen igual que en la página, sin ITBMS, y los productos que marques «No anunciar en Facebook e Instagram» no van.",
+   "brian": "¿Cómo va Meta?",
+   "palabras": [
+    "facebook",
+    "instagram",
+    "anuncios",
+    "catalogo",
+    "meta",
+    "publicidad",
+    "commerce manager",
+    "feed",
+    "catalogo de productos"
+   ]
+  },
+  {
+   "id": "meta-campana",
+   "categoria": "productos",
+   "grupo": "Anuncios en Meta",
+   "titulo": "Marcar productos para una campaña de anuncios",
+   "logras": "Creas una campaña (por ejemplo «Navidad»), la pones en varios productos a la vez y en Meta armas con ella el grupo de productos que se anuncia.",
+   "destino": {
+    "menu": "dcasa_meta_catalogo.menu_meta_campanas"
+   },
+   "pasos": [
+    {
+     "texto": "Abre «Campañas para anuncios» y crea la campaña con su nombre. El sistema le pone un código sin tildes ni espacios (por ejemplo «navidad») que no cambia aunque después le cambies el nombre.",
+     "destino": {
+      "menu": "dcasa_meta_catalogo.menu_meta_campanas"
+     }
+    },
+    {
+     "texto": "En la lista de Productos marca los productos que van y, en la columna «Campaña (Meta)», escoge la campaña: se pone en todos los marcados.",
+     "destino": {
+      "menu": "sale.menu_product_template_action"
+     }
+    },
+    {
+     "texto": "En Meta, en tu catálogo › Conjuntos de productos, crea el conjunto con «Etiqueta personalizada 1» igual al código de la campaña.",
+     "destino": null
+    }
+   ],
+   "nota": "Para que un producto no salga en ningún anuncio, ábrelo y marca «No anunciar en Facebook e Instagram»: sigue en la tienda en línea.",
+   "palabras": [
+    "campana",
+    "anuncios",
+    "facebook",
+    "instagram",
+    "meta",
+    "publicidad",
+    "conjunto de productos",
+    "etiqueta",
+    "promocion"
+   ]
+  },
+  {
+   "id": "meta-eventos",
+   "categoria": "tienda",
+   "grupo": "Anuncios en Meta",
+   "titulo": "Ver qué ventas se reportaron a Meta",
+   "logras": "Ves las compras pagadas que el sistema le avisó a Meta para medir tus anuncios, y las que no se enviaron y por qué.",
+   "destino": {
+    "menu": "dcasa_meta_eventos.menu_meta_eventos"
+   },
+   "brian": "¿Se están reportando las ventas a Meta?",
+   "palabras": [
+    "meta",
+    "facebook",
+    "instagram",
+    "anuncios",
+    "publicidad",
+    "conversiones",
+    "ventas reportadas",
+    "pixel",
+    "medir anuncios"
+   ]
+  },
+  {
+   "id": "meta-pixel",
+   "categoria": "tienda",
+   "grupo": "Anuncios en Meta",
+   "titulo": "Conectar el píxel de Meta y mandar un evento de prueba",
+   "logras": "Pegas el número del píxel y el código de prueba que te da Meta, ves si la clave de Meta ya está cargada y mandas un evento de prueba para confirmar que Meta lo recibe.",
+   "destino": {
+    "menu": "dcasa_meta_eventos.menu_dcasa_meta_ajustes"
+   },
+   "nota": "Todo viene apagado y no se puede encender hasta que el abogado apruebe la parte de Meta de la política de privacidad y la publiquemos. La clave de Meta (el token) nunca se pega aquí ni se manda por el chat: se guarda como secreto META_CAPI_TOKEN. Esta pantalla es del administrador.",
+   "palabras": [
+    "pixel",
+    "pixel de meta",
+    "meta",
+    "facebook",
+    "instagram",
+    "anuncios",
+    "evento de prueba",
+    "conversions api",
+    "token de meta",
+    "medir anuncios",
+    "cookies"
+   ]
+  },
+  {
+   "id": "tilopay-pagos",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Encender el pago con tarjeta (Tilopay) y probar la conexión",
+   "logras": "Ves si las claves de Tilopay ya están cargadas, en qué entorno está (prueba o producción), si Tilopay aparece en la tienda y por qué no, y pulsas «Probar conexión» para confirmar que Tilopay acepta el usuario y la contraseña (la llave se comprueba en el primer cobro de prueba). Cuando todo está bien, lo enciendes: el cliente paga en la página segura de Tilopay y el pedido queda pagado solo.",
+   "destino": {
+    "menu": "account_payment.payment_provider_menu"
+   },
+   "pasos": [
+    {
+     "texto": "Las claves no se escriben aquí ni se mandan por el chat: se pegan en el panel de Cloudflare como secretos (el paso a paso está en docs/TILOPAY.md).",
+     "destino": null
+    },
+    {
+     "texto": "Abre Tilopay en la lista, mira «Claves cargadas» y «Entorno» y pulsa «Probar conexión».",
+     "destino": {
+      "menu": "account_payment.payment_provider_menu"
+     }
+    },
+    {
+     "texto": "Para probar con dinero de mentira, ponlo en «Modo de prueba» y déjalo sin publicar: así solo lo ven y lo usan las personas del equipo con sesión, nunca un visitante. Para cobrar de verdad, «Habilitado» (y que Cloudflare diga «produccion»).",
+     "destino": null
+    }
+   ],
+   "nota": "Viene apagado. Si algo no coincide (entorno, claves o el interruptor), Tilopay simplemente no aparece en la tienda y la pantalla dice por qué. Esta pantalla es del administrador.",
+   "palabras": [
+    "tilopay",
+    "tarjeta",
+    "yappy",
+    "pago en linea",
+    "pasarela",
+    "cobrar con tarjeta",
+    "probar conexion",
+    "claves de tilopay",
+    "pago con tarjeta en la tienda"
+   ],
+   "grupos": [
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "yappy-pagos",
+   "categoria": "tienda",
+   "grupo": "Tienda en línea",
+   "titulo": "Encender el pago con Yappy en la tienda y ver por qué no aparece",
+   "logras": "Ves si las claves de Yappy ya están cargadas en el servidor, en qué entorno está (prueba o producción), si «Yappy» aparece en la tienda y, si no aparece, por qué. Pulsas «Probar conexión» para confirmar que Yappy reconoce al comercio y al dominio. Cuando todo está bien, lo enciendes: el cliente paga desde su app de Yappy sin salir de la tienda y el pedido queda pagado cuando Yappy avisa.",
+   "destino": {
+    "menu": "account_payment.payment_provider_menu"
+   },
+   "pasos": [
+    {
+     "texto": "Las claves no se escriben aquí ni se mandan por el chat: se pegan en el panel de Cloudflare (el paso a paso está en docs/YAPPY.md). Yappy muestra la clave secreta una sola vez, así que se pega directo.",
+     "destino": null
+    },
+    {
+     "texto": "Abre «Yappy directo» en la lista, mira «Claves de Yappy cargadas» y «Entorno de Yappy» y pulsa «Probar conexión».",
+     "destino": {
+      "menu": "account_payment.payment_provider_menu"
+     }
+    },
+    {
+     "texto": "El dominio que sale ahí tiene que ser, letra por letra, el que se escribió en Yappy Comercial al crear el botón. Si no coincide, Yappy no deja cobrar.",
+     "destino": null
+    },
+    {
+     "texto": "Para probar con dinero de mentira, ponlo en «Modo de prueba» y déjalo sin publicar: así solo lo ven y lo usan las personas del equipo con sesión, nunca un visitante. Para cobrar de verdad, «Habilitado» (y que Cloudflare diga «produccion»).",
+     "destino": null
+    }
+   ],
+   "nota": "Viene apagado. Cuando se enciende, reemplaza al «Yappy» de siempre (el que te escribe por WhatsApp): el cliente nunca ve dos. Si algo no coincide (claves, entorno o el interruptor), el Yappy de siempre sigue funcionando y la pantalla dice por qué. Esta pantalla es del administrador.",
+   "palabras": [
+    "yappy",
+    "yappy directo",
+    "boton de pago",
+    "pago con yappy",
+    "cobrar con yappy",
+    "probar conexion",
+    "claves de yappy",
+    "yappy comercial",
+    "pago en linea",
+    "pasarela"
+   ],
+   "grupos": [
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "yappy-que-compro",
+   "categoria": "vender",
+   "grupo": "Cobros",
+   "titulo": "Ver qué compró quien pagó con Yappy",
+   "logras": "Ves, por cada pago con Yappy, qué pedido es, qué compró la persona (producto, modelo, cantidad, precio y descuento), cómo recibe su pedido, su celular y cuándo y cómo pagó, para coordinar la entrega sin buscar nada. También ves los pagos que Yappy todavía no confirmó (y los confirmas tú, mirando Yappy Comercial) y los que alguien debe revisar.",
+   "destino": {
+    "menu": "dcasa_pago_yappy.menu_pagos_yappy"
+   },
+   "pasos": [
+    {
+     "texto": "Abre «Pagos con Yappy»: cada fila trae el pedido, el celular y la orden que se ve en el reporte de Yappy Comercial.",
+     "destino": {
+      "menu": "dcasa_pago_yappy.menu_pagos_yappy"
+     }
+    },
+    {
+     "texto": "Abre uno: arriba dice el pedido, la entrega y de dónde llegó la compra; abajo, la lista de lo que compró.",
+     "destino": null
+    },
+    {
+     "texto": "Si Yappy no avisó pasados unos minutos, te queda un pendiente en el pedido. Abre el reporte de Yappy Comercial y mira si el dinero entró. Si entró, abre ese pago en «Pagos con Yappy» y pulsa «Confirmar que el dinero entró»: queda pagado una sola vez y anotado que lo confirmaste tú. No lo registres además a mano en el diario: se cobraría dos veces. Si el dinero no entró, no hagas nada: el pedido sigue guardado.",
+     "destino": null
+    }
+   ],
+   "nota": "El número de confirmación que a veces trae Yappy es solo informativo: nunca decide si un pedido está pagado. Un pedido solo queda pagado cuando Yappy avisa con su firma o cuando Caja confirma, mirando Yappy Comercial, que el dinero entró. Si el pedido ya estaba pagado por otro lado y llega el aviso de Yappy, no se cobra otra vez: queda una alerta para revisarlo. Pueden confirmar este pago Caja, Gerencia, contabilidad y quien tiene el rol «Administra la nómina» (ese rol incluye contabilidad). Si el cobro se quedó a medio abrir y Yappy nunca lo recibió, el botón no lo acepta.",
+   "palabras": [
+    "yappy",
+    "que compro",
+    "pedido pagado",
+    "pagos con yappy",
+    "lo que compro",
+    "detalle del pedido",
+    "pago en linea",
+    "coordinar la entrega",
+    "pagado con yappy"
+   ],
+   "grupos": [
+    "dcasa_base.group_caja",
+    "dcasa_base.group_gerencia",
+    "account.group_account_user",
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "usuario-nuevo",
+   "categoria": "administrar",
+   "grupo": "Accesos",
+   "titulo": "Darle acceso al sistema a una persona del equipo",
+   "logras": "Creas su usuario y eliges su rol (Vendedora, Caja o Gerencia) para que vea solo lo que le toca.",
+   "destino": {
+    "menu": "base.menu_action_res_users"
+   },
+   "palabras": [
+    "crear usuario",
+    "permisos",
+    "roles",
+    "clave",
+    "acceso",
+    "caja",
+    "cajero",
+    "rol"
+   ],
+   "nota": "El rol se elige en la ficha de la persona, en «Tommalo» (el selector de los roles de la tienda): Vendedora (cotiza y factura lo suyo; no cobra), Caja (para quien cobra en caja: factura y cobra las de todas) o Gerencia (además anula facturas, hace notas de crédito, devuelve dinero y controla la tienda). Caja no se le pone sola a nadie: elígela tú para quien cobra. Al guardar un usuario con correo, el sistema le manda solo la invitación para elegir su clave."
+  },
+  {
+   "id": "vendedoras-solo-lo-suyo",
+   "categoria": "administrar",
+   "grupo": "Accesos",
+   "titulo": "Elegir si cada vendedora ve solo sus documentos",
+   "logras": "Enciendes o apagas «Cada vendedora ve solo sus documentos»: encendido, cada vendedora ve solo sus cotizaciones, pedidos, facturas, notas de crédito y cobros; apagado, todas ven todo, como antes.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_permisos_vendedoras"
+   },
+   "nota": "Viene encendido. Lo que no tiene vendedora lo ven todas para que alguien lo atienda: una cotización de Juan sin asignar y los pedidos de la página web, que entran sin vendedora; la vendedora que lo confirma se lo queda (si lo confirma Caja, sigue sin vendedora). Caja y Gerencia ven todo siempre. Si la restricción trae un problema en la tienda, apágalo aquí: vale al momento y no cambia el rol de nadie. Los administradores también lo tienen en Ajustes, en Ventas.",
+   "palabras": [
+    "solo sus documentos",
+    "ver todo",
+    "restriccion",
+    "permisos de las vendedoras",
+    "facturas de otra vendedora",
+    "cotizaciones de otra",
+    "volver como antes",
+    "interruptor"
+   ]
+  },
+  {
+   "id": "accesos-panel",
+   "categoria": "administrar",
+   "grupo": "Accesos",
+   "titulo": "Ver quién puede entrar al panel",
+   "logras": "La lista de accesos al panel de administración.",
+   "destino": {
+    "menu": "dcasa_seguridad.dcasa_seguridad_acceso_menu"
+   },
+   "palabras": [
+    "seguridad",
+    "master",
+    "puerta",
+    "cloudflare"
+   ]
+  },
+  {
+   "id": "empresa",
+   "categoria": "administrar",
+   "grupo": "Empresa",
+   "titulo": "Cambiar los datos de la empresa (nombre, RUC, dirección, logo)",
+   "logras": "Lo que aparece en las facturas y documentos.",
+   "destino": {
+    "menu": "base.menu_action_res_company_form"
+   },
+   "palabras": [
+    "ruc",
+    "razon social",
+    "logo",
+    "direccion",
+    "datos de la empresa"
+   ]
+  },
+  {
+   "id": "marca-del-panel",
+   "categoria": "administrar",
+   "grupo": "Empresa",
+   "titulo": "Poner el logo y los colores de tu empresa en el sistema",
+   "logras": "Subes tu logo (el de arriba de la barra de la izquierda y del menú del celular), el ícono de la pestaña y de la app del celular, y eliges tu color principal y tu color de acento. Todo el equipo lo ve al recargar la página.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_marca_panel"
+   },
+   "nota": "El color principal es la letra de títulos y enlaces, y el de acento es el relleno del botón principal, con la letra del principal encima. Si un color no se lee bien (por ejemplo, un principal muy claro sobre el crema del panel), el sistema te lo dice y te sugiere uno parecido que sí se lee. Si no subes el ícono, sale del logo. La página web no cambia con esto, ni el logo de las facturas. Con «Volver a la marca de fábrica» todo queda como al principio.",
+   "palabras": [
+    "logo del panel",
+    "logo del sistema",
+    "colores",
+    "color del sistema",
+    "marca",
+    "favicon",
+    "icono",
+    "personalizar",
+    "branding",
+    "cambiar colores"
+   ],
+   "brian": "¿Cómo está la marca del panel?"
+  },
+  {
+   "id": "brian-ajustes",
+   "categoria": "administrar",
+   "grupo": "Brian",
+   "titulo": "Configurar a Brian",
+   "logras": "Su clave de IA, su límite de gasto y qué puede hacer.",
+   "destino": {
+    "menu": "dcasa_brian.menu_brian_ajustes"
+   },
+   "palabras": [
+    "ia",
+    "inteligencia artificial",
+    "clave",
+    "api"
+   ]
+  },
+  {
+   "id": "brian-consumo",
+   "categoria": "administrar",
+   "grupo": "Brian",
+   "titulo": "Ver cuánto gasta la IA",
+   "logras": "El consumo de Brian y de Juan por mes y por persona.",
+   "destino": {
+    "menu": "dcasa_brian.menu_brian_uso"
+   },
+   "palabras": [
+    "costo de ia",
+    "gasto de ia",
+    "tokens"
+   ]
+  },
+  {
+   "id": "brian-registro",
+   "categoria": "administrar",
+   "grupo": "Brian",
+   "titulo": "Ver qué ha hecho Brian por mí",
+   "logras": "Cada acción que Brian hizo o propuso, con quién la confirmó y cuándo.",
+   "destino": {
+    "menu": "dcasa_brian.menu_brian_acciones"
+   },
+   "palabras": [
+    "historial de brian",
+    "auditoria",
+    "acciones"
+   ]
+  },
+  {
+   "id": "brian-notas-de-voz",
+   "categoria": "administrar",
+   "grupo": "Brian",
+   "titulo": "Dictarle a Brian con una nota de voz",
+   "logras": "En vez de escribir, le hablas a Brian: lo que dices se convierte en texto y queda en su caja para que lo revises antes de mandarlo. El audio no se guarda en ningún lado.",
+   "destino": null,
+   "nota": "Abre a Brian (el robot de abajo a la derecha) y toca el micrófono, al lado de la caja de texto. La primera vez, el navegador te pide permiso para usar el micrófono. Habla con calma, hasta un minuto, y toca «Listo» (el botón con el visto). Si no quieres mandar nada, toca la X o la tecla Esc. Después revisa el texto, corrígelo si hace falta y envíalo como siempre.",
+   "palabras": [
+    "nota de voz",
+    "notas de voz",
+    "audio",
+    "dictar",
+    "hablarle",
+    "microfono",
+    "voz",
+    "grabar"
+   ]
+  },
+  {
+   "id": "correo-clientes-ajustes",
+   "categoria": "administrar",
+   "grupo": "Correo a clientes",
+   "titulo": "Encender o apagar los correos a clientes",
+   "logras": "Ves si el correo está listo, mandas un correo de prueba a tu propio correo y enciendes o apagas lo que les llega a los clientes: la factura al registrar un pago, el recordatorio de un abono antes de que venza y la bienvenida a los clientes nuevos.",
+   "nota": "Viene apagado. La clave de Resend no se pega aquí: el paso a paso está en la guía del correo (docs/CORREO.md).",
+   "destino": {
+    "menu": "dcasa_correo.menu_dcasa_correo_ajustes"
+   },
+   "palabras": [
+    "bienvenida",
+    "correo",
+    "correo de prueba",
+    "email",
+    "factura por correo",
+    "recordatorio de abono",
+    "resend"
+   ]
+  },
+  {
+   "id": "correos-enviados",
+   "categoria": "administrar",
+   "grupo": "Correo a clientes",
+   "titulo": "Ver qué correos les llegaron a los clientes",
+   "logras": "La lista de facturas, abonos, recordatorios de abono, bienvenidas y cotizaciones que salieron por correo, y las que no salieron con el motivo (por ejemplo, que al cliente le falta el correo).",
+   "destino": {
+    "menu": "dcasa_correo.menu_dcasa_correo_envios"
+   },
+   "brian": "¿Qué correos a clientes no salieron esta semana?",
+   "palabras": [
+    "correos enviados",
+    "no le llego el correo",
+    "correo rebotado",
+    "historial de correos"
+   ]
+  },
+  {
+   "id": "factura-por-correo",
+   "categoria": "facturar",
+   "grupo": "Facturas de clientes",
+   "titulo": "Mandarle la factura a un cliente por correo",
+   "logras": "Abres la factura, tocas «Enviar» y dejas marcada la casilla de correo. Sale con el PDF y la marca de Tommalo.",
+   "nota": "Si el cliente no tiene correo, escríbelo en su ficha.",
+   "destino": {
+    "menu": "account.menu_action_move_out_invoice_type"
+   },
+   "palabras": [
+    "enviar factura",
+    "factura por correo",
+    "mandar factura",
+    "email factura"
+   ]
+  },
+  {
+   "id": "saldos-centavos",
+   "categoria": "facturar",
+   "grupo": "Facturas de clientes",
+   "titulo": "Cerrar las facturas que quedaron debiendo un centavo",
+   "logras": "Ves las facturas y cobros que quedaron abiertos por 1 a 5 centavos de redondeo y los cierras todos con su ajuste contable. Cada factura queda con una nota.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_saldos_centavos"
+   },
+   "nota": "Más de 5 centavos no es redondeo y no sale aquí: eso se revisa con el cliente.",
+   "palabras": [
+    "centavo",
+    "un centavo",
+    "redondeo",
+    "saldo pequeño",
+    "diferencia de centavos"
+   ],
+   "grupos": [
+    "dcasa_base.group_gerencia",
+    "account.group_account_user",
+    "account.group_account_manager",
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "factura-prueba-borrar",
+   "categoria": "facturar",
+   "grupo": "Cambiar el estado de algo",
+   "titulo": "Borrar una factura de prueba que ya dio puntos",
+   "logras": "Abres la factura, tocas «Restablecer a borrador» y luego «Eliminar». Los puntos de esa venta se devuelven solos y el cliente queda como socio con los puntos que ya tenía. Si la factura tenía un pago, sale un aviso que se queda en pantalla (y una nota en la factura y en el pago): el pago no se borra, queda sin aplicar. Si era de prueba, cancélalo en Facturación › Clientes › Pagos.",
+   "destino": {
+    "menu": "account.menu_action_move_out_invoice_type"
+   },
+   "nota": "Una factura publicada no se puede borrar: primero se devuelve a borrador o se hace una nota de crédito.",
+   "palabras": [
+    "borrar factura",
+    "cancelar pago",
+    "eliminar borrador",
+    "factura de prueba",
+    "pago sin aplicar",
+    "puntos"
+   ],
+   "grupos": [
+    "dcasa_base.group_gerencia",
+    "base.group_system"
+   ]
+  },
+  {
+   "id": "puntos-factura-corregida",
+   "categoria": "clientes",
+   "grupo": "Socios",
+   "titulo": "Corregí una factura y la volví a pagar: ¿vuelven los puntos?",
+   "logras": "Sí: si la factura se corrige y queda pagada otra vez, da sus puntos una sola vez. Ves la compra anulada y la nueva, cada una con su motivo.",
+   "destino": {
+    "menu": "dcasa_socios.menu_dcasa_compras"
+   },
+   "nota": "No vuelve a dar puntos una factura anulada por devolución total o a mano por Gerencia.",
+   "palabras": [
+    "puntos",
+    "factura corregida",
+    "compra anulada"
+   ]
+  },
+  {
+   "id": "vendido-hoy-propio",
+   "categoria": "vender",
+   "grupo": "Hoy",
+   "titulo": "Ver cuánto he vendido hoy",
+   "logras": "En Inicio, la tarjeta Vendido hoy muestra solo lo que tú vendiste y que ya está facturado por completo.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_inicio"
+   },
+   "palabras": [
+    "mis ventas",
+    "vendido hoy"
+   ]
+  },
+  {
+   "id": "que-cuenta-como-venta",
+   "categoria": "vender",
+   "grupo": "Hoy",
+   "titulo": "Saber qué cuenta como venta",
+   "logras": "Una venta cuenta cuando su factura ya está publicada. Una cotización, un borrador o un pedido por facturar todavía no cuentan.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_ventas_hoy"
+   },
+   "palabras": [
+    "vendido",
+    "facturado",
+    "borrador"
+   ]
+  },
+  {
+   "id": "juan-reparto",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Ver cómo reparte Juan las conversaciones entre las vendedoras",
+   "logras": "Ves cuántas conversaciones le pasó Juan a cada vendedora hoy y a quién le esperan clientes, para comprobar que el reparto es parejo, y qué clientes cambiaron de mano (quién tomó el cliente de quién). Solo reciben las vendedoras: Gerencia y los administradores pueden intervenir en cualquier conversación, pero Juan no se las pasa. Cada vendedora ve solo las suyas.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_panel_reparto"
+   },
+   "brian": "¿Qué vendedoras están recibiendo clientes ahora?",
+   "palabras": [
+    "reparto",
+    "equitativo",
+    "justo",
+    "quien atiende",
+    "asignar",
+    "turnos"
+   ]
+  },
+  {
+   "id": "juan-reparto-vacaciones",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Dejar de asignarle conversaciones a una vendedora (vacaciones o ausencia)",
+   "logras": "Esa vendedora deja de recibir las conversaciones que pasa Juan, sin perder permisos ni las que ya tiene. Puedes poner el día en que vuelve; si no, sigue así hasta que la vuelvas a meter.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_panel_reparto"
+   },
+   "palabras": [
+    "vacaciones",
+    "ausente",
+    "no asignar"
+   ]
+  },
+  {
+   "id": "juan-reparto-activas",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Que Juan solo le pase clientes a las vendedoras que vinieron",
+   "logras": "Juan solo le pasa clientes a la vendedora que usó el sistema (o le escribió a un cliente) en los últimos minutos que pongas. Si no vino, no entró y no recibe, aunque nadie la haya marcado «No disponible». En la pantalla Reparto sale como «Sin actividad».",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_juan_ajustes"
+   },
+   "nota": "En Ajustes de Juan, «Recibe solo quien usó el sistema hace poco (minutos)». Viene en 30. 0 = no mirarlo. Solo sirve con el reparto encendido.",
+   "palabras": [
+    "no vino",
+    "turno",
+    "activa",
+    "conectada",
+    "sin actividad",
+    "ausente",
+    "reparto"
+   ]
+  },
+  {
+   "id": "juan-reparto-pasar-a-otra",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Que un cliente pase a otra vendedora si nadie le contesta",
+   "logras": "Si la vendedora a la que le tocó un cliente no le contesta en los minutos que pongas, el cliente pasa solo a otra vendedora activa, queda escrito en la conversación y se le avisa a Gerencia por Telegram. Solo pasa dentro del horario de la tienda.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_juan_ajustes"
+   },
+   "nota": "En Ajustes de Juan, «Pasar a otra si no contesta (minutos)». Viene en 15. 0 = nunca. No toca las conversaciones que una persona tomó o asignó a mano.",
+   "palabras": [
+    "no contesta",
+    "pasar a otra",
+    "reasignar",
+    "cliente esperando",
+    "reparto",
+    "15 minutos"
+   ]
+  },
+  {
+   "id": "juan-costos-pago",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "tambien": [
+    "administrar"
+   ],
+   "titulo": "Marcar como pagado lo que debes de la IA",
+   "logras": "En Costos de IA, arriba dice «Por pagar a Meta»: lo que se ha gastado desde tu último pago. Cuando le pagas a Meta, tocas «Pagar» y dices que sí: el saldo vuelve a cero y empieza a contar de nuevo. Lo del mes sigue completo más abajo. Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_panel_costos"
+   },
+   "nota": "Si lo tocaste sin querer, «Deshacer», junto a «Último pago», lo deja como estaba.",
+   "palabras": [
+    "pagar la ia",
+    "pago de la ia",
+    "costos de ia",
+    "meta",
+    "saldar",
+    "reiniciar",
+    "ya pague",
+    "saldo",
+    "por pagar",
+    "cobro de meta",
+    "gasto de ia",
+    "cuanto debo de la ia",
+    "marcar como pagado"
+   ]
+  },
+  {
+   "id": "juan-disponible",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Marcarte como no disponible (almuerzo o fin del día)",
+   "logras": "Juan deja de asignarte conversaciones nuevas hasta que vuelvas a ponerte disponible, arriba de la lista de Conversaciones. Si te olvidas, se reinicia solo cada mañana, antes de abrir la tienda. Solo aplica a vendedoras: Gerencia y los administradores no reciben conversaciones de Juan.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_panel_conversaciones"
+   },
+   "palabras": [
+    "disponible",
+    "almuerzo",
+    "pausa"
+   ]
+  },
+  {
+   "id": "juan-chat-de-una-companera",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Qué pasa si escribes en el chat de una compañera",
+   "logras": "Si el cliente lo atiende otra vendedora que está trabajando, antes de enviar te pregunta «¿Lo tomas tú?». Si dices que sí, el cliente queda contigo, queda escrito en la conversación y a ella le llega un aviso. Si prefieres no quitárselo, toca «Dejarle una nota»: lo que escribiste pasa a una nota para ella y el cliente no la ve. Si ella no está trabajando (faltó, está almorzando, es de noche), lo tomas sin pregunta: cubrirla también es ayudar. Mientras ella está trabajando, su cliente no se pasa a otra persona, no se deja sin asignar, no se devuelve al asistente ni se cierra: pídeselo a ella o a Gerencia. Gerencia ve en Reparto quién tomó el cliente de quién.",
+   "nota": "Solo entre vendedoras: Gerencia, los administradores, Caja y Contabilidad entran a cualquier chat sin pregunta. Pasa lo mismo con el botón «Atender» y con «Atiende» en la ficha del cliente. Desde Telegram no se puede tomar el cliente de una compañera que está trabajando: hazlo desde Conversaciones. Un mensaje que dejaste programado no sale si al llegar la hora el cliente lo atiende otra vendedora: te avisamos.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_panel_conversaciones"
+   },
+   "palabras": [
+    "companera",
+    "quitar cliente",
+    "tomar cliente",
+    "cliente de otra",
+    "chat de otra",
+    "nota",
+    "reparto"
+   ]
+  },
+  {
+   "id": "juan-reparto-maximo",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Que los chats de la noche se repartan parejo en la mañana",
+   "logras": "Los clientes que escribieron de noche no se los lleva todos la primera que entra: a cada vendedora se le dan de a pocos, hasta el número que pongas sin contestar; en cuanto contesta uno, le llega otro, y las que van llegando reciben los demás. Un cliente que escribe dentro del horario siempre se le da a una vendedora que esté trabajando, aunque todas tengan ese número esperándoles.",
+   "nota": "En Ajustes de Juan, «Máximo de clientes esperándole a la vez». Viene en 3. 0 = sin límite. Solo sirve con el reparto encendido. Si el cliente ya habló con una vendedora, vuelve con ella aunque tenga clientes esperando.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_juan_ajustes"
+   },
+   "palabras": [
+    "noche",
+    "manana",
+    "acaparar",
+    "maximo",
+    "parejo",
+    "reparto",
+    "chats pendientes"
+   ]
+  },
+  {
+   "id": "juan-noche",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Que de noche nadie reciba clientes ni avisos",
+   "logras": "Fuera del horario de la tienda Juan atiende y anota, pero no le pasa clientes a nadie ni manda avisos por Telegram, aunque alguna vendedora siga conectada: todas pueden descansar. Al abrir, los clientes que esperan se reparten parejo entre las que van llegando y a cada una le llega un solo aviso con su lista. Si un cliente ya hablaba con una vendedora estos días y ella está disponible, vuelve con ella. Los comprobantes de la noche les llegan a las de siempre al abrir.",
+   "nota": "En Ajustes de Juan, «De noche nadie recibe clientes», junto al reparto. Viene encendido; si lo apagas, de noche todo vuelve a ser como de día. Las menciones en una nota y los avisos para Gerencia llegan a cualquier hora.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_juan_ajustes"
+   },
+   "palabras": [
+    "noche",
+    "descansar",
+    "madrugada",
+    "fuera de horario",
+    "de noche nadie recibe clientes",
+    "avisos de noche",
+    "telegram",
+    "reparto"
+   ]
+  },
+  {
+   "id": "juan-avisos-telegram",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Saber de qué te avisa Juan por Telegram",
+   "logras": "Juan te avisa por Telegram cuando te toca un cliente, cuando uno te espera sin respuesta, cuando un cliente manda un comprobante de pago, su cédula o algo que Juan no pudo leer (un PDF o una foto borrosa), y cuando alguien te menciona en una nota. Las demás fotos, como las capturas de Instagram, se ven en el chat sin aviso. Cada aviso dice qué pasa, quién escribe y qué hacer.",
+   "nota": "En Ajustes de Juan: «Avisar de comprobantes y documentos» (encendido) y «Avisar de fotos y archivos» (viene apagado; enciéndelo si quieres aviso de cada foto). Un precio en una publicación no cuenta como comprobante. Para contestar desde Telegram, toca «Atender» y responde al mensaje.",
+   "destino": {
+    "menu": "dcasa_conversaciones.menu_dcasa_juan_ajustes"
+   },
+   "palabras": [
+    "avisos",
+    "notificaciones",
+    "telegram",
+    "comprobante",
+    "fotos",
+    "muchos avisos",
+    "repetidos",
+    "instagram"
+   ]
+  },
+  {
+   "id": "juan-abrir-chat",
+   "categoria": "tienda",
+   "grupo": "Conversaciones",
+   "titulo": "Ir del CRM o de un contacto a su chat",
+   "logras": "Desde una oportunidad del CRM (el botón «Abrir el chat» o el ícono de globitos en la tarjeta) o desde la ficha de un contacto (el botón «Chat»), se abre la pantalla de Conversaciones con el chat de ese cliente a la vista.",
+   "destino": {
+    "menu": "crm.menu_crm_opportunities"
+   },
+   "palabras": [
+    "chat",
+    "conversacion",
+    "cliente potencial",
+    "oportunidad",
+    "contacto",
+    "abrir el chat",
+    "whatsapp"
+   ]
+  },
+  {
+   "id": "sofia-organizar",
+   "categoria": "vender",
+   "grupo": "Hoy",
+   "titulo": "Que Sofía te diga qué hacer hoy con tus clientes",
+   "logras": "Sofía revisa el CRM cada mañana (o cuando tocas «Organizar con Sofía» arriba del tablero del CRM) y te propone: a quién contestar, a quién escribirle, qué cotización vence y a qué cliente pedirle su nombre y su correo. Lo urgente sale arriba, en «Hoy sin falta»; con los botones de «Qué mirar» ves un solo tipo (Gerencia también por vendedora). El mensaje ya viene escrito: lo cambias con «Editar» si quieres y tocas «Abrir el chat con este mensaje» o «Enviar ya». Cuando el cliente te contesta su nombre, su correo o su cumpleaños, toca «Revisar ahora»: Sofía te muestra «Guarda sus datos», los revisas y tocas «Guardar y responderle» (se guardan y se abre su chat con un borrador para darle las gracias y seguir con la venta) o «Solo guardar». Nada sale ni se guarda sin que tú lo apruebes.",
+   "nota": "Cada vendedora ve solo lo suyo. Gerencia ve todo y además aprueba cómo repartir las oportunidades sin vendedora. Lo que descartas no vuelve en unos días. Cuando no queda nada, Sofía dice «Todo al día».",
+   "destino": {
+    "menu": "dcasa_sofia.menu_sofia"
+   },
+   "brian": "¿Qué me propone Sofía hoy?",
+   "palabras": [
+    "sofia",
+    "organizar",
+    "crm",
+    "a quien escribirle",
+    "seguimiento",
+    "pedir datos",
+    "pedir correo",
+    "guardar datos del cliente",
+    "guardar correo",
+    "cumpleaños del cliente",
+    "clientes sin nombre",
+    "emoji",
+    "repartir oportunidades",
+    "prioridades del dia",
+    "hoy sin falta",
+    "filtrar por vendedora",
+    "asistente del crm"
+   ]
+  },
+  {
+   "id": "sofia-mensajes",
+   "categoria": "vender",
+   "grupo": "Hoy",
+   "titulo": "Cambiar los mensajes que propone Sofía",
+   "logras": "En CRM › Configuración › Sofía › Mensajes de Sofía cambias el texto de cada mensaje (seguimiento, cotización que vence, pedir datos). Puedes usar {nombre}, {vendedora}, {interes}, {cotizacion}, {vence}, {para_cuando} y {que_falta}.",
+   "nota": "Solo Gerencia. No pongas precios ni cifras: eso lo confirma la vendedora con las reglas vigentes. Los ajustes (revisar cada mañana, el resumen por Telegram) están en Ajustes de Juan, en el grupo «Sofía».",
+   "destino": {
+    "menu": "dcasa_sofia.menu_sofia_plantillas"
+   },
+   "palabras": [
+    "mensajes de sofia",
+    "plantillas",
+    "cambiar mensaje",
+    "texto del seguimiento",
+    "sofia ajustes"
+   ]
+  },
+  {
+   "id": "envio-cuanto-cuesta",
+   "categoria": "vender",
+   "tambien": [
+    "tienda"
+   ],
+   "grupo": "Envíos",
+   "titulo": "Saber cuánto cuesta un envío",
+   "logras": "Escribes a dónde va como lo dice el cliente (un barrio, una urbanización, un PH o «cerca del hospital») y ves el precio con su desglose, la ruta en Google Maps desde la tienda y el botón «Copiar el precio». Si el lugar no está, lo agregas o calculas por kilómetros.",
+   "nota": "Mientras Gerencia no apruebe la tarifa, la pantalla dice «Tarifa en revisión»: esos precios todavía no se usan con clientes. También se lo puedes preguntar a Brian.",
+   "destino": {
+    "menu": "dcasa_envios.menu_envios_calculadora"
+   },
+   "brian": "¿Cuánto cuesta el envío a Villa Lucre?",
+   "palabras": [
+    "envio",
+    "envios",
+    "cuanto cuesta el envio",
+    "delivery",
+    "flete",
+    "llevar a domicilio",
+    "calculadora de envios",
+    "precio del envio",
+    "kilometros"
+   ]
+  },
+  {
+   "id": "envio-tarifa",
+   "categoria": "vender",
+   "grupo": "Envíos",
+   "titulo": "Cambiar o aprobar la tarifa de envíos",
+   "logras": "Cargas el archivo de envíos (lugares y tarifa), cambias el mínimo, los dos precios de referencia, el redondeo y los cargos aparte (viático, honorarios, peaje), subes o bajas todo en proporción y apruebas la tarifa para que se pueda usar con clientes. Cada cambio queda en el historial.",
+   "nota": "Solo Gerencia. Cualquier cambio de precios la devuelve a revisión hasta que la apruebes otra vez.",
+   "destino": {
+    "menu": "dcasa_envios.menu_envios_tarifa"
+   },
+   "palabras": [
+    "tarifa de envio",
+    "tarifa de envios",
+    "aprobar tarifa",
+    "viatico",
+    "peaje",
+    "cargar archivo de envios",
+    "precio por kilometro"
+   ]
+  },
+  {
+   "id": "envio-promocion",
+   "categoria": "vender",
+   "tambien": [
+    "tienda"
+   ],
+   "grupo": "Envíos",
+   "titulo": "Poner o cambiar la promoción de envío del mes",
+   "logras": "En Envíos › Promoción de envío pones sus fechas, de cuánto tiene que ser la compra (con o sin ITBMS), en qué provincias o distritos el envío es gratis, cuánto se abona del envío en el resto y si no aplica cuando la compra lleva colchón. Los precios de envío no cambian: Juan dice el precio normal y cómo le queda al cliente con la promoción, y si el cliente quiere se lo suma a la cotización. Abajo ves cómo lo dice Juan, y cada cambio queda en el historial.",
+   "nota": "Solo Gerencia. Solo puede haber una promoción activa a la vez: si las fechas se cruzan con otra, no se guarda. Fuera de sus fechas, Juan da el precio normal. Un cambio vale solo para las cotizaciones nuevas: las que ya la tienen sumada respetan lo que se le prometió al cliente hasta el «Vence el» que tenían cuando se sumó, nunca más de 30 días (cambiar «Vence el» después no lo alarga); la ficha te dice cuántas son.",
+   "destino": {
+    "menu": "dcasa_envios.menu_envios_promocion"
+   },
+   "palabras": [
+    "promocion de envio",
+    "envio gratis",
+    "promocion del mes",
+    "abono del flete",
+    "flete gratis",
+    "delivery gratis"
+   ]
+  },
+  {
+   "id": "envio-lugares-por-revisar",
+   "categoria": "vender",
+   "grupo": "Envíos",
+   "titulo": "Revisar los lugares de envío que agregó el equipo",
+   "logras": "En Envíos › Lugares, con el filtro «Por revisar (Gerencia)», ves los lugares que agregó alguien del equipo desde la calculadora. Abres cada uno, revisas el nombre, los kilómetros y la provincia (los corriges si hace falta) y tocas «Marcar revisado». Hasta entonces la calculadora los usa, pero Juan no le da ese precio a un cliente: le dice que el costo se lo confirma una vendedora.",
+   "nota": "Solo Gerencia. Los lugares del archivo y los que agrega Gerencia ya nacen revisados.",
+   "destino": {
+    "menu": "dcasa_envios.menu_envios_lugares",
+    "contexto": {
+     "search_default_por_revisar": 1
+    }
+   },
+   "palabras": [
+    "lugares por revisar",
+    "revisar lugar",
+    "lugar nuevo de envio",
+    "marcar revisado",
+    "lugar agregado por vendedora"
+   ]
+  },
+  {
+   "id": "envio-ubicacion-cliente",
+   "categoria": "vender",
+   "grupo": "Envíos",
+   "titulo": "Mandarle a una clienta el enlace para que marque su ubicación",
+   "logras": "En Contactos abres la ficha de la clienta y, en la pestaña «Ubicación de entrega», tocas «Crear enlace para que marque su ubicación». Sale un enlace que sirve una sola vez y vence en 24 horas: se lo mandas por WhatsApp, ella marca su punto en el mapa y queda en su ficha con la zona, de dónde salió el punto y cómo reconocer el sitio. En la misma pestaña ves lo que ya marcó.",
+   "nota": "Juan manda este mismo enlace por WhatsApp oficial (con un botón «Enviar ubicación»), Instagram y Messenger, y cuando el pedido es para otra casa. Por WhatsApp con QR y Telegram ella también puede compartir su ubicación con el clip.",
+   "destino": {
+    "menu": "contacts.res_partner_menu_contacts"
+   },
+   "palabras": [
+    "ubicacion de la clienta",
+    "enlace de ubicacion",
+    "link de ubicacion",
+    "marcar ubicacion",
+    "direccion exacta",
+    "punto de entrega",
+    "pin de entrega",
+    "google maps de la clienta"
+   ]
+ },
+  {
+   "id": "envio-ruta-motorizado",
+   "categoria": "vender",
+   "grupo": "Envíos",
+   "titulo": "Abrir la ruta del motorizado de una venta",
+   "logras": "Abres la venta confirmada y tocas «Ruta del motorizado»: se abre la misma página que el QR del comprobante y de la nota de entrega, con «Abrir en Waze», «Abrir en Google Maps», la dirección, cómo reconocer el sitio y el botón para llamar. Si la clienta escribió la dirección a mano en vez de marcarla en el mapa, la página avisa que hay que llamarla antes de salir.",
+   "nota": "La página del QR vence a los 30 días y no deja cambiar nada del pedido.",
+   "destino": {
+    "menu": "sale.menu_sale_quotations"
+   },
+   "palabras": [
+    "ruta del motorizado",
+    "qr del motorizado",
+    "waze",
+    "google maps",
+    "como llegar",
+    "direccion de entrega",
+    "entrega a domicilio",
+    "motorizado"
+   ]
+ },
+  {
+   "id": "envio-quien-recibe",
+   "categoria": "vender",
+   "grupo": "Envíos",
+   "titulo": "Ver o anotar quién recibe, el teléfono de respaldo y la foto de la casa",
+   "logras": "En Contactos abres la ficha de la clienta y, en la pestaña «Ubicación de entrega», ves quién recibe el pedido, otro teléfono por si no contesta y la foto de la casa que ella subió. Los dos primeros los puedes escribir ahí mismo; la foto la puedes quitar con «Quitar la foto». El motorizado ve todo en la página del QR, con el botón «Avisar que llegué» que le abre WhatsApp con el mensaje listo.",
+   "nota": "La clienta los pone, si quiere, al pagar en la tienda o en el enlace para marcar su ubicación. A la foto se le quita la ubicación escondida que traen las fotos del teléfono.",
+   "destino": {
+    "menu": "contacts.res_partner_menu_contacts"
+   },
+   "palabras": [
+    "quien recibe",
+    "telefono de respaldo",
+    "otro telefono",
+    "foto de la casa",
+    "foto de la fachada",
+    "avisar que llegue",
+    "pedido devuelto"
+   ]
+ },
+  {
+   "id": "envio-pedir-ubicacion-venta",
+   "categoria": "vender",
+   "grupo": "Envíos",
+   "titulo": "Pedirle a la clienta que marque su casa en el mapa para su pedido",
+   "logras": "Cuando confirmas una venta a domicilio y la dirección no tiene su casa marcada en el mapa, el asistente se lo pide solo por el chat, con un enlace para marcarla. Si no le puede escribir (no tiene chat, o pasó más de un día desde su último mensaje en WhatsApp oficial, Instagram o Messenger), te queda el pendiente «📍 Pedirle la ubicación de entrega»: abres la venta y tocas «📲 Pedir ubicación por WhatsApp», y se abre WhatsApp con el mensaje y el enlace listos para mandar. Cuando ella marca su casa, el pendiente se cierra solo.",
+   "nota": "Si la clienta marca su casa con la venta ya cobrada, el envío no se cambia: si la tabla da otro precio para esa zona, queda una nota en la venta para que decidan.",
+   "destino": {
+    "menu": "sale.menu_sale_order"
+   },
+   "palabras": [
+    "pedir ubicacion",
+    "pedirle la ubicacion",
+    "marcar la casa",
+    "casa en el mapa",
+    "direccion escrita",
+    "pedidos devueltos",
+    "no encuentra la casa",
+    "ubicacion por whatsapp"
+   ]
+ },
+  {
+   "id": "envio-aviso-sale-hoy",
+   "categoria": "vender",
+   "grupo": "Envíos",
+   "titulo": "Avisarle a la clienta que su pedido sale hoy",
+   "logras": "El día que sale el pedido, abres la venta (o su entrega) y tocas «🚚 Sale hoy: avisarle». El asistente le escribe por el chat que hoy le llega y le pregunta si habrá alguien en casa; si ella dice que no o quiere cambiar el día, la pasa a una vendedora. Si el asistente no le puede escribir, se abre WhatsApp con el mensaje listo. Para varias a la vez, las marcas en la lista de ventas y eliges en Acciones «🚚 Sale hoy: avisarles».",
+   "nota": "Se le avisa una sola vez por día. Si todavía no tiene su casa en el mapa, el mensaje lleva el enlace para marcarla.",
+   "destino": {
+    "menu": "sale.menu_sale_order"
+   },
+   "palabras": [
+    "sale hoy",
+    "avisar entrega",
+    "avisarle a la clienta",
+    "hay alguien en casa",
+    "despacho",
+    "pedido en camino",
+    "motorizado sale",
+    "aviso de entrega"
+   ]
+ },
+  {
+   "id": "envio-enlace-choferes",
+   "categoria": "vender",
+   "grupo": "Envíos",
+   "titulo": "Darle a los choferes el enlace de la calculadora",
+   "logras": "En Envíos › Tarifa, abajo, en «Enlace para choferes», lo enciendes y copias el enlace para mandárselo a los choferes. Con él buscan el lugar y ven solo el precio desde la tienda y la ruta en Google Maps, sin los kilómetros ni la tabla. «Permitir \"Usar mi ubicación\"» viene apagado: enciéndelo solo si quieres que también vean el lugar más cercano a donde están. Si el enlace se pierde, alguien deja de trabajar con la tienda o te llega la nota de que llegó a su límite del día, tocas «Crear un enlace nuevo» y el anterior deja de funcionar.",
+   "nota": "Solo Gerencia. Mientras la tarifa esté en revisión, los choferes no ven precios: les sale «confirma el precio con la tienda».",
+   "destino": {
+    "menu": "dcasa_envios.menu_envios_tarifa"
+   },
+   "palabras": [
+    "enlace para choferes",
+    "link de choferes",
+    "link de la calculadora",
+    "calculadora para choferes",
+    "choferes",
+    "chofer",
+    "repartidor",
+    "conductor"
+   ]
+  },
+  {
+   "id": "dinero-en-bancos-y-caja",
+   "categoria": "reportes",
+   "grupo": "Dinero",
+   "titulo": "Ver cuánto dinero hay en bancos y caja",
+   "logras": "La tarjeta del Resumen dice a qué día corresponde el dinero. Cambia la fecha «Hasta» para verlo en otro día.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_resumen"
+   },
+   "palabras": [
+    "bancos",
+    "caja",
+    "saldo",
+    "cuanto dinero hay"
+   ]
+  },
+  {
+   "id": "periodos-rapidos",
+   "categoria": "reportes",
+   "grupo": "De un vistazo",
+   "titulo": "Ver solo lo de hoy, de esta semana o de esta quincena",
+   "logras": "Arriba de cualquier reporte están los botones «Hoy», «Esta semana», «Esta quincena», «Este mes», «Mes pasado», «Este trimestre» y «Este año fiscal». El botón activo se ve azul. Si escribes una fecha a mano, ninguno queda marcado.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_resumen"
+   },
+   "palabras": [
+    "hoy",
+    "semana",
+    "quincena",
+    "periodo",
+    "fechas",
+    "filtro"
+   ]
+  },
+  {
+   "id": "dinero-banco-no-cambia",
+   "categoria": "reportes",
+   "grupo": "Dinero",
+   "titulo": "¿Por qué el dinero en bancos no cambia cuando cambio de «Este mes» a «Este trimestre»?",
+   "logras": "Porque es un saldo: depende del día «Hasta», no del «Desde». Cambia con «Mes pasado» o escribiendo otra fecha «Hasta».",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_resumen"
+   },
+   "palabras": [
+    "no cambia",
+    "saldo",
+    "hasta",
+    "desde"
+   ]
+  },
+  {
+   "id": "todo-conciliado",
+   "categoria": "bancos",
+   "grupo": "Banco",
+   "titulo": "¿Qué quiere decir «Todo conciliado»?",
+   "logras": "Que no queda ningún movimiento del banco sin conciliar ni cobro o pago registrado esperando su movimiento. Si hay algo, la tarjeta dice cuántos son y de cuánto.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_conciliacion"
+   },
+   "palabras": [
+    "conciliado",
+    "conciliar",
+    "pendiente"
+   ]
+  },
+  {
+   "id": "comparar-periodos",
+   "categoria": "reportes",
+   "grupo": "Ganar o perder",
+   "titulo": "Comparar con el mes pasado o el año pasado",
+   "logras": "En el Estado de resultados, el Balance general y el Flujo de efectivo, el campo «Comparar con» pone al lado el período anterior.",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_estado_resultados"
+   },
+   "palabras": [
+    "comparar",
+    "mes pasado",
+    "año pasado",
+    "anterior"
+   ]
+  },
+  {
+   "id": "comparar-ventas",
+   "categoria": "reportes",
+   "tambien": [
+    "vender"
+   ],
+   "grupo": "Ventas",
+   "titulo": "Comparar las ventas",
+   "logras": "En el Inicio, el bloque Comparar pone lado a lado, solo en números, las ventas (las facturas, igual que en Contabilidad), la ganancia, el margen, el número de ventas y lo cobrado: hoy contra ayer, contra el mismo día del mes pasado o de la semana pasada, lo que va del mes contra los mismos días del mes pasado o contra un mes completo, o dos rangos de fechas que tú eliges. Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_dcasa_inicio"
+   },
+   "grupos": [
+    "sales_team.group_sale_manager",
+    "base.group_system"
+   ],
+   "pasos": [
+    {
+     "texto": "Arriba de las ventas elige qué facturas contar: «Facturado» (todas, por su fecha, igual que en Contabilidad; debajo dice cuántas salieron de un pedido de una vendedora), «Con abonos» (las que tienen al menos un abono, por su valor total; trae lo que falta por cobrar) o «Completadas» (las pagadas al 100 %, el día del último pago). Al lado puedes elegir una vendedora. La gráfica de la semana y lo más vendido cambian igual.",
+     "destino": {
+      "menu": "dcasa_interfaz.menu_dcasa_inicio"
+     }
+    },
+    {
+     "texto": "En Comparar, toca un botón: sale la tabla. Cuando se compara con hoy, hoy cuenta hasta la hora de ahora y el otro día hasta la misma hora, para que no se vea todo en rojo en la mañana.",
+     "destino": null
+    },
+    {
+     "texto": "Con «Mes» eliges el mes completo y ves cuánto llevas de él. Con «A vs B» eliges dos rangos en el calendario; si no tienen los mismos días, el porcentaje se calcula por día.",
+     "destino": null
+    },
+    {
+     "texto": "«Por vendedora» muestra una fila por persona; al tocar una, todo el Inicio queda en esa vendedora. Una factura es de la vendedora de su pedido; si se hizo sin pedido, de quien diga la factura como vendedor.",
+     "destino": null
+    },
+    {
+     "texto": "Si ves el ícono ⓘ junto a «Ventas» o a «Ganancia bruta», tócalo: explica la cifra. Junto a «Ventas» sale solo cuando no es igual a Contabilidad (dice cuánto y abre esas facturas); en «Facturado» es igual.",
+     "destino": null
+    }
+   ],
+   "nota": "Las ventas y la ganancia van sin ITBMS; lo cobrado y lo que falta por cobrar, con ITBMS. Las notas de crédito restan, como en Contabilidad. Si no hay con qué comparar (cero), sale una raya en vez de un porcentaje.",
+   "brian": "¿Cómo vamos contra el mes pasado?",
+   "palabras": [
+    "comparar ventas",
+    "contra el mes pasado",
+    "como vamos",
+    "por vendedora",
+    "facturado",
+    "igual que contabilidad",
+    "completadas",
+    "con abonos",
+    "falta por cobrar",
+    "margen",
+    "ayer"
+   ]
+  },
+  {
+   "id": "imprimir-documentos",
+   "categoria": "facturar",
+   "grupo": "Facturas de clientes",
+   "titulo": "Imprimir la nota de entrega, la factura y la copia de la empresa de una vez",
+   "logras": "Sale un solo PDF listo para imprimir, sin archivos sueltos en la computadora. Primero va la nota de entrega, luego la factura del cliente y al final la copia de la empresa.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+   },
+   "pasos": [
+    {
+     "texto": "Abre la factura ya publicada (Ventas › Facturas) y toca «Imprimir documentos».",
+     "destino": {
+      "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+     }
+    },
+    {
+     "texto": "Deja marcadas las casillas que quieras y toca «Imprimir todo» (se abre el cuadro de impresión) o «Descargar todo» (guarda el archivo).",
+     "destino": null
+    }
+   ],
+   "palabras": [
+    "imprimir",
+    "copia",
+    "nota de entrega",
+    "retiro de bodega",
+    "paquete"
+   ]
+  },
+  {
+   "id": "imprimir-varias-facturas",
+   "categoria": "facturar",
+   "grupo": "Facturas de clientes",
+   "titulo": "Imprimir varias facturas juntas",
+   "logras": "Sale un solo PDF con todo, venta por venta (de cada una: nota de entrega, factura del cliente y copia de la empresa).",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+   },
+   "pasos": [
+    {
+     "texto": "En Ventas › Facturas (o en Pedidos) marca las casillas de la izquierda.",
+     "destino": {
+      "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+     }
+    },
+    {
+     "texto": "Toca «Imprimir paquete» y elige «Imprimir todo». Se pueden hasta 20 por vez.",
+     "destino": null
+    }
+   ],
+   "palabras": [
+    "lote",
+    "varias facturas",
+    "imprimir todo"
+   ]
+  },
+  {
+   "id": "forma-de-pago-facturas",
+   "categoria": "facturar",
+   "tambien": [
+    "reportes"
+   ],
+   "grupo": "Facturas de clientes",
+   "titulo": "Ver con qué se pagó cada factura y bajar el Excel",
+   "logras": "En la lista de facturas sale la columna «Forma de pago» (Efectivo, Yappy, Tarjeta…: con lo que se cobró cada una). La buscas por su nombre, las agrupas por forma de pago y bajas el Excel con esa columna.",
+   "destino": {
+    "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+   },
+   "pasos": [
+    {
+     "texto": "Abre Ventas › Facturas. La columna «Forma de pago» sale junto al Estado.",
+     "destino": {
+      "menu": "dcasa_base.menu_dcasa_ventas_facturas"
+     }
+    },
+    {
+     "texto": "Para ver solo las que se pagaron con una forma, escribe su nombre en el buscador (por ejemplo «Yappy») y elige «Forma de pago». Para verlas todas separadas, abre «Agrupar por» y elige «Forma de pago».",
+     "destino": null
+    },
+    {
+     "texto": "Para el Excel: marca las facturas que quieras (o la casilla de arriba para todas), toca «Acción › Exportar», agrega «Forma de pago» a la lista de columnas y toca «Exportar».",
+     "destino": null
+    }
+   ],
+   "nota": "Una factura pagada en parte con dos formas dice las dos («Efectivo + Yappy»). Si se le aplicó una nota de crédito, dice «Nota de crédito». Una factura que todavía no se cobró queda en blanco; si está pagada pero no hay ningún pago registrado (por ejemplo, se concilió directo con el banco), dice «Sin pago registrado». «Exportar» sale para Gerencia, que baja facturas, pagos y ventas; el resto de las listas las bajan solo los administradores.",
+   "palabras": [
+    "forma de pago",
+    "metodo de pago",
+    "con que pago",
+    "como pago",
+    "yappy",
+    "efectivo",
+    "tarjeta",
+    "diario",
+    "excel",
+    "exportar",
+    "descargar excel",
+    "bajar excel",
+    "facturas por forma de pago"
+   ]
+  },
+  {
+   "id": "tablero-facturas",
+   "categoria": "facturar",
+   "grupo": "Facturas de clientes",
+   "titulo": "Ver de un vistazo las facturas de clientes y de proveedores",
+   "logras": "Dos tarjetas arriba del Tablero muestran borradores, por cobrar o por pagar y vencidas; cada número abre la lista. Las de proveedores solo las ven contabilidad y Gerencia.",
+   "destino": {
+    "menu": "account.menu_board_journal_1"
+   },
+   "palabras": [
+    "tablero",
+    "por cobrar",
+    "por pagar",
+    "vencidas"
+   ]
+  },
+  {
+   "id": "imprimir-al-pagar-apagar",
+   "categoria": "facturar",
+   "grupo": "Pagos",
+   "titulo": "Apagar el cuadro de imprimir al completar un pago",
+   "logras": "Al terminar de pagar ya no sale el cuadro de imprimir documentos.",
+   "destino": null,
+   "nota": "Ajustes › Empresas › Tommalo, pestaña «Documentos Tommalo»: desmarca «Ofrecer imprimir los documentos al completar el pago».",
+   "palabras": [
+    "cuadro de imprimir",
+    "apagar",
+    "pago completo"
+   ]
+  },
+  {
+   "id": "codigo-publico",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Encontrar un producto por el código que le dio el cliente",
+   "logras": "El cliente ve un código como DC-K7M4PX en la ficha de la tienda y en su mensaje de WhatsApp. Escríbelo en el buscador de Productos (o en el campo Producto de una cotización) y aparece el producto. Es distinto de la referencia del proveedor, que el cliente no ve.",
+   "destino": {
+    "menu": "sale.menu_product_template_action"
+   },
+   "palabras": [
+    "codigo del cliente",
+    "codigo publico",
+    "DC-",
+    "buscar por codigo",
+    "referencia del cliente"
+   ]
+  },
+  {
+   "id": "codigo-publico-regenerar",
+   "categoria": "productos",
+   "grupo": "Catálogo",
+   "titulo": "Cambiar el código público de un producto (solo administrador)",
+   "logras": "El código público no cambia solo. Si de verdad hace falta otro, abre el producto y toca «Regenerar» junto al código; el viejo deja de servir y queda anotado en el historial.",
+   "destino": {
+    "menu": "sale.menu_product_template_action"
+   },
+   "palabras": [
+    "regenerar codigo",
+    "cambiar codigo",
+    "codigo publico"
+   ]
+  },
+  {
+   "id": "banco-cobros-sin-movimiento",
+   "categoria": "bancos",
+   "grupo": "Banco",
+   "titulo": "Cruzar un cobro o pago que todavía no está en la caja o el banco",
+   "logras": "Los cobros que registraste en una factura con «Registrar pago» y aún no figuran en la caja o el banco salen en una pestaña aparte; con un clic se registra el movimiento y quedan cruzados. Brian te dice cuántos cobros y pagos esperan su movimiento y de cuánto: pregúntale «¿qué falta conciliar?».",
+   "destino": {
+    "menu": "dcasa_contabilidad.menu_conciliacion"
+   },
+   "palabras": [
+    "efectivo",
+    "caja",
+    "cobro en efectivo",
+    "recibos pendientes",
+    "cruzar"
+   ],
+   "brian": "¿Hay cobros en efectivo sin cruzar?"
+  },
+  {
+   "id": "consolidacion",
+   "categoria": "reportes",
+   "grupo": "Para el contador",
+   "titulo": "Juntar los números de varias empresas del grupo (consolidación)",
+   "logras": "Eliges las empresas, el reporte y las fechas (o un atajo como Este mes) y el sistema suma todo, quita lo que se hacen entre ellas y te avisa si algo no cuadra.",
+   "destino": {
+    "menu": "dcasa_consolidacion.menu_consolidacion"
+   },
+   "palabras": [
+    "consolidado",
+    "grupo",
+    "empresas",
+    "eliminaciones"
+   ]
+  },
+  {
+   "id": "consolidacion-mapa",
+   "categoria": "reportes",
+   "grupo": "Para el contador",
+   "titulo": "Decir qué cuenta de una empresa equivale a la de otra (mapa de cuentas)",
+   "logras": "Si dos empresas llaman distinto a la misma cuenta, aquí las unes para que se sumen en una sola fila.",
+   "destino": {
+    "menu": "dcasa_consolidacion.menu_consolidacion_mapa"
+   },
+   "palabras": [
+    "mapa de cuentas",
+    "equivalencia",
+    "consolidacion"
+   ]
+  },
+  {
+   "id": "escaner-documento",
+   "categoria": "productos",
+   "grupo": "Inventario",
+   "titulo": "Abrir un documento escaneando su código QR",
+   "logras": "Escaneas el QR de un pedido de compra, una factura, una cotización o una entrega y se abre ese documento en el sistema.",
+   "destino": {
+    "menu": "dcasa_barras.menu_dcasa_escaner"
+   },
+   "nota": "Solo abre lo que tu usuario puede ver. También sirve la cámara del teléfono: abre el navegador en ese documento y pide tu clave si hace falta.",
+   "palabras": [
+    "qr",
+    "codigo qr",
+    "escanear documento",
+    "abrir factura",
+    "abrir pedido de compra",
+    "abrir entrega"
+   ]
+  },
+  {
+   "id": "qr-documentos-encender",
+   "categoria": "facturar",
+   "grupo": "Documentos",
+   "titulo": "Poner el código QR en la factura y la cotización",
+   "logras": "La factura, la nota de crédito, la cotización y la nota de entrega llevan un QR pequeño de uso interno que abre ese documento en el sistema.",
+   "destino": null,
+   "nota": "Ajustes › Empresas › Tommalo, pestaña «Documentos Tommalo»: marca «Mostrar el código QR en la factura y la cotización». Viene apagado: apagado, los documentos salen exactamente como siempre. El pedido de compra lleva su QR siempre. Enciéndelo solo después de aprobar cómo se ve.",
+   "palabras": [
+    "qr",
+    "codigo qr",
+    "factura",
+    "cotizacion",
+    "nota de entrega",
+    "documentos"
+   ]
+  },
+  {
+   "id": "codigo-publico-documentos",
+   "categoria": "facturar",
+   "grupo": "Documentos",
+   "titulo": "Mostrar el código público de los productos en la factura y la cotización",
+   "logras": "En la columna «Código» sale el código que ve el cliente (DC-K7M4PX) en lugar del código del proveedor.",
+   "destino": null,
+   "nota": "Ajustes › Empresas › Tommalo, pestaña «Documentos Tommalo»: marca «Mostrar el código público de los productos en la factura y la cotización, en lugar del código del proveedor». Viene apagado: apagado, todo sale como siempre. Los productos sin código público (flete, servicios) quedan en blanco.",
+   "palabras": [
+    "codigo publico",
+    "codigo del proveedor",
+    "referencia",
+    "factura",
+    "cotizacion",
+    "nota de entrega"
+   ]
+  },
+  {
+   "id": "nota-entrega-facil",
+   "categoria": "facturar",
+   "grupo": "Documentos",
+   "titulo": "Poner la nota de entrega fácil de leer para bodega",
+   "logras": "La nota de entrega sale con la foto de cada producto, la cantidad en número grande y en dibujitos, y una casilla para marcar, para que quien saca la mercancía no se confunda.",
+   "destino": null,
+   "nota": "Ajustes › Empresas › Tommalo, pestaña «Documentos Tommalo», sección «Nota de entrega para bodega»: marca «Nota de entrega fácil de leer». Viene apagada: apagada, la nota de entrega sale como siempre. Un producto sin foto sale con un recuadro que dice «Sin foto»: ponle su foto al producto para que se vea.",
+   "palabras": [
+    "nota de entrega",
+    "bodega",
+    "foto del producto",
+    "accesibilidad",
+    "dislexia",
+    "imprimir documentos"
+   ]
+  },
+  {
+   "id": "condiciones-abono",
+   "categoria": "facturar",
+   "tambien": [
+    "vender"
+   ],
+   "grupo": "Documentos",
+   "titulo": "Cambiar las condiciones de abono que se imprimen (solo administrador)",
+   "logras": "Cambias el texto de la hoja «Condiciones de abono» que sale con el primer abono en dos copias: una para el cliente y otra para la tienda.",
+   "destino": null,
+   "nota": "Ajustes › Empresas › Tommalo, pestaña «Documentos Tommalo», sección «Condiciones de abono»: escribe una condición por renglón (la hoja las numera sola). Si lo dejas vacío, la hoja no se imprime. El sistema no calcula ni cobra lo que digan las condiciones: solo las imprime. Para volver a imprimirla en otro abono, marca «Condiciones de abono (2 copias)» en el cuadro «Imprimir documentos».",
+   "palabras": [
+    "condiciones de abono",
+    "hoja de abono",
+    "copia cliente",
+    "copia empresa",
+    "firma del cliente"
+   ]
+  },
+  {
+   "id": "actividad-boton",
+   "categoria": "facturar",
+   "grupo": "Documentos",
+   "titulo": "Ver los mensajes y las notas de un documento (botón Actividad)",
+   "logras": "Las cotizaciones, facturas y fichas abren con más espacio porque los mensajes y las notas arrancan escondidos; los muestras cuando los necesitas.",
+   "destino": null,
+   "nota": "Arriba del documento, junto al engranaje, toca «Actividad» para mostrar o esconder los mensajes, las notas y los seguidores. Cada persona deja lo que prefiere y el sistema lo recuerda en ese navegador. No se borra nada: solo se esconde.",
+   "palabras": [
+    "actividad",
+    "chatter",
+    "mensajes",
+    "notas",
+    "historial",
+    "seguidores"
+   ]
+  },
+  {
+   "id": "mas-vendido",
+   "categoria": "reportes",
+   "grupo": "Ventas",
+   "titulo": "Ver lo más vendido",
+   "logras": "Los productos que más se venden en el mes o en la semana, por unidades y por dinero sin ITBMS. Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_estadisticas_mas_vendido"
+   },
+   "palabras": [
+    "estadisticas",
+    "mas vendido",
+    "top",
+    "productos que se venden",
+    "ranking"
+   ]
+  },
+  {
+   "id": "estadisticas",
+   "categoria": "reportes",
+   "grupo": "Ventas",
+   "titulo": "Ver las estadísticas de ventas en gráficas",
+   "logras": "Gráficas simples de un periodo (esta semana, este mes, el mes pasado, los últimos 3 meses, este año o las fechas que elijas): lo vendido cada día, por categoría, por vendedora, lo cobrado por forma de pago y los productos que más se venden, cada número con una frase que dice qué es. Tocas una barra y ves ese día. Los números suben hasta su valor al abrir y cada vez que cambias de periodo. Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_estadisticas_resumen"
+   },
+   "nota": "Las ventas van sin ITBMS (lo cobrado, con ITBMS) y con las mismas cuentas del Inicio. Para comparar dos periodos usa Comparar en el Inicio; para la ganancia por producto, Mejor margen.",
+   "brian": "¿Cuánto se vendió por día este mes?",
+   "palabras": [
+    "estadisticas",
+    "graficas",
+    "graficos",
+    "por categoria",
+    "por tipo",
+    "por vendedora",
+    "mas vendido",
+    "como van las ventas",
+    "reporte de ventas"
+   ]
+  },
+  {
+   "id": "mejor-margen",
+   "categoria": "reportes",
+   "grupo": "Ventas",
+   "titulo": "Ver qué producto deja más ganancia",
+   "logras": "La ganancia de cada producto vendido (venta sin ITBMS menos su costo). Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_estadisticas_margen"
+   },
+   "palabras": [
+    "margen",
+    "ganancia por producto",
+    "utilidad",
+    "costo",
+    "estadisticas"
+   ]
+  },
+  {
+   "id": "no-se-mueve",
+   "categoria": "reportes",
+   "grupo": "Ventas",
+   "titulo": "Ver lo que no se está vendiendo",
+   "logras": "Los productos con existencias que no tuvieron ninguna venta en los últimos 90 días. Solo Gerencia.",
+   "destino": {
+    "menu": "dcasa_interfaz.menu_estadisticas_sin_movimiento"
+   },
+   "palabras": [
+    "no se vende",
+    "no gusta",
+    "sin ventas",
+    "estancado",
+    "estadisticas",
+    "inventario parado"
+   ]
+  },
+  {
+   "id": "modo-oscuro",
+   "categoria": "administrar",
+   "grupo": "Tu pantalla",
+   "titulo": "Poner el sistema en modo oscuro (o volver al claro)",
+   "logras": "La pantalla pasa a un fondo gris oscuro con letras claras, que cansa menos la vista de noche. Lo elige cada persona y vale solo para ese teléfono o esa computadora.",
+   "destino": null,
+   "nota": "Toca tu foto o tu inicial, arriba a la derecha, y enciende «Modo oscuro»: la pantalla se recarga sola. Para volver al claro, apágalo en el mismo lugar.",
+   "palabras": [
+    "modo oscuro",
+    "oscuro",
+    "tema oscuro",
+    "noche",
+    "fondo negro",
+    "modo claro",
+    "brillo",
+    "colores de la pantalla"
+   ]
+  },
+  {
+   "id": "comision-web-ventas",
+   "categoria": "tienda",
+   "grupo": "Medir el sitio",
+   "titulo": "Ver cuánto se vende por internet, mes a mes",
+   "logras": "Ves cada venta del sitio web que ya quedó pagada por completo, cómo llegó y cómo pagó, y la comparas mes a mes como si el sitio fuera una sucursal. Puedes bajarla a Excel.",
+   "destino": {
+    "menu": "dcasa_comision_web.menu_ventas_sitio"
+   },
+   "nota": "Se mide siempre, aunque todavía no haya porcentaje de comisión. Una venta que lleva una vendedora no cuenta como del sitio. Salen señaladas las ventas con una fecha de pago futura, las que tienen una nota de crédito con líneas sin producto y las que se facturaron distinto de lo que dice el pedido, por ejemplo con otro precio o con más cantidad (filtros «Cobro con fecha futura», «Una nota trae líneas sin producto» y «Facturado distinto del pedido»): conviene mirarlas. Es solo una señal: no cambia lo que se paga. Una venta con fecha de pago futura se calcula con las reglas de hoy y se vuelve a calcular sola cuando esas reglas cambian (por ejemplo, al llegar el día del pago); la señal se queda.",
+   "palabras": [
+    "ventas del sitio",
+    "ventas por internet",
+    "sucursal web",
+    "tienda en linea",
+    "cuanto vende la pagina",
+    "ventas online",
+    "comision del sitio"
+   ],
+   "tambien": [
+    "personal"
+   ],
+   "grupos": [
+    "dcasa_nomina.group_nomina"
+   ]
+  },
+  {
+   "id": "comision-web-reglas",
+   "categoria": "personal",
+   "grupo": "Comisión del sitio web",
+   "titulo": "Cambiar el porcentaje, la tarifa fija o quiénes reciben la comisión del sitio",
+   "logras": "Guardas una versión nueva de las reglas: el porcentaje de cada venta del sitio, la tarifa fija por mantener la plataforma, cómo se arma la base (con un ejemplo en pantalla) y quiénes reciben.",
+   "destino": {
+    "menu": "dcasa_comision_web.menu_reglas_web"
+   },
+   "nota": "Una versión nueva no se guarda sola: toca «Guardar» cuando esté lista (si sales sin guardar, se descarta). Una versión guardada no se edita (solo se escribe el motivo cuando se anula): un cambio es una versión nueva y solo rige hacia adelante. Si una versión guardada después rige desde el mismo día o antes que otra ya programada, la programada sale como «Tapada» y no va a regir a menos que anules la otra. Ahí mismo puedes poner un tope a los ajustes a mano (viene apagado). La tarifa y el tope no pueden pasar de 21,474,836.47, y lo que no sea un número se rechaza con un aviso. Conviene que la contadora deje por escrito cómo se trata esta comisión.",
+   "palabras": [
+    "porcentaje de comision",
+    "comision web",
+    "tarifa fija",
+    "plataforma",
+    "reglas de la comision",
+    "quienes reciben",
+    "reparto"
+   ],
+   "grupos": [
+    "dcasa_nomina.group_nomina"
+   ]
+  },
+  {
+   "id": "comision-web-quienes",
+   "categoria": "personal",
+   "grupo": "Comisión del sitio web",
+   "titulo": "Ver quién recibe la comisión del sitio y cuánto se le debe",
+   "logras": "Ves la lista de las personas que reciben, lo que le toca a cada una del reparto y lo que se le debe por el porcentaje y por la tarifa fija.",
+   "destino": {
+    "menu": "dcasa_comision_web.menu_quienes_reciben"
+   },
+   "nota": "La lista se elige entre los empleados de Nómina y no depende del departamento.",
+   "palabras": [
+    "quienes reciben",
+    "saldo de comision",
+    "cuanto se le debe",
+    "reparto de la comision",
+    "libro de la comision"
+   ],
+   "grupos": [
+    "dcasa_nomina.group_nomina"
+   ]
+  },
+  {
+   "id": "comision-web-liquidar",
+   "categoria": "personal",
+   "grupo": "Comisión del sitio web",
+   "titulo": "Liquidar la comisión del sitio web de un periodo",
+   "logras": "Eliges el periodo que quieras (una semana, una quincena, un mes), armas la propuesta con lo que todavía no se ha liquidado, otra persona la aprueba y después la marcas como pagada con su referencia.",
+   "destino": {
+    "menu": "dcasa_comision_web.menu_liquidaciones_web"
+   },
+   "nota": "Nada se paga solo. Quien figura entre las personas que cobran en la liquidación no la aprueba: la aprueba otra persona de Gerencia o de Nómina.",
+   "palabras": [
+    "liquidar comision",
+    "pagar comision",
+    "liquidacion",
+    "aprobar comision",
+    "periodo de la comision",
+    "pagar la tarifa"
+   ],
+   "grupos": [
+    "dcasa_nomina.group_nomina"
+   ]
+  },
+  {
+   "id": "comision-web-ajuste",
+   "categoria": "personal",
+   "grupo": "Comisión del sitio web",
+   "titulo": "Corregir un saldo de la comisión del sitio con un ajuste",
+   "logras": "Anotas en el libro un monto (a favor o en contra) para una persona, con su motivo: sirve para corregir algo que se pagó de más, una tarifa de medio periodo o cualquier error que el sistema no pueda ver solo.",
+   "destino": {
+    "menu": "dcasa_comision_web.menu_libro_web"
+   },
+   "nota": "En el Libro toca «Anotar un ajuste» (en el celular está en el menú de los tres puntos de la lista, y también en el menú «Anotar un ajuste» de la misma sección). El motivo es obligatorio y queda con tu nombre. Si Gerencia puso un tope en las reglas, un ajuste no puede pasar de ese monto. Una fila del libro nunca se edita ni se borra: se corrige con otra.",
+   "palabras": [
+    "ajuste de comision",
+    "corregir saldo",
+    "pague de mas",
+    "corregir libro",
+    "ajustar comision",
+    "tope de ajuste",
+    "saldo en contra"
+   ],
+   "grupos": [
+    "dcasa_nomina.group_nomina"
+   ]
+  },
+  {
+   "id": "comision-web-revisar",
+   "categoria": "tienda",
+   "grupo": "Medir el sitio",
+   "titulo": "Revisar los pedidos de la página que una vendedora llevó o que abrió alguien del equipo",
+   "logras": "Ves los pedidos que nacieron en la página y que una vendedora atendió por el chat de Juan (aunque sea con un mensaje) o que armó alguien del equipo, para confirmar que a nadie se le está yendo de más la comisión del sitio.",
+   "destino": {
+    "menu": "dcasa_comision_web.menu_pedidos_vigilados"
+   },
+   "nota": "Es solo para mirar: no frena ninguna venta. Cotizar en la página y pagar en la tienda sí cuenta como venta del sitio.",
+   "palabras": [
+    "pedidos de la pagina para revisar",
+    "vigilar comision",
+    "quien abrio el carrito",
+    "venta de la pagina que llevo una vendedora",
+    "revisar ventas online"
+   ],
+   "grupos": [
+    "dcasa_base.group_gerencia"
+   ]
+  }
+ ],
+ "$empezar": "Las tareas de «Empieza por aquí», en este orden (solo salen las que la persona puede abrir)."
+}

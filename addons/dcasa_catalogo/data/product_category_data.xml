@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Categorías internas del catálogo de Tommalo (inventario y contabilidad): las mismas cuatro de la tienda web. -->
+    <data noupdate="1">
+        <record id="product_category_belleza" model="product.category">
+            <field name="name">Belleza</field>
+        </record>
+        <record id="product_category_hogar" model="product.category">
+            <field name="name">Hogar</field>
+        </record>
+        <record id="product_category_salud" model="product.category">
+            <field name="name">Salud</field>
+        </record>
+        <record id="product_category_otro" model="product.category">
+            <field name="name">Otros</field>
+        </record>
+    </data>
+</odoo>

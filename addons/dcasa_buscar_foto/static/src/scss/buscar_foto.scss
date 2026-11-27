@@ -1,0 +1,397 @@
+// «Busca con una foto» (views/templates.xml), con la marca Tommalo (docs/MARCA_TOMMALO.md): el botón de la cámara
+// es la pastilla de contorno de la marca (filo de acento, letra en el de acento de texto); en /shop/foto, el botón
+// principal (de acento con letra oscuro). claro, oscuro y la banda suave suave del final, como la de la web de Tommalo.
+// El de acento y el suave son RELLENO: nunca texto ni borde. Botones de 44 px o más (dedo, no cursor); el input de
+// archivo, de 16 px (si no, el iPhone acerca la pantalla al tocarlo). Montserrat (la @font-face la declara
+// website_dcasa). Los colores van escritos aquí mismo, sin variables de website_dcasa.
+
+$foto-bg: #FAFAFA;
+$foto-surface: #FFFFFF;
+$foto-fg: #262626;
+$foto-muted: rgba(38, 38, 38, .7);
+$foto-line: rgba(38, 38, 38, .12);
+$foto-accent: #D4D4D4;
+$foto-accent-hover: #DADADA;
+$foto-accent-fg: #262626;
+$foto-accent-strong: #595959;
+$foto-accent-edge: #8A8A8A;
+$foto-sage: #BDBDBD;
+$foto-sage-strong: #53735C;
+$foto-fuente: 'Montserrat', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+@mixin foto-foco {
+    outline: 2px solid $foto-fg;
+    outline-offset: 2px;
+}
+
+// ---------------------------------------------------------------------------
+// El botón (una <label> con el input de archivo transparente encima)
+// ---------------------------------------------------------------------------
+
+.o_dcasa_foto_boton {
+    position: relative;   // contiene al input (no ensancha la página)
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+    margin: 0;
+    padding: .5rem 1.25rem;
+    border: 1px solid $foto-accent-edge;
+    border-radius: 999px;
+    background: transparent;
+    color: $foto-accent-strong;
+    font-family: $foto-fuente;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+    cursor: pointer;
+    overflow: hidden;
+    touch-action: manipulation;
+    transition: background-color .3s ease, color .3s ease;
+
+    .fa {
+        font-size: 1.15rem;
+    }
+
+    &:hover {
+        background: $foto-accent;
+        color: $foto-accent-fg;
+    }
+
+    &:focus-within {
+        @include foto-foco;
+    }
+}
+
+.o_dcasa_foto_archivo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+// Dentro de la caja de búsqueda (la de la cabecera, la del menú del celular y la de /shop), al lado de la lupa: el sitio
+// de website_dcasa no dibuja caja (display: contents), así que la cámara se acomoda como un elemento más del
+// «input-group» de Odoo, con el fondo de la caja (sus clases: views/templates.xml) y sin borde propio. El ícono, oscuro
+// (como la lupa); al pasar, el de acento de texto.
+.input-group .o_dcasa_foto_boton.o_dcasa_foto_en_caja {
+    flex: 0 0 auto;
+    width: 2.75rem;
+    min-width: 2.75rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    color: $foto-fg;
+
+    &:hover {
+        background: inherit;
+        color: $foto-accent-strong;
+    }
+
+    &:focus-within {
+        outline-offset: -3px;
+    }
+}
+
+// Grande, en /shop/foto: el botón principal de la marca (el CTA de la página).
+.o_dcasa_foto_boton_grande {
+    min-height: 3rem;
+    padding-inline: 1.75rem;
+    border-color: transparent;
+    background: $foto-accent;
+    color: $foto-accent-fg;
+    box-shadow: 0 8px 24px -10px rgba($foto-accent, .7);
+
+    &:hover {
+        background: $foto-accent-hover;
+        color: $foto-accent-fg;
+    }
+}
+
+.o_dcasa_foto_aviso {
+    flex-basis: 100%;
+    margin: .5rem 0 0;
+    color: $foto-fg;
+    font-size: .9375rem;
+}
+
+// ---------------------------------------------------------------------------
+// «Buscando productos parecidos…»: un velo oscuro y la tarjeta claro
+// ---------------------------------------------------------------------------
+
+.o_dcasa_foto_cargando {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;   // encima del modal de la búsqueda (1055)
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba($foto-fg, .72);
+    font-family: $foto-fuente;
+}
+
+.o_dcasa_foto_cargando_caja {
+    width: 100%;
+    max-width: 22rem;
+    padding: 2rem 1.5rem;
+    border: 1px solid $foto-line;
+    border-radius: 24px;
+    background: $foto-surface;
+    color: $foto-fg;
+    text-align: center;
+}
+
+.o_dcasa_foto_giro {
+    display: inline-block;
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: 1rem;
+    border: 4px solid rgba($foto-fg, .12);
+    border-top-color: $foto-accent-edge;
+    border-radius: 50%;
+    animation: o_dcasa_foto_giro .9s linear infinite;
+}
+
+@keyframes o_dcasa_foto_giro {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .o_dcasa_foto_giro {
+        animation-duration: 3s;
+    }
+}
+
+.o_dcasa_foto_cargando_titulo {
+    margin: 0 0 .35rem;
+    font-family: $foto-fuente;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    color: $foto-fg;
+}
+
+.o_dcasa_foto_cargando_sub {
+    margin: 0;
+    color: $foto-muted;
+}
+
+// ---------------------------------------------------------------------------
+// /shop/foto
+// ---------------------------------------------------------------------------
+
+.o_dcasa_foto_pagina {
+    background: $foto-bg;
+    color: $foto-fg;
+    font-family: $foto-fuente;
+}
+
+.o_dcasa_foto_cabeza {
+    padding-block: clamp(2rem, 5vw, 3.5rem) 1.5rem;
+
+    // El antetítulo de la marca: 12 px, 700, caja alta y .14em, en el de acento de texto.
+    .o_dcasa_kicker {
+        font-family: $foto-fuente;
+        font-size: .75rem;
+        font-weight: 700;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+        color: $foto-accent-strong;
+    }
+
+    // El titular: Montserrat 700, como frase.
+    .o_dcasa_h2 {
+        margin-bottom: .75rem;
+        font-family: $foto-fuente;
+        font-weight: 700;
+        letter-spacing: -.03em;
+        line-height: 1.15;
+        text-transform: none;
+        color: $foto-fg;
+    }
+
+    .o_dcasa_lead {
+        color: $foto-muted;
+    }
+}
+
+.o_dcasa_foto_mensaje {
+    display: flex;
+    align-items: flex-start;
+    gap: .85rem;
+    max-width: 44rem;
+    margin: 1rem 0 0;
+    padding: 1rem 1.25rem;
+    border: 1px solid $foto-line;
+    border-left: 4px solid $foto-accent-edge;
+    border-radius: 14px;
+    background: $foto-surface;
+    color: $foto-fg;
+    font-size: 1.0625rem;
+
+    .fa {
+        margin-top: .2rem;
+        font-size: 1.35rem;
+        color: $foto-accent-strong;
+    }
+
+    p {
+        margin: 0;
+    }
+}
+
+.o_dcasa_foto_vimos {
+    display: block;
+    margin-top: .35rem;
+    color: $foto-muted;
+    font-size: .9375rem;
+}
+
+.o_dcasa_foto_acciones {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .75rem 1rem;
+    margin-top: 1.5rem;
+}
+
+.o_dcasa_foto_por_nombre {
+    flex: 1 1 18rem;
+    max-width: 30rem;
+
+    .oe_search_box {
+        font-size: 16px;
+    }
+}
+
+.o_dcasa_foto_privacidad {
+    margin: 1rem 0 0;
+    color: $foto-muted;
+    font-size: .875rem;
+
+    a {
+        color: $foto-accent-strong;
+        text-decoration: underline;
+        text-underline-offset: .15em;
+    }
+}
+
+.o_dcasa_foto_resultados {
+    padding-bottom: clamp(2rem, 5vw, 3.5rem);
+}
+
+.o_dcasa_foto_grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.75rem 1rem;
+
+    @media (min-width: 768px) {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    @media (min-width: 1200px) {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 2.5rem 1.5rem;
+    }
+
+    > li {
+        min-width: 0;
+    }
+}
+
+// La franja del final: la banda suave suave de Tommalo, con todo en oscuro (6.96) y el botón principal de acento.
+.o_dcasa_foto_whatsapp {
+    padding-block: clamp(2.5rem, 6vw, 4rem);
+    background: $foto-sage;
+    color: $foto-fg;
+    text-align: center;
+
+    p {
+        max-width: 36rem;
+        margin-inline: auto;
+        font-size: 1.0625rem;
+    }
+}
+
+.o_dcasa_foto_whatsapp_titulo {
+    font-family: $foto-fuente;
+    font-weight: 700;
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    letter-spacing: -.03em;
+    line-height: 1.15;
+    text-transform: none;
+    color: $foto-fg;
+}
+
+.o_dcasa_foto_whatsapp_cta.btn {
+    --bs-btn-color: #{$foto-accent-fg};
+    --bs-btn-bg: #{$foto-accent};
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-color: #{$foto-accent-fg};
+    --bs-btn-hover-bg: #{$foto-accent-hover};
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-active-color: #{$foto-accent-fg};
+    --bs-btn-active-bg: #{$foto-accent};
+    --bs-btn-active-border-color: transparent;
+    min-height: 3rem;
+    padding-inline: 1.75rem;
+    border-radius: 999px;
+    background-color: $foto-accent;
+    border-color: transparent;   // el de acento es relleno: nunca borde
+    color: $foto-accent-fg;
+    font-family: $foto-fuente;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+
+    &:hover,
+    &:active {
+        background-color: $foto-accent-hover;
+        border-color: transparent;
+        color: $foto-accent-fg;
+    }
+
+    &:focus-visible {
+        @include foto-foco;
+        box-shadow: none;
+    }
+}
+
+// Lote «legibilidad» (Tommalo), arreglo 5: la pista de la cámara. Texto de apoyo en `muted` (4.95 sobre el claro), a la
+// derecha, bajo la caja, pegada a ella (la cámara va en el lado derecho de la caja); el ícono en oscuro, como la cámara.
+.o_dcasa_foto_pista {
+    margin: .25rem .25rem 0;
+    text-align: right;
+    font-size: .8125rem;
+    line-height: 1.2;
+    color: $foto-muted;
+
+    .fa {
+        margin-right: .35rem;
+        color: $foto-fg;
+    }
+}
+
+// En la ventana de la lupa (la caja de la cabecera) la caja no deja relleno abajo: la pista trae el suyo.
+#o_search_modal .o_dcasa_foto_pista {
+    margin: 0;
+    padding: .4rem .9rem .55rem;
+}
+
+// En la computadora la caja de /shop comparte fila con «Ordenar por»: la pista cuelga bajo la caja casi sin ensanchar la
+// fila (su alto, margen incluido, es 1,225 rem; se compensan 0,9 rem y los 0,325 rem que sobran empujan las fotos hacia
+// abajo para que la pista no las toque), así «Ordenar por» queda casi donde estaba (unos 3 px más abajo).
+@media (min-width: 992px) {
+    .o_wsale_products_searchbar_form:has(.o_dcasa_foto_pista) {
+        margin-bottom: -.9rem;
+    }
+}

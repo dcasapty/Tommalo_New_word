@@ -1,0 +1,155 @@
+// El aviso de cookies con la marca Tommalo (docs/MARCA_TOMMALO.md), como su aviso de Meta
+// (Tommalo/src/components/BannerConsentimiento.tsx): una tarjeta claro (`surface`, filo `line`) abajo y al centro,
+// «Aceptar» en la pastilla de acento con letra oscuro (5.56) y «Solo las necesarias» en la pastilla de contorno, las dos
+// del MISMO tamaño (rechazar tiene que ser igual de fácil que aceptar), y la política como enlace subrayado. Solo se ve
+// con el aviso encendido (lo enciende el píxel de Meta). Montserrat (la @font-face la declara website_dcasa). Los
+// colores van escritos aquí mismo, sin variables de website_dcasa.
+$meta-surface: #FFFFFF;
+$meta-fg: #262626;
+$meta-muted: rgba(38, 38, 38, .7);   // 4.80 sobre surface
+$meta-line: rgba(38, 38, 38, .12);
+$meta-accent: #D4D4D4;               // relleno: nunca texto ni borde
+$meta-accent-hover: #DADADA;
+$meta-accent-fg: #262626;
+$meta-accent-strong: #595959;        // texto en de acento (4.60 sobre surface)
+$meta-accent-edge: #8A8A8A;          // borde de acento (3.01 sobre surface)
+$meta-fuente: 'Montserrat', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+#website_cookies_bar.o_dcasa_aviso_cookies {
+    // El aire alrededor de la tarjeta va en su margen: Odoo deja el relleno del diálogo en 0.
+    .modal-dialog {
+        max-width: 48rem;
+        margin-inline: auto;
+    }
+
+    .modal-content {
+        margin: 0 1rem 1rem;
+        background-color: $meta-surface;
+        color: $meta-fg;
+        border: 1px solid $meta-line;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px -2px rgba(38, 38, 38, .08);
+        font-family: $meta-fuente;
+        overflow: hidden;
+    }
+
+    // La combinación de colores del tema (o_cc1) no manda aquí: la tarjeta es claro y el texto oscuro.
+    section.o_cc {
+        background: transparent !important;
+        color: $meta-fg;
+    }
+
+    p {
+        color: $meta-muted;
+        font-size: .9375rem;
+        line-height: 1.6;
+    }
+
+    .o_cookies_bar_text_policy {
+        color: $meta-muted;
+        font-family: $meta-fuente;
+        font-weight: 500;
+        text-decoration: underline;
+        text-underline-offset: 4px;
+
+        &:hover {
+            color: $meta-fg;
+        }
+    }
+
+    .btn {
+        min-height: 44px;
+        padding-inline: 1.5rem;
+        border-radius: 999px;
+        font-family: $meta-fuente;
+        font-size: .9375rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: none;
+
+        &:focus-visible {
+            outline: 2px solid $meta-fg;
+            outline-offset: 2px;
+            box-shadow: none;
+        }
+    }
+
+    .btn-primary {
+        --bs-btn-color: #{$meta-accent-fg};
+        --bs-btn-bg: #{$meta-accent};
+        --bs-btn-border-color: transparent;
+        --bs-btn-hover-color: #{$meta-accent-fg};
+        --bs-btn-hover-bg: #{$meta-accent-hover};
+        --bs-btn-hover-border-color: transparent;
+        --bs-btn-active-color: #{$meta-accent-fg};
+        --bs-btn-active-bg: #{$meta-accent};
+        --bs-btn-active-border-color: transparent;
+        background-color: $meta-accent;
+        border: 1px solid transparent;   // el de acento es relleno: nunca borde
+        color: $meta-accent-fg;
+        box-shadow: 0 8px 24px -10px rgba($meta-accent, .7);
+    }
+
+    .btn-outline-primary {
+        --bs-btn-color: #{$meta-accent-strong};
+        --bs-btn-bg: transparent;
+        --bs-btn-border-color: #{$meta-accent-edge};
+        --bs-btn-hover-color: #{$meta-accent-fg};
+        --bs-btn-hover-bg: #{$meta-accent};
+        --bs-btn-hover-border-color: #{$meta-accent-edge};
+        --bs-btn-active-color: #{$meta-accent-fg};
+        --bs-btn-active-bg: #{$meta-accent};
+        --bs-btn-active-border-color: #{$meta-accent-edge};
+        background-color: transparent;
+        border: 1px solid $meta-accent-edge;
+        color: $meta-accent-strong;
+    }
+
+    .js_close_popup {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    // Como en Tommalo: el texto arriba y los dos botones en fila debajo, a la izquierda (las columnas 8/4 de Odoo
+    // apilaban los botones en una columna angosta dentro de la tarjeta).
+    .row > .col-lg-8,
+    .row > .col-lg-4 {
+        flex: 0 0 100%;
+        max-width: 100%;
+        text-align: left !important;
+    }
+
+    .row > .col-lg-4 {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .75rem;
+        padding-top: 0 !important;
+
+        .js_close_popup {
+            margin: 0 !important;
+        }
+    }
+}
+
+.o_dcasa_meta_casilla a {
+    color: $meta-accent-strong;
+    text-decoration: underline;
+    text-underline-offset: .15em;
+}
+
+// En el celular los dos botones van uno debajo del otro, a lo ancho y del mismo tamaño (como en Tommalo), con 44 px
+// de alto para el dedo. La prueba test_aviso_celular mide que el aviso entero (texto, política y botones) quepa en la
+// pantalla a 360 y 390 px sin salirse de lado.
+@media (max-width: 575.98px) {
+    #website_cookies_bar.o_dcasa_aviso_cookies {
+        .modal-content {
+            margin: 0 .75rem .75rem;
+        }
+
+        .js_close_popup {
+            width: 100%;
+            margin-inline: 0 !important;
+        }
+    }
+}

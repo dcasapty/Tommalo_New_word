@@ -1,0 +1,93 @@
+// MODO OSCURO — los colores propios del panel (`--dc-*`), con la marca de Tommalo de noche.
+//
+// Los mismos nombres que `scss/tokens.scss`, con su valor de noche. Solo entra en la hoja oscura. Navy profundo de
+// fondo (con poca saturación a propósito: así no gira con el principal de otra empresa y el oscuro sigue oscuro), letra
+// crema, el naranja de acento (enlaces, lo activo y el relleno del botón principal, con letra navy encima) y el verde
+// salvia para lo secundario. Nada de azul eléctrico.
+:root {
+    color-scheme: dark;
+
+    // --- Tommalo de noche ---------------------------------------------------------------------------------------------
+    --dc-crema: #121212;            // el fondo de la página
+    --dc-superficie: #171717;       // tarjetas, barras, hojas
+    --dc-naranja: #D4D4D4;          // relleno: el botón principal, lo elegido, las barras (navy encima, 5.56)
+    --dc-en-naranja: #262626;
+    --dc-naranja-puntero: #E5E5E5;
+    --dc-naranja-pulsado: #BDBDBD;
+    --dc-naranja-fuerte: #E5E5E5;   // letra naranja sobre el oscuro (8.3 sobre la superficie)
+    --dc-naranja-filo: #D4D4D4;     // bordes e íconos naranja sobre el oscuro (6.9)
+    --dc-salvia: #BDBDBD;           // relleno verde (navy encima, 6.96)
+    --dc-en-salvia: #262626;
+    --dc-salvia-fuerte: #BDBDBD;    // letra verde sobre el oscuro (8.7)
+    --dc-salvia-filo: #BDBDBD;
+    --dc-salvia-claro: #2C3F3F;     // fondo de lo elegido (el salvia al 18 % sobre la superficie)
+    --dc-control: #7C8790;          // el borde de lo que se toca (3.8 sobre la superficie)
+
+    // Superficies («blancos»)
+    --dc-blanco: #171717;
+    --dc-nieve: #1D1D1D;
+    --dc-niebla: #121212;
+    --dc-perla: #1D1D1D;
+    --dc-linea: #313E49;
+    --dc-linea-fuerte: #7C8790;
+
+    // Tinta
+    --dc-tinta: #FFFFFF;
+    --dc-tinta-2: #C4C4C4;
+    --dc-tinta-3: #A7A9A5;
+
+    // La escala del navy se da vuelta. Los oscuros (400–950) eran tinta sobre el crema y ahora son tinta crema sobre
+    // el oscuro; los claros (50–300) eran fondos suaves y filos y ahora son fondos y filos de noche.
+    --dc-azul-950: #FAFAFA;
+    --dc-azul-900: #FFFFFF;
+    --dc-azul-800: #ECE8DD;
+    --dc-azul-700: #E4E0D4;
+    --dc-azul-600: #FFFFFF;
+    --dc-azul-500: #D5D2C8;
+    --dc-azul-400: #C4C4C4;
+    --dc-azul-300: #D4D4D4;
+    --dc-azul-200: #BDBDBD;
+    --dc-azul-100: #2C3F3F;
+    --dc-azul-50: #1D1D1D;
+
+    // El acento (el nombre de Tommalo): el naranja
+    --dc-amarillo: #D4D4D4;
+
+    // Estados escritos sobre la superficie
+    --dc-bien: #BDBDBD;
+    --dc-falta: #E6B866;
+
+    --dc-sombra-1: 0 1px 2px rgba(0, 0, 0, .25);
+    --dc-sombra-2: 0 8px 24px rgba(0, 0, 0, .35);
+    --dc-foco: 0 0 0 2px var(--dc-crema), 0 0 0 4px #FAFAFA;
+
+    // Nombres que algunas pantallas usan con un valor de reserva (no existen en claro): aquí sí se definen.
+    --dc-fondo: #121212;
+    --dc-gris: #A7A9A5;
+
+    // --- Solo en oscuro -----------------------------------------------------------------------------------------------
+    // En claro, el navy de la marca hace dos trabajos con un mismo nombre: es TINTA (enlaces, números, íconos) y es
+    // RELLENO de lo que antes era un botón azul. De noche la tinta es crema (los `--dc-azul-*` de arriba) y el relleno es
+    // el naranja de la marca, con letra navy. Los archivos de esta carpeta pasan cada relleno a estos nombres.
+    --dc-relleno: #D4D4D4;
+    --dc-relleno-2: #E5E5E5;        // el mismo, al pasar el puntero
+    --dc-en-relleno: #262626;
+    --dc-en-relleno-2: #262626;     // texto de apoyo sobre el relleno
+    // Las cabezas de los paneles pasan a la superficie levantada.
+    --dc-cabeza: #263440;
+    --dc-en-cabeza: #FAFAFA;
+    --dc-en-cabeza-2: #C4C4C4;
+    // Lo que va escrito sobre el naranja (insignias chicas).
+    --dc-en-amarillo: #262626;
+    // Estados: texto y fondo suave.
+    --dc-mal: #FF8F87;
+    --dc-mal-fondo: #3F2626;
+    --dc-mal-linea: #70403F;
+    --dc-bien-fondo: #213A31;
+    --dc-bien-linea: #36604A;
+    --dc-falta-fondo: #3B3220;
+    --dc-falta-linea: #6B5730;
+    --dc-info-fondo: #22313D;
+    --dc-info-linea: #3E5060;
+    --dc-info: #B9CCD6;
+}

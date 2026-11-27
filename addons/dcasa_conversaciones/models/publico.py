@@ -1,0 +1,92 @@
+"""La «vista pública» del catálogo para el asistente: funciones PURAS.
+
+Lo que un cliente puede saber de un producto es lo mismo que ve en la tienda: nombre, código,
+precio «+ ITBMS», medidas, combo, foto y una etiqueta de existencias (``disponible``, ``pocas`` o
+``agotado``). **Nunca** el número de existencias, costos ni nada de inventario interno.
+
+La búsqueda es por palabras, sin importar mayúsculas, acentos ni plural («jabón grande» encuentra
+«JABON First Class» en tamaño Grande; «lámparas» encuentra «LÁMPARA Grande Grey»), porque así escribe la gente
+en WhatsApp.
+"""
+import re
+import unicodedata
+
+from odoo.addons.dcasa_base.disponibilidad import (  # noqa: F401 (la regla vive en dcasa_base; aquí, por compatibilidad)
+    AGOTADO,
+    DISPONIBLE,
+    ETIQUETAS_EXISTENCIAS,
+    POCAS,
+    etiqueta_existencias,
+)
+from odoo.addons.dcasa_base.models.codigo_publico import es_codigo_publico, normalizar_codigo_publico
+
+LIMITE_POR_DEFECTO = 5
+LIMITE_MAXIMO = 8
+
+
+def normalizar(texto):
+    """Minúsculas y sin acentos: «Jabón» → «jabon»."""
+    texto = unicodedata.normalize('NFKD', str(texto or '').lower())
+    return ''.join(c for c in texto if not unicodedata.combining(c))
+
+
+def raiz(palabra):
+    """Singular sencillo: «jabones» → «jabon», «lámparas» → «lámpara», «espejos» → «espejo»."""
+    if len(palabra) > 5 and palabra.endswith('ones'):
+        return palabra[:-2]
+    if len(palabra) > 3 and palabra.endswith('s'):
+        return palabra[:-1]
+    return palabra
+
+
+def palabras(consulta):
+    return [raiz(p) for p in re.findall(r'[a-z0-9]+', normalizar(consulta)) if len(p) > 1 or p.isdigit()]
+
+
+def puntuar(consulta, nombre, codigo, extra=''):
+    """0 si no coincide; mayor es mejor. TODAS las palabras de la consulta deben aparecer.
+
+    ``nombre``: nombre del producto; ``codigo``: referencias (puede traer varias, separadas por
+    espacio); ``extra``: categorías, tamaños y colores. El código exacto gana a todo.
+    """
+    buscadas = palabras(consulta)
+    if not buscadas:
+        return 0
+    n_nombre, n_codigo, n_extra = normalizar(nombre), normalizar(codigo), normalizar(extra)
+    codigos = n_codigo.split()
+    publico = normalizar_codigo_publico(consulta)   # «dck7m4px» es «DC-K7M4PX»
+    if (normalizar(consulta).strip() in codigos and n_codigo.strip()) or (publico and publico.lower() in codigos):
+        return 1000
+    # El código público (DC-K7M4PX) es al azar: solo cuenta entero. Un pedazo suyo («zz», «tv») no significa nada
+    # y se colaría en cualquier búsqueda corta.
+    n_parcial = ' '.join(c for c in codigos if not es_codigo_publico(c.upper()))
+    puntos = 0
+    for palabra in buscadas:
+        if palabra in n_nombre:
+            puntos += 10 + (5 if re.search(rf'\b{re.escape(palabra)}', n_nombre) else 0)
+        elif palabra in n_parcial:
+            puntos += 8
+        elif palabra in n_extra:
+            puntos += 4
+        else:
+            return 0
+    return puntos
+
+
+def limite_seguro(valor, defecto=LIMITE_POR_DEFECTO, maximo=LIMITE_MAXIMO):
+    try:
+        valor = int(valor)
+    except (TypeError, ValueError):
+        return defecto
+    return min(max(valor, 1), maximo)
+
+
+def precio_texto(precio, mas_itbms=True):
+    """349.99 → «$349.99 + ITBMS» (el precio de Tommalo es sin ITBMS: el 7 % se suma en el carrito)."""
+    base = f'${float(precio or 0):,.2f}'
+    return f'{base} + ITBMS' if mas_itbms else base
+
+
+def recortar(texto, largo=600):
+    texto = re.sub(r'\s+', ' ', str(texto or '')).strip()
+    return texto if len(texto) <= largo else texto[:largo - 1].rstrip() + '…'

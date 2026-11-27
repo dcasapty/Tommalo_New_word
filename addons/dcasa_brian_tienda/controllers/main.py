@@ -1,0 +1,516 @@
+"""``/dcasa/brian/v1/*``: lo que la página de la tienda le pide a Odoo para el chat «Brian de la tienda».
+
+* ``POST /pase``                    — el pase firmado para hablar con el Worker (contrato §1, ``models/pase.py``).
+* ``GET  /carrito``                 — el carrito de ESTA sesión (para abrir el chat sabiendo qué hay): las líneas, el
+  envío y su promoción si están (``envio``, ``extras``) y los totales, todo de Odoo.
+* ``POST /carrito/agregar``         — ``{producto_id, cantidad}``: lo que Brian propuso o tocó el visitante (§3).
+* ``POST /carrito/cantidad``        — ``{producto_id, cantidad}`` (0 = quitar). También lo que Andrés propone cambiar
+  (A4): la página lo aplica con la sesión del visitante y le cuenta a Andrés lo que quedó.
+* ``POST /carrito/envio``           — ``{lugar_id}``: suma el envío que Andrés calculó (A2) con la misma línea que pone
+  ``dcasa_envios`` (``sale.order._dcasa_envio_poner``: el precio de la calculadora para ese lugar de la tabla y la
+  promoción vigente con la compra del carrito). El navegador solo manda el lugar: el precio nunca. Topes: 6 por hora por
+  sesión y 30 por hora por conexión (cada suma escribe en la venta y deja una nota).
+* ``GET  /carrito/cotizacion.pdf``  — la cotización del carrito, con los números de Odoo y «Cliente: (por confirmar)».
+  Cada una arranca wkhtmltopdf y ocupa una conexión de la base (Odoo corre con ``workers = 0``): a lo sumo 2 a la vez
+  por proceso (sin esperar: la tercera recibe 503 con ``Retry-After``), 10 por hora por conexión (la IPv4 entera o la
+  /64, contador confirmado aparte), 10 por hora por sesión, y el borde frena las ráfagas (6 por minuto por conexión).
+* ``POST /calificar``               — ``{estrellas}``: solo número y fecha, una vez por ``sid`` (contrato_cambios §5).
+
+Reglas de todas:
+
+* **La sesión del visitante** (``auth='public'``): cada quien ve y cambia solo SU carrito. El modelo de IA nunca llama
+  aquí: el navegador aplica lo que Brian propone y le cuenta el resultado.
+* **CSRF en los POST**: el token va en la cabecera ``X-CSRF-Token`` (las páginas guardadas en el borde traen el de otra
+  sesión: la página pide uno fresco a ``/dcasa/borde/csrf``) y el cuerpo tiene que ser JSON (un formulario de otro
+  sitio no puede mandarlo sin permiso del navegador). Se valida con ``request.validate_csrf`` antes de leer nada.
+* **Cuerpos de a lo sumo 2 KB**, cantidades de 1 a 20 (una línea no pasa de 20) y solo productos publicados en la
+  tienda, que se puedan agregar directo y con precio; si hay que elegir medida, color o combo: ``motivo: elegir`` con la
+  ficha.
+* Respuestas JSON ``no-store`` y ``noindex``: ni el borde ni el navegador las guardan (el borde nunca guarda
+  ``/dcasa/*``; ``edge/src/routing.ts``).
+* Apagado (Sitio web › Brian de la tienda): todas responden ``{ok: false, motivo: "apagado"}``.
+"""
+import json
+import logging
+import threading
+import time
+
+from odoo import http
+from odoo.addons.dcasa_base.red import llave_ip
+from odoo.addons.dcasa_conversaciones.models import publico as P
+from odoo.addons.website_dcasa.controllers.main import DcasaTienda
+from odoo.addons.website_dcasa.models.website import CATEGORIAS_PORTADA
+from odoo.fields import Domain
+from odoo.http import request
+
+from ..models.pase import SESION_CALIFICADO, SESION_PDF, SESION_SID
+
+_logger = logging.getLogger(__name__)
+
+RAIZ = '/dcasa/brian/v1'
+MAX_CUERPO = 2048
+MAX_CANTIDAD = 20
+MAX_PDF_POR_HORA = 10              # por sesión
+MAX_PDF_POR_CONEXION_HORA = 10     # por conexión (IPv4 entera o /64): una cookie nueva no da cupo nuevo
+MAX_PDF_A_LA_VEZ = 2               # por proceso: cada PDF es un wkhtmltopdf y una conexión de la base
+MAX_ENVIO_POR_HORA = 6             # sumar el envío (A2), por sesión: cada vez escribe en la venta y deja una nota
+MAX_ENVIO_POR_CONEXION_HORA = 30   # y por conexión (IPv4 entera o /64), contador confirmado aparte
+# La sesión recuerda cuándo sumó el envío (para el tope). Solo existe con un carrito: la sesión ya es personal para el
+# borde (``sale_order_id``), así que no hace falta que dcasa_tienda_borde la tenga entre sus claves neutras.
+SESION_ENVIO = 'dcasa_brian_envio'
+# Lo que Odoo dice cuando no suma el envío, con el motivo que entiende la página (y el Worker: ``MOTIVOS_DEL_ENVIO``).
+MOTIVO_DEL_ENVIO = {'confirmada': 'ajeno', 'ajeno': 'ajeno', 'sin_transportista': 'sin_tarifa'}
+_SEMAFORO_PDF = threading.BoundedSemaphore(MAX_PDF_A_LA_VEZ)
+TEXTO_SIN_PDF = 'Por ahora no podemos armar más cotizaciones. Inténtalo en un rato o escríbenos por WhatsApp.'
+TEXTO_PDF_OCUPADO = 'Estamos armando otras cotizaciones. Inténtalo de nuevo en unos segundos.'
+MAX_ID = 2 ** 31
+# «Lo más buscado» de la vitrina es pública y, con el chat ampliado de fábrica en la computadora, la pide cada visita
+# que abre el chat (revisión independiente, 2026-11-19: 91 consultas por llamada). Las fichas, que son lo caro y no
+# dependen de la persona, se arman una vez por minuto y por (base, sitio, idioma, tarifa, posición fiscal); lo de cada
+# quien (lo que ya tiene en su carrito) se aplica después y nunca entra aquí. Un precio de campaña, la existencia o un
+# producto despublicado pueden verse viejos hasta ese tiempo en la tarjeta; el carrito siempre usa lo vivo (``_poner``
+# revisa publicado, precio y existencia cada vez que alguien agrega).
+SEGUNDOS_CACHE_VITRINA = 60
+_CACHE_VITRINA = {}
+MAX_CLAVES_CACHE_VITRINA = 64
+
+
+def limpiar_cache_vitrina():
+    """Vacía las fichas guardadas de «Lo más buscado» (para las pruebas y para quien cambie la tienda a mano)."""
+    _CACHE_VITRINA.clear()
+# Las sugerencias del saludo dicen la categoría con la palabra que escribiría un cliente («Camas», no «Recámaras»).
+NOMBRE_SUGERENCIA = {'recamaras': 'Camas', 'oficina': 'Escritorios'}
+# Lo que la página necesita de cada producto para pintar su tarjeta (lo mismo que valida `productoValido` en el JS).
+CAMPOS_TARJETA = ('producto_id', 'plantilla_id', 'nombre', 'precio_texto', 'disponibilidad', 'imagen', 'ruta',
+                  'agregable')
+# La política de privacidad cambia con este módulo (views/templates.xml, «Brian, el chat de la tienda»): su fecha.
+FECHA_PRIVACIDAD = '16 de noviembre de 2026'   # el chat se llama Andrés y entiende notas de voz (el audio no se guarda)
+MESES = ('enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre',
+         'noviembre', 'diciembre')
+
+
+def _json(datos, estado=200):
+    return request.make_response(
+        json.dumps(datos, ensure_ascii=False, separators=(',', ':')),
+        headers=[('Content-Type', 'application/json; charset=utf-8'), ('Cache-Control', 'no-store'),
+                 ('X-Content-Type-Options', 'nosniff'), ('X-Robots-Tag', 'noindex')],
+        status=estado)
+
+
+def _fecha(texto):
+    """«14 de noviembre de 2026» → ``(2026, 11, 14)``; lo que no se entiende, ``(0, 0, 0)``."""
+    partes = str(texto or '').lower().split(' de ')
+    try:
+        return int(partes[2]), MESES.index(partes[1].strip()) + 1, int(partes[0])
+    except (IndexError, ValueError):
+        return 0, 0, 0
+
+
+def _entero(valor, minimo, maximo):
+    """Un entero de verdad (no un booleano ni un texto) entre ``minimo`` y ``maximo``; si no, ``None``."""
+    if isinstance(valor, bool) or not isinstance(valor, int) or not minimo <= valor <= maximo:
+        return None
+    return valor
+
+
+class DcasaBrianTiendaAPI(http.Controller):
+
+    # ------------------------------------------------------------------
+    # Entrada común
+    # ------------------------------------------------------------------
+
+    def _post(self, funcion):
+        """CSRF (cabecera), JSON de a lo sumo 2 KB e interruptor; después ``funcion(cuerpo)``."""
+        if not request.validate_csrf(request.httprequest.headers.get('X-CSRF-Token') or ''):
+            return _json({'ok': False, 'motivo': 'csrf'}, 403)
+        tipo = (request.httprequest.mimetype or '').lower()
+        if tipo != 'application/json':
+            return _json({'ok': False, 'motivo': 'formato'}, 415)
+        largo = request.httprequest.content_length
+        if largo and largo > MAX_CUERPO:
+            return _json({'ok': False, 'motivo': 'formato'}, 413)
+        crudo = request.httprequest.get_data(cache=True)
+        if len(crudo) > MAX_CUERPO:
+            return _json({'ok': False, 'motivo': 'formato'}, 413)
+        try:
+            cuerpo = json.loads(crudo.decode('utf-8') or '{}')
+        except (ValueError, UnicodeDecodeError):
+            return _json({'ok': False, 'motivo': 'formato'}, 400)
+        if not isinstance(cuerpo, dict):
+            return _json({'ok': False, 'motivo': 'formato'}, 400)
+        if not request.env['dcasa.brian.tienda'].sudo()._activo():
+            return _json({'ok': False, 'motivo': 'apagado'})
+        return funcion(cuerpo)
+
+    # ------------------------------------------------------------------
+    # El pase
+    # ------------------------------------------------------------------
+
+    @http.route(f'{RAIZ}/pase', type='http', auth='public', website=True, methods=['POST'], csrf=False,
+                sitemap=False, max_content_length=MAX_CUERPO)
+    def pase(self, **_kw):
+        return self._post(self._pase)
+
+    def _pase(self, cuerpo):
+        turnstile = cuerpo.get('turnstile') if isinstance(cuerpo.get('turnstile'), str) else ''
+        resultado = request.env['dcasa.brian.tienda'].sudo()._emitir(
+            request.session, request.httprequest.remote_addr, request.website, turnstile=turnstile)
+        if resultado.get('ok'):
+            resultado['sugerencias'] = self._sugerencias()
+        return _json(resultado)
+
+    def _sugerencias(self):
+        """Las dos categorías de la portada con más productos publicados, para las sugerencias del saludo (pedido de la
+        dueña, 2026-11-15, «opción 2»: la lista fija decía «Salas» con 2 productos y no decía «Camas», con 121). Es el
+        mismo número que la portada pone debajo de cada categoría; con empate, el orden de la portada. Sin nada
+        publicado, ninguna: la página usa las de fábrica."""
+        website = request.website
+        cuentas = [(website._dcasa_categoria_cantidad(clave), -orden, NOMBRE_SUGERENCIA.get(clave, nombre))
+                   for orden, (clave, nombre, *_resto) in enumerate(CATEGORIAS_PORTADA)]
+        return [nombre for cantidad, _orden, nombre in sorted(cuentas, reverse=True) if cantidad][:2]
+
+    # ------------------------------------------------------------------
+    # El carrito
+    # ------------------------------------------------------------------
+
+    def _carrito(self):
+        """El carrito de esta sesión como lo lee la página (contrato §3). Los números salen de Odoo."""
+        orden = request.cart
+        cero = P.precio_texto(0, False)
+        vacio = {'lineas': [], 'cantidad_total': 0, 'envio': None, 'extras': [], 'total_texto': cero,
+                 'itbms_texto': cero, 'total_con_itbms_texto': cero}
+        if not orden:
+            return vacio
+        lineas = []
+        # El premio del programa Socios es una línea negativa que la tienda SÍ muestra (website_order_line solo
+        # esconde el envío). No puede ir entre los productos (revisión adversarial, 2026-11-16): viajaba al Worker y
+        # al modelo —o sea, le contaba a Andrés que este visitante es socio y tiene un premio puesto—, Andrés podía
+        # proponer «quitarlo» (eso cancela el canje), y al quitarlo el servidor solo, el chat reaccionaba ofreciendo
+        # «algo más económico» por el premio del propio cliente. Va con el envío, en ``extras``, con su menos delante.
+        premios = orden.order_line.filtered('dcasa_canje_id') if 'dcasa_canje_id' in orden.order_line._fields \
+            else orden.order_line.browse()
+        # Una fila por producto: con la promoción por pares (dcasa_catalogo) un mismo producto puede ir en dos líneas
+        # (los pares y la caja suelta), y la página cambia la cantidad del producto, no la de una línea.
+        por_producto = {}
+        for linea in orden.website_order_line - premios:
+            producto = linea.product_id
+            if not producto:
+                continue
+            if producto.id in por_producto:
+                fila = por_producto[producto.id]
+                fila['cantidad'] += int(linea.product_uom_qty)
+                fila['_subtotal'] += linea.price_subtotal
+                fila['_itbms'] = fila['_itbms'] or bool(linea.tax_ids)
+                continue
+            por_producto[producto.id] = {
+                'producto_id': producto.id,
+                'nombre': producto._dcasa_nombre_cliente(),
+                'cantidad': int(linea.product_uom_qty),
+                '_subtotal': linea.price_subtotal,
+                '_itbms': bool(linea.tax_ids),
+                'imagen': f'/web/image/product.product/{producto.id}/image_128',
+                'url': producto.product_tmpl_id.website_url or '',
+            }
+        for fila in por_producto.values():
+            subtotal, itbms = fila.pop('_subtotal'), fila.pop('_itbms')
+            lineas.append({**fila, 'subtotal_texto': P.precio_texto(subtotal, itbms)})
+        mas_itbms = orden.amount_tax > 0
+        return {
+            'lineas': lineas,
+            'cantidad_total': int(orden.cart_quantity),
+            **self._envio_del_carrito(orden, premios),
+            'total_texto': P.precio_texto(orden.amount_untaxed, mas_itbms),
+            'itbms_texto': P.precio_texto(orden.amount_tax, False),
+            'total_con_itbms_texto': P.precio_texto(orden.amount_total, False),
+        }
+
+    @staticmethod
+    def _monto_texto(monto, mas_itbms):
+        """Como ``precio_texto``, con el menos delante si rebaja: «−$45.00» (la promoción del envío)."""
+        texto = P.precio_texto(abs(monto), mas_itbms)
+        return f'−{texto}' if monto < 0 else texto
+
+    def _envio_del_carrito(self, orden, premios=None):
+        """El envío del carrito, que no está entre las líneas de la tienda (``website_order_line`` no muestra las de
+        envío) pero sí en los totales: ``envio`` (el lugar de la tabla, si lo puso el sistema) y ``extras`` (cada línea
+        de envío o de su promoción con su nombre y su monto, de Odoo), para que la página y el PDF digan lo mismo.
+
+        ``premios``: las líneas del programa Socios, que salen de los productos y entran aquí con su menos delante."""
+        extras = []
+        for linea in premios or orden.order_line.browse():
+            extras.append({
+                'tipo': 'premio',
+                'nombre': (linea.name or '').split('\n')[0][:120],
+                'subtotal_texto': self._monto_texto(linea.price_subtotal, bool(linea.tax_ids)),
+            })
+        for linea in orden.order_line - orden.website_order_line:
+            if linea.display_type or not (linea.is_delivery or linea.dcasa_envio_lugar_id
+                                          or linea.dcasa_promocion_envio_id):
+                continue
+            extras.append({
+                'tipo': 'promocion' if linea.dcasa_promocion_envio_id else 'envio',
+                'nombre': (linea.name or '').split('\n')[0][:120],
+                'subtotal_texto': self._monto_texto(linea.price_subtotal, bool(linea.tax_ids)),
+            })
+        lugar = orden.order_line.filtered(lambda sol: sol.dcasa_envio_lugar_id and not sol.display_type)[:1] \
+            .dcasa_envio_lugar_id
+        return {'envio': {'lugar_id': lugar.id, 'lugar': lugar.name} if lugar else None, 'extras': extras}
+
+    @http.route(f'{RAIZ}/carrito', type='http', auth='public', website=True, methods=['GET'], sitemap=False)
+    def carrito(self, **_kw):
+        if not request.env['dcasa.brian.tienda'].sudo()._activo():
+            return _json({'ok': False, 'motivo': 'apagado'})
+        if request.cart:
+            carrito = request.cart.sudo()
+            carrito._dcasa_revisar_envio_sumado()   # un envío sumado que hoy ya no se daría, fuera
+            # Y un premio de Socios que venció, que ya no cabe o que con este carrito le costaría la promoción del
+            # envío: fuera, con sus puntos de vuelta. Lo hacían /shop/cart y el pago, pero no este carrito, así que
+            # el chat podía seguir mostrando un premio que al socio ya no le convenía (revisión adversarial,
+            # 2026-11-17). El orden importa: primero el envío, porque de él depende lo del premio.
+            carrito._dcasa_limpiar_premios_web()
+        return _json({'ok': True, 'carrito': self._carrito()})
+
+    @http.route(f'{RAIZ}/vitrina', type='http', auth='public', website=True, methods=['GET'], sitemap=False)
+    def vitrina(self, **_kw):
+        if not request.env['dcasa.brian.tienda'].sudo()._activo():
+            return _json({'ok': False, 'motivo': 'apagado'})
+        return _json({'ok': True, 'productos': self._sugeridos()})
+
+    def _sugeridos(self):
+        """Lo que muestra el chat ampliado mientras Brian no ha mostrado nada (pedido de la dueña, 2026-11-15: «cómo
+        aprovechamos ese espacio enorme»): «Lo más buscado» de la portada, los mismos productos en el mismo orden, con
+        lo que tiene existencia primero y sin lo que ya está en el carrito. Las tarjetas son las de las herramientas de
+        Brian (`_j_ficha_corta`): mismo precio, disponibilidad y «Agregar» que cuando él los muestra."""
+        orden = request.cart
+        en_carrito = set(orden.website_order_line.product_id.product_tmpl_id.ids) if orden else set()
+        fichas = [ficha for ficha in self._fichas_de_la_vitrina() if ficha['plantilla_id'] not in en_carrito]
+        fichas.sort(key=lambda ficha: ficha.get('disponibilidad') == 'agotado')   # estable: el orden de la portada
+        return [{clave: ficha.get(clave) for clave in CAMPOS_TARJETA} for ficha in fichas[:6]]
+
+    def _fichas_de_la_vitrina(self):
+        """Las fichas de lo más buscado de la portada (hasta 12), iguales para todos los visitantes con el mismo sitio,
+        idioma, tarifa y posición fiscal: se guardan ``SEGUNDOS_CACHE_VITRINA``. Lo que depende de la persona (su
+        carrito) NO está aquí: lo aplica ``_sugeridos`` sobre una lista nueva."""
+        sitio = request.website
+        tarifa = getattr(request, 'pricelist', None)
+        posicion = getattr(request, 'fiscal_position', None)
+        clave = (request.env.cr.dbname, sitio.id, request.lang.code, tarifa.id if tarifa else None,
+                 posicion.id if posicion else None)
+        ahora = time.monotonic()
+        guardado = _CACHE_VITRINA.get(clave)
+        if guardado and guardado[0] > ahora:
+            return guardado[1]
+        herramientas = request.env['brian.herramientas'].sudo()
+        fichas = tuple(herramientas._j_ficha_corta(item['producto'], '') for item in sitio._dcasa_productos(limit=12))
+        if len(_CACHE_VITRINA) >= MAX_CLAVES_CACHE_VITRINA:
+            _CACHE_VITRINA.clear()
+        _CACHE_VITRINA[clave] = (ahora + SEGUNDOS_CACHE_VITRINA, fichas)
+        return fichas
+
+    def _producto(self, producto_id):
+        """``(variante, plantilla)`` publicada en este sitio, buscada como el visitante; ``(None, None)`` si no."""
+        variante = request.env['product.product'].sudo().browse(producto_id).exists()
+        if not variante:
+            return None, None
+        # Buscar (no leer) con las reglas del visitante: solo lo publicado y a la venta en este sitio.
+        plantilla = request.env['product.template'].search(Domain.AND([
+            request.website._dcasa_dominio_publicado(), [('id', '=', variante.product_tmpl_id.id)]]), limit=1)
+        if not plantilla:
+            return None, None
+        return request.env['product.product'].browse(variante.id), plantilla
+
+    def _se_agrega_directo(self, variante, plantilla):
+        """Las reglas del «Agregar» de un clic de la portada: sin elegir nada, con precio y que la tienda lo deje."""
+        website = request.website
+        precio = plantilla._get_sales_prices(website).get(plantilla.id, {}).get('price_reduce', plantilla.list_price)
+        if plantilla.product_variant_count > 1:
+            directa = website._dcasa_variante_directa(plantilla, variante)
+        else:
+            directa = website._dcasa_compra_directa(plantilla, precio)
+        return bool(directa and precio and precio > 0 and variante._is_add_to_cart_allowed())
+
+    def _poner(self, cuerpo, sumar):
+        producto_id = _entero(cuerpo.get('producto_id'), 1, MAX_ID - 1)
+        cantidad = _entero(cuerpo.get('cantidad'), 1 if sumar else 0, MAX_CANTIDAD)
+        if producto_id is None or cantidad is None:
+            return _json({'ok': False, 'motivo': 'formato'}, 400)
+        orden = request.cart
+        if sumar:
+            variante, plantilla = self._producto(producto_id)
+            if not variante:
+                return _json({'ok': False, 'motivo': 'no_disponible'})
+            if not self._se_agrega_directo(variante, plantilla):
+                return _json({'ok': False, 'motivo': 'elegir', 'url': plantilla.website_url})
+            orden = orden or request.website._create_cart()
+        elif not orden:
+            return _json({'ok': True, 'carrito': self._carrito()})
+        lineas = orden.website_order_line.filtered(lambda sol: sol.product_id.id == producto_id)
+        if lineas:
+            # La cantidad es la del PRODUCTO en el carrito: con la promoción por pares (dcasa_catalogo) un mismo
+            # producto puede ir en dos líneas (los pares y la caja suelta). Se deja todo en la primera y el servidor lo
+            # vuelve a acomodar.
+            actual = int(sum(lineas.mapped('product_uom_qty')))
+            # Sumar nunca baja una línea: si ya tenía más de 20 (puestas en /shop/cart), se queda como estaba.
+            nueva = max(actual, min(actual + cantidad, MAX_CANTIDAD)) if sumar else cantidad
+            for otra in lineas[1:]:
+                orden._cart_update_line_quantity(line_id=otra.id, quantity=0)
+            orden._cart_update_line_quantity(line_id=lineas[0].id, quantity=nueva)
+        elif sumar:
+            orden._cart_add(product_id=producto_id, quantity=cantidad)
+        # El carrito queda marcado «pasó por Andrés» (cómo llegó la venta). Es venta online salvo que una vendedora la
+        # atienda (dcasa_base.models.venta_online): eso lo decide la comprobación del chat de Juan al confirmar.
+        orden.sudo()._dcasa_escribir_marca(dcasa_via_andres=True)
+        return _json({'ok': True, 'carrito': self._carrito()})
+
+    @http.route(f'{RAIZ}/carrito/agregar', type='http', auth='public', website=True, methods=['POST'], csrf=False,
+                sitemap=False, max_content_length=MAX_CUERPO)
+    def carrito_agregar(self, **_kw):
+        return self._post(lambda cuerpo: self._poner(cuerpo, sumar=True))
+
+    @http.route(f'{RAIZ}/carrito/cantidad', type='http', auth='public', website=True, methods=['POST'], csrf=False,
+                sitemap=False, max_content_length=MAX_CUERPO)
+    def carrito_cantidad(self, **_kw):
+        return self._post(lambda cuerpo: self._poner(cuerpo, sumar=False))
+
+    # ------------------------------------------------------------------
+    # El envío en la cotización (A2)
+    # ------------------------------------------------------------------
+
+    @http.route(f'{RAIZ}/carrito/envio', type='http', auth='public', website=True, methods=['POST'], csrf=False,
+                sitemap=False, max_content_length=MAX_CUERPO)
+    def carrito_envio(self, **_kw):
+        return self._post(self._sumar_envio)
+
+    def _sumar_envio(self, cuerpo):
+        """Pone en el carrito de ESTA sesión el envío al lugar ``lugar_id`` de la tabla de envíos: la misma línea (y la
+        misma promoción) que pone ``dcasa_envios`` para Juan, con el precio de la calculadora. Las mismas reglas que
+        ``agregar_envio`` de Juan: Juan cotiza envíos, la tarifa aprobada, el lugar revisado y con precio claro."""
+        lugar_id = _entero(cuerpo.get('lugar_id'), 1, MAX_ID - 1)
+        if lugar_id is None:
+            return _json({'ok': False, 'motivo': 'formato'}, 400)
+        orden = request.cart
+        if not orden or not orden.website_order_line:
+            return _json({'ok': False, 'motivo': 'sin_carrito'})
+        herramientas = request.env['brian.herramientas'].sudo()
+        if herramientas._j_envios_encendidos():
+            return _json({'ok': False, 'motivo': 'sin_tarifa'})
+        lugar = request.env['dcasa.envio.lugar'].sudo().browse(lugar_id).exists()
+        if not lugar or not lugar.active:
+            return _json({'ok': False, 'motivo': 'lugar'})
+        tarjeta = herramientas._j_envio_tarjeta(lugar)
+        if herramientas._j_envio_sin_precio_para_el_cliente(tarjeta):
+            return _json({'ok': False, 'motivo': 'aparte'})
+        # Los topes, antes de escribir: por sesión y por conexión (una cookie nueva no da cupo nuevo).
+        ahora = time.time()
+        recientes = [t for t in request.session.get(SESION_ENVIO) or []
+                     if isinstance(t, (int, float)) and ahora - t < 3600]
+        if len(recientes) >= MAX_ENVIO_POR_HORA:
+            return _json({'ok': False, 'motivo': 'tope'}, 429)
+        Tienda = request.env['dcasa.brian.tienda'].sudo()
+        conexion = llave_ip(request.httprequest.remote_addr or '')
+        if not Tienda._reservar_confirmado(f'envio:{Tienda._huella(conexion)}', MAX_ENVIO_POR_CONEXION_HORA):
+            _logger.info('Brian de la tienda: una conexión llegó al tope de envíos sumados de esta hora.')
+            return _json({'ok': False, 'motivo': 'tope'}, 429)
+        request.session[SESION_ENVIO] = recientes + [int(ahora)]
+        orden = orden.sudo()
+        # La entrega «te cotizamos por WhatsApp» ($0) que puso la tienda al pasar por el pago no es de una persona: se
+        # cambia por el envío, como la de «Retiro en tienda» (revisión adversarial, 2026-11-16: si no, «ajeno» siempre).
+        orden._dcasa_quitar_entrega_por_cotizar()
+        puesto = orden._dcasa_envio_poner(lugar, tarjeta['total'])
+        if not puesto['puesto']:
+            return _json({'ok': False, 'motivo': MOTIVO_DEL_ENVIO.get(puesto['motivo'], 'fallo')})
+        orden._dcasa_escribir_marca(dcasa_via_andres=True)   # cómo llegó (no decide si es venta online)
+        return _json({'ok': True, 'ya_estaba': bool(puesto.get('ya_estaba')), 'carrito': self._carrito()})
+
+    # ------------------------------------------------------------------
+    # La cotización en PDF
+    # ------------------------------------------------------------------
+
+    @http.route(f'{RAIZ}/carrito/cotizacion.pdf', type='http', auth='public', website=True, methods=['GET'],
+                sitemap=False)
+    def cotizacion(self, **_kw):
+        """La cotización del carrito de ESTA sesión. Sin carrito, al carrito. Con los topes del docstring del módulo:
+        a la vez por proceso, por conexión y por sesión."""
+        Tienda = request.env['dcasa.brian.tienda'].sudo()
+        if not Tienda._activo():
+            raise request.not_found()
+        orden = request.cart
+        if not orden or not orden.website_order_line:
+            return request.redirect('/shop/cart')
+        orden.sudo()._dcasa_revisar_envio_sumado()   # el PDF nunca da un envío que hoy ya no se daría
+        # Sin esperar: con dos armándose, la tercera se va al instante (no retiene la conexión de la base esperando).
+        if not _SEMAFORO_PDF.acquire(blocking=False):
+            _logger.info('Brian de la tienda: ya hay %s cotizaciones en PDF a la vez.', MAX_PDF_A_LA_VEZ)
+            return self._sin_pdf(TEXTO_PDF_OCUPADO, 503, 20)
+        try:
+            ahora = time.time()
+            recientes = [t for t in request.session.get(SESION_PDF) or []
+                         if isinstance(t, (int, float)) and ahora - t < 3600]
+            if len(recientes) >= MAX_PDF_POR_HORA:
+                return self._sin_pdf(TEXTO_SIN_PDF, 429, 600)
+            conexion = llave_ip(request.httprequest.remote_addr or '')
+            if not Tienda._reservar_confirmado(f'pdf:{Tienda._huella(conexion)}', MAX_PDF_POR_CONEXION_HORA):
+                _logger.info('Brian de la tienda: una conexión llegó al tope de cotizaciones en PDF de esta hora.')
+                return self._sin_pdf(TEXTO_SIN_PDF, 429, 600)
+            request.session[SESION_PDF] = recientes + [int(ahora)]
+            contenido, tipo = request.env['ir.actions.report'].sudo().with_context(
+                dcasa_brian_cliente=self._cliente_de(orden), report_pdf_no_attachment=True)._render_qweb_pdf(
+                'dcasa_brian_tienda.action_report_cotizacion_carrito', [orden.id])
+        finally:
+            _SEMAFORO_PDF.release()
+        es_pdf = tipo == 'pdf'
+        return request.make_response(contenido, headers=[
+            ('Content-Type', 'application/pdf' if es_pdf else 'text/html; charset=utf-8'),
+            ('Content-Disposition', 'attachment; filename="cotizacion-dcasa.pdf"' if es_pdf else 'inline'),
+            ('Cache-Control', 'no-store'), ('X-Robots-Tag', 'noindex'), ('X-Content-Type-Options', 'nosniff')])
+
+    @staticmethod
+    def _sin_pdf(texto, estado, reintento_s):
+        return request.make_response(texto, status=estado, headers=[
+            ('Content-Type', 'text/plain; charset=utf-8'), ('Cache-Control', 'no-store'),
+            ('Retry-After', str(reintento_s)), ('X-Robots-Tag', 'noindex')])
+
+    @staticmethod
+    def _cliente_de(orden):
+        """El nombre que va en «Cliente:». Solo si quien pide es un usuario con sesión y el carrito es suyo; si no,
+        «(por confirmar)»: un carrito anónimo nunca muestra datos de nadie."""
+        usuario = request.env.user
+        if not usuario._is_public() and orden.partner_id == usuario.partner_id:
+            return usuario.partner_id.name or ''
+        return ''
+
+    # ------------------------------------------------------------------
+    # Las estrellas
+    # ------------------------------------------------------------------
+
+    @http.route(f'{RAIZ}/calificar', type='http', auth='public', website=True, methods=['POST'], csrf=False,
+                sitemap=False, max_content_length=MAX_CUERPO)
+    def calificar(self, **_kw):
+        return self._post(self._calificar)
+
+    def _calificar(self, cuerpo):
+        estrellas = _entero(cuerpo.get('estrellas'), 1, 5)
+        if estrellas is None:
+            return _json({'ok': False, 'motivo': 'formato'}, 400)
+        sid = request.session.get(SESION_SID)
+        if not sid:
+            return _json({'ok': False, 'motivo': 'sin_chat'})   # solo quien conversó (recibió un pase) califica
+        ya = request.session.get(SESION_CALIFICADO)
+        if ya == sid:
+            return _json({'ok': True, 'repetida': True})
+        request.env['dcasa.brian.tienda.calificacion'].sudo().create({'estrellas': estrellas})
+        request.session[SESION_CALIFICADO] = sid
+        return _json({'ok': True})
+
+
+class DcasaPrivacidadConBrian(DcasaTienda):
+    """La política de privacidad dice cuándo cambió: con el párrafo de «Brian, el chat de la tienda», esta fecha, salvo
+    que otro módulo (p. ej. «Busca con una foto») ya puso una más reciente: la fecha solo avanza."""
+
+    @http.route()
+    def privacidad(self, **kwargs):
+        respuesta = super().privacidad(**kwargs)
+        qcontext = getattr(respuesta, 'qcontext', None)
+        if qcontext is not None and _fecha(qcontext.get('actualizado')) < _fecha(FECHA_PRIVACIDAD):
+            qcontext['actualizado'] = FECHA_PRIVACIDAD
+        return respuesta

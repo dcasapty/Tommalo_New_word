@@ -1,0 +1,983 @@
+#!/usr/bin/env bash
+# Arranque del contenedor de D'CASA: PostgreSQL 16 local + Odoo 19 (Fase 1, opción A).
+#
+# 0. PostgreSQL local (docker/pg.sh): si R2 tiene respaldos, restaura el último + WAL,
+#    promueve y hace CHECKPOINT (sin él el archivado queda mudo hasta 5 min tras
+#    restaurar: docs/auditoria/ronda3/datos.md §2.3); si R2 está vacío, initdb + respaldo.
+#    Archivado continuo de WAL a R2 (archive_timeout 60 s ⇒ RPO ≈ 1 min) y un vigilante
+#    que fuerza pg_switch_wal(), alerta si el archivado se atrasa y lanza los respaldos.
+#    Si R2 no responde o la restauración falla, el contenedor sale con código ≠ 0:
+#    nunca se crea una base vacía cuando R2 tiene respaldos.
+# 1. Genera odoo.conf a partir de variables de entorno (sin secretos en la imagen).
+# 2. Base nueva  -> instala los módulos de D'CASA con español (+ respaldo completo).
+#    Base existente con otra versión de la imagen -> actualiza los módulos de D'CASA.
+#    Luego fija dónde van los adjuntos: ir_attachment.location = r2 si hay credenciales
+#    de R2 (addons/dcasa_adjuntos_r2), db si no.
+# 3. Saneo del usuario admin (idempotente, en CADA arranque hasta que quede hecho):
+#    si admin sigue con la clave «admin», se cambia antes de abrir el puerto.
+# 4. web.base.url = https://CANONICAL_HOST, congelada.
+# 5. Desinstala los módulos de Odoo que D'CASA no usa (idempotente, una vez por versión).
+# 6. Arranca Odoo en modo multihilo (un solo puerto: HTTP + websocket). El puerto 8069
+#    solo se abre con la base ya restaurada (edge/CONTRATO_CONTENEDOR.md).
+# 7. SIGTERM: para Odoo → CHECKPOINT → pg_switch_wal() → espera el último WAL en R2
+#    (tope PG_APAGADO_ARCHIVO_S) → pg_ctl stop -m fast. Si Odoo muere solo, se relanza
+#    sin tocar PostgreSQL; si PostgreSQL muere, recuperación local y sigue.
+#
+# Variables:
+#   ADMIN_PASSWORD        clave del usuario admin de Odoo (obligatoria). Se fija solo
+#                         si admin aún tiene la clave «admin» (base nueva o arranque
+#                         interrumpido); nunca pisa una clave que el dueño ya cambió.
+#   R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, PGBACKREST_CIPHER_PASS
+#                         repositorio de respaldos en R2 (obligatorias en modo local; las
+#                         opcionales R2_* / RESPALDO_* / PG_* están en docker/pg.sh).
+#                         Odoo recibe copia de las cuatro R2_* (y R2_REGION/R2_VERIFY_TLS)
+#                         como DCASA_ADJUNTOS_R2_* para guardar los adjuntos en R2
+#                         (prefijo adjuntos/ del mismo bucket). Nunca la clave de cifrado.
+#   DCASA_ADJUNTOS        «r2» (por defecto) o «db»: dónde se guardan los adjuntos NUEVOS.
+#                         Con «db» Odoo sigue leyendo los que están en R2 y un cron los
+#                         trae de vuelta a la base por lotes (emergencia).
+#   CANONICAL_HOST        dominio público (tommalo.example): fija web.base.url.
+#   DB_NAME               nombre de la base (por defecto dcasa).
+#   DB_MODO               «local» (por defecto si no hay DB_HOST) o «externo»: PostgreSQL
+#                         ajeno en DB_HOST/DB_USER/DB_PASSWORD (CI y vista previa).
+#   ADMIN_USER_PASSWORD   (opcional) reemplaza a ADMIN_PASSWORD para el usuario admin.
+#   ODOO_MASTER_PASSWORD  (opcional) contraseña maestra (admin_passwd), distinta de la
+#                         de admin. Si falta, se genera una aleatoria en cada arranque
+#                         y no se muestra: el gestor de bases está cerrado
+#                         (list_db = False y bloqueado en el borde), así que no hace falta.
+#   ODOO_DB_MAXCONN       conexiones a PostgreSQL del proceso de Odoo (por defecto 48;
+#                         ver docs/DESPLIEGUE.md → «Conexiones a PostgreSQL»).
+#   ODOO_LIMIT_MEMORY_SOFT / ODOO_LIMIT_MEMORY_HARD  bytes de memoria VIRTUAL (ver odoo.conf).
+#   DB_REINTENTOS         intentos de conexión a PostgreSQL al arrancar (por defecto 20, cada 3 s).
+#   ODOO_DESINSTALAR_SOBRANTES  0 para no desinstalar los módulos sobrantes.
+#   (Identidad del negocio: DCASA_COBRA_ITBMS, DCASA_TIENDA_FISICA y DCASA_CONOCIMIENTO_INICIAL NO son variables del
+#   entorno: las trae la imagen en docker/negocio.env, que manda. Ver «1b. Identidad del negocio».)
+#   DCASA_STOCK_PRUEBA    unidades de prueba por producto sin existencias ni movimientos
+#                         (solo con DCASA_ENTORNO=staging; por defecto 10). En producción
+#                         siempre 0: ver «2c. Existencias de prueba».
+#   DCASA_BLACK_WEEKEND   1 = Black Weekend visible sin mirar fechas (por defecto 1 en staging,
+#                         0 en producción); DCASA_BLACK_WEEKEND_INICIO / _FIN = ventana
+#                         AAAA-MM-DD en hora de Panamá. Ver «2d. Black Weekend».
+#   Seguridad de acceso (addons/dcasa_seguridad, docs/SEGURIDAD_ACCESO.md; ver «2e»):
+#   DCASA_2FA_OBLIGATORIO 1 = quien está en el alcance enrola la app de códigos al entrar;
+#                         0 (por defecto) = cada quien decide. Encender SOLO después de que la
+#                         dueña enroló su app.
+#   DCASA_2FA_ALCANCE     «admins» (por defecto) o «internos» (todo el personal).
+#   DCASA_SESION_ADMIN_HORAS / DCASA_INACTIVIDAD_ADMIN_MIN  cierre de sesión y bloqueo de
+#                         pantalla de los administradores (12 h / 60 min al instalar; 0 = sin).
+#                         Vacías: se respeta lo que haya en Odoo.
+#   DCASA_AVISO_LOGIN_TELEGRAM  0 apaga el aviso de inicios de sesión de admin por Telegram.
+#   DCASA_ROBOTS_IA       abierta | equilibrada (por defecto) | cerrada: robots.txt para IA.
+#   Alertas de operación (addons/dcasa_base mantenimiento.py, docs/OPERACION.md «Alertas»; ver «2f»):
+#   DCASA_ALERTA_TELEGRAM 0 apaga el aviso por Telegram de disco/memoria/base (queda en el log).
+#   DCASA_ALERTA_DISCO_PCT / DCASA_ALERTA_MEMORIA_PCT  % de disco y de memoria real del contenedor
+#                         a partir del cual se avisa (sin variable: 80 y 90, en el módulo).
+#   DCASA_ALERTA_BASE_GB  GB de base a partir de los cuales se avisa (sin variable: 0.7).
+#   DCASA_ALERTA_SILENCIO_H  horas sin repetir el mismo aviso por Telegram (sin variable: 24).
+#   ODOO_LOG_LEVEL        nivel de log de Odoo; sin variable: «warn» en producción, «info» en staging.
+#   ODOO_LOG_HANDLER      «logger:NIVEL,…»; por defecto werkzeug a WARNING y las métricas de
+#                         D'CASA a INFO (DCASA_METRICA sale aunque el nivel general sea warn).
+#   TURNSTILE_SITE_KEY + TURNSTILE_SECRET  Cloudflare Turnstile en el login y los formularios
+#                         (las dos o ninguna). DCASA_TURNSTILE=off lo apaga (rescate).
+#   DCASA_2FA_RESCATE     RESCATE («break-glass»): login de un usuario que perdió el teléfono.
+#                         Le quita el doble factor UNA vez por versión desplegada (marcador en
+#                         dcasa_seguridad.rescate_hecho). Exige poder desplegar (GitHub/Cloudflare,
+#                         cada uno con su propio 2FA): no abre ninguna puerta nueva. Quitarla después.
+set -euo pipefail
+
+: "${ADMIN_PASSWORD:?Falta ADMIN_PASSWORD (clave del usuario admin de Odoo)}"
+DB_NAME="${DB_NAME:-dcasa}"
+if [[ -z "${DB_MODO:-}" ]]; then
+  DB_MODO="local"
+  [[ -n "${DB_HOST:-}" ]] && DB_MODO="externo"
+fi
+ENTRYPOINT_T0=$SECONDS
+ODOO_PID=""
+
+# --- 1b. Identidad del negocio (docker/negocio.env, dentro de la imagen) -------
+# Decisiones del dueño que valen igual en staging y producción: ITBMS (DCASA_COBRA_ITBMS), tienda física
+# (DCASA_TIENDA_FISICA) y conocimiento inicial del bot (DCASA_CONOCIMIENTO_INICIAL). Viajan en la imagen y MANDAN
+# sobre el entorno: Cloudflare puede encender una imagen nueva con las variables del arranque anterior, y así fue como
+# staging (20a754a, 2026-11-25) arrancó sin ellas y siguió con ITBMS y con pago y retiro en la tienda. Sin el archivo
+# (p. ej. corriendo el guion fuera de la imagen) quedan las del entorno, como antes.
+NEGOCIO_NOMBRES=" DCASA_COBRA_ITBMS DCASA_TIENDA_FISICA DCASA_CONOCIMIENTO_INICIAL "
+negocio_archivo=""
+for f in "${DCASA_NEGOCIO_ENV:-}" /usr/local/lib/dcasa/negocio.env "$(dirname "$(readlink -f "$0")")/negocio.env"; do
+  if [[ -n "$f" && -r "$f" ]]; then negocio_archivo="$f"; break; fi
+done
+if [[ -n "$negocio_archivo" ]]; then
+  while IFS= read -r linea || [[ -n "$linea" ]]; do
+    [[ -z "$linea" || "$linea" == \#* ]] && continue
+    if [[ ! "$linea" =~ ^([A-Z_]+)=([a-z0-9_]*)$ ]] || [[ "$NEGOCIO_NOMBRES" != *" ${BASH_REMATCH[1]} "* ]]; then
+      echo "⚠ $negocio_archivo: línea que no entiendo, la salto: ${linea:0:80}" >&2
+      continue
+    fi
+    nombre="${BASH_REMATCH[1]}"
+    valor="${BASH_REMATCH[2]}"
+    if [[ -n "${!nombre:-}" && "${!nombre}" != "$valor" ]]; then
+      echo "⚠ $nombre=${!nombre} en el entorno no cuenta: manda la imagen ($nombre=$valor, docker/negocio.env)." >&2
+    fi
+    printf -v "$nombre" '%s' "$valor"
+    export "${nombre?}"
+  done <"$negocio_archivo"
+  echo "▶ Negocio (docker/negocio.env): ITBMS=${DCASA_COBRA_ITBMS:-1}, tienda física=${DCASA_TIENDA_FISICA:-1}, conocimiento=${DCASA_CONOCIMIENTO_INICIAL:-ninguno}"
+fi
+VIG_PID=""
+
+# Adjuntos en R2 (addons/dcasa_adjuntos_r2): variables propias para el proceso de Odoo.
+adjuntos_r2_exportar() {
+  [[ -n "${R2_ENDPOINT:-}" && -n "${R2_BUCKET:-}" && -n "${R2_ACCESS_KEY_ID:-}" && -n "${R2_SECRET_ACCESS_KEY:-}" ]] \
+    || return 0
+  export DCASA_ADJUNTOS_R2_ENDPOINT="$R2_ENDPOINT" DCASA_ADJUNTOS_R2_BUCKET="$R2_BUCKET" \
+    DCASA_ADJUNTOS_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" DCASA_ADJUNTOS_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+    DCASA_ADJUNTOS_R2_REGION="${R2_REGION:-auto}" \
+    DCASA_ADJUNTOS_R2_VERIFY_TLS="${R2_VERIFY_TLS:-${PGBACKREST_REPO1_STORAGE_VERIFY_TLS:-y}}"
+}
+APAGANDO=0
+INSTALADA=0
+
+if [[ "$DB_MODO" == "local" ]]; then
+  for lib in "${DCASA_PG_LIB:-}" /usr/local/lib/dcasa/pg.sh "$(dirname "$(readlink -f "$0")")/pg.sh"; do
+    if [[ -n "$lib" && -r "$lib" ]]; then
+      # shellcheck source=docker/pg.sh
+      source "$lib"
+      break
+    fi
+  done
+  declare -F pg_arrancar >/dev/null || { echo "✖ No encuentro docker/pg.sh" >&2; exit 1; }
+  if [[ -z "${PG_RESPALDO_CMD:-}" ]]; then
+    PG_RESPALDO_CMD="$(command -v dcasa-respaldo || true)"
+    PG_RESPALDO_CMD="${PG_RESPALDO_CMD:-$(dirname "$(readlink -f "$0")")/../scripts/respaldo.sh}"
+  fi
+  export DB_NAME PG_RESPALDO_CMD
+
+  # Apagado ordenado: Odoo primero (deja de escribir), luego PostgreSQL con el último
+  # WAL ya en R2. Se usa en SIGTERM, en errores del arranque y si todo se cae.
+  apagar() {
+    ((APAGANDO)) && return 0
+    APAGANDO=1
+    trap - TERM INT
+    if [[ -n "$ODOO_PID" ]] && kill -0 "$ODOO_PID" 2>/dev/null; then
+      echo "▶ Deteniendo Odoo"
+      kill -TERM "$ODOO_PID" 2>/dev/null || true
+      local i
+      for ((i = 0; i < ${ODOO_PARADA_S:-60} * 5; i++)); do
+        kill -0 "$ODOO_PID" 2>/dev/null || break
+        sleep 0.2
+      done
+      kill -KILL "$ODOO_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$VIG_PID" ]]; then
+      kill -TERM "$VIG_PID" 2>/dev/null || true
+      wait "$VIG_PID" 2>/dev/null || true
+    fi
+    pg_apagar_ordenado
+  }
+  trap 'echo "▶ SIGTERM: apagado ordenado"; apagar; exit 143' TERM INT
+  trap 'rc=$?; apagar; exit $rc' EXIT
+
+  echo "▶ PostgreSQL local (${DCASA_ENTORNO:-produccion}); respaldos en R2: ${R2_BUCKET:-?}${R2_RUTA_PG:-/pgbackrest}"
+  pg_configurar_repo
+  if ! pg_arrancar; then
+    echo "✖ PostgreSQL no arrancó (restauración o R2): el contenedor sale con error." >&2
+    exit 1
+  fi
+  pg_preparar_base "$DB_NAME"
+  echo "✔ PostgreSQL listo ($PG_ORIGEN) en $((SECONDS - ENTRYPOINT_T0)) s"
+  # Odoo no hereda las variables de respaldo (ni la clave de cifrado): solo la copia
+  # DCASA_ADJUNTOS_R2_* para los adjuntos. Corre con el mismo usuario que lee r2.env, así
+  # que esto no es una frontera de seguridad: ver docs/OPERACION.md «Adjuntos en R2».
+  adjuntos_r2_exportar
+  unset R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY PGBACKREST_CIPHER_PASS RESPALDO_DUMP_PASS
+  DB_HOST="$PG_SOCKET_DIR"
+  DB_PORT="$PG_PORT"
+  DB_USER="$PG_APP_USER"
+  DB_PASSWORD=""
+  DB_SSLMODE="disable"
+else
+  : "${DB_HOST:?Falta DB_HOST}"
+  : "${DB_USER:?Falta DB_USER}"
+  : "${DB_PASSWORD:?Falta DB_PASSWORD}"
+  adjuntos_r2_exportar
+fi
+
+DB_PORT="${DB_PORT:-5432}"
+DB_SSLMODE="${DB_SSLMODE:-prefer}"
+DB_REINTENTOS="${DB_REINTENTOS:-20}"
+ODOO_MODULES="${ODOO_MODULES:-dcasa_base,dcasa_invoice,dcasa_abonos,dcasa_socios,website_dcasa,dcasa_mi_cuenta,dcasa_catalogo,dcasa_interfaz,dcasa_contabilidad,dcasa_brian,dcasa_sesiones,dcasa_adjuntos_r2,dcasa_tienda_borde,dcasa_seguridad,dcasa_conversaciones,dcasa_nomina,dcasa_contactos,dcasa_consolidacion,dcasa_equipo,dcasa_barras,dcasa_existencias,dcasa_migracion,dcasa_guia,dcasa_correo,dcasa_meta_catalogo,dcasa_meta_eventos,dcasa_marketing,dcasa_sofia,dcasa_envios,dcasa_camila,dcasa_buscar_foto,dcasa_brian_tienda,dcasa_pago_tilopay,dcasa_pago_yappy,dcasa_comision_web,dcasa_ubicacion}"
+ODOO_LANG="${ODOO_LANG:-es_419}"
+# Versión: manda la de la IMAGEN (/opt/dcasa/COMMIT, del Dockerfile), no la variable. Cloudflare puede
+# arrancar la imagen nueva con las variables del arranque anterior; con APP_VERSION atrasada la base no
+# se actualizaba y el código nuevo corría sobre la base vieja (incidente del 2026-10-16, #97).
+# Sin el archivo (imágenes viejas, desarrollo) se usa APP_VERSION como antes.
+DCASA_INFO_IMAGEN="${DCASA_INFO_IMAGEN:-/opt/dcasa}"
+VERSION_VARIABLE="${APP_VERSION:-dev}"
+COMMIT_IMAGEN="$(head -n1 "$DCASA_INFO_IMAGEN/COMMIT" 2>/dev/null || true)"
+CODIGO="$(head -n1 "$DCASA_INFO_IMAGEN/CODIGO" 2>/dev/null || true)"
+# Fecha del commit de la imagen: una imagen más vieja que la que actualizó la base no la baja.
+ORDEN_IMAGEN="$(head -n1 "$DCASA_INFO_IMAGEN/ORDEN" 2>/dev/null || true)"
+[[ "$ORDEN_IMAGEN" =~ ^[1-9][0-9]*$ ]] || ORDEN_IMAGEN=""
+if [[ "$COMMIT_IMAGEN" =~ ^[0-9a-f]{40}$ ]]; then
+  APP_VERSION="$COMMIT_IMAGEN"
+  if [[ "$VERSION_VARIABLE" != "$APP_VERSION" ]]; then
+    echo "⚠ APP_VERSION ($VERSION_VARIABLE) no es el commit de esta imagen ($APP_VERSION): manda la imagen." >&2
+  fi
+else
+  COMMIT_IMAGEN=""
+  APP_VERSION="$VERSION_VARIABLE"
+fi
+[[ "$CODIGO" =~ ^[0-9a-f]{64}$ ]] || CODIGO=""
+# Odoo los lee: /dcasa/salud dice qué versión responde y si la base está al día con este código.
+export APP_VERSION DCASA_COMMIT_IMAGEN="$COMMIT_IMAGEN" DCASA_CODIGO="$CODIGO"
+CONF="${ODOO_RC:-/var/lib/odoo/odoo.conf}"
+ODOO_BIN="${ODOO_BIN:-/opt/odoo/odoo-bin}"
+ODOO_ADDONS_PATH="${ODOO_ADDONS_PATH:-/opt/odoo/addons,/opt/odoo/odoo/addons,/opt/dcasa/addons}"
+ODOO_DATA_DIR="${ODOO_DATA_DIR:-/var/lib/odoo/data}"
+ODOO_HTTP_PORT="${ODOO_HTTP_PORT:-8069}"
+ADMIN_USER_PASSWORD="${ADMIN_USER_PASSWORD:-$ADMIN_PASSWORD}"
+
+# Módulos de Odoo que D'CASA no usa (decisión del dueño; docs/auditoria/BITACORA.md
+# «el CRM se queda»). Patrones de shell. Los puentes automáticos que dependen de
+# ellos (p. ej. website_sale_stock_wishlist) se van con ellos.
+DCASA_SOBRANTES="sms *_sms snailmail* iap* crm_iap_* iap_crm partner_autocomplete
+  account_edi_ubl_cii purchase_edi_ubl_bis3 sale_edi_ubl spreadsheet_dashboard*
+  spreadsheet_account website_sale_wishlist website_sale_comparison* base_import_module"
+# Nunca se desinstalan, aunque coincidan con un patrón o dependan de un sobrante.
+DCASA_PROTEGIDOS="base web crm sale_crm calendar auth_totp* auth_passkey* auth_timeout website_cf_turnstile base_import dcasa_* website_dcasa ${ODOO_MODULES//,/ }"
+
+if [[ -z "${DCASA_PIN_PEPPER:-}" ]]; then
+  echo "⚠ Falta DCASA_PIN_PEPPER: la app de socios (/socios) no dejará registrarse ni entrar." >&2
+fi
+if [[ "$ADMIN_USER_PASSWORD" == "admin" ]]; then
+  echo "⚠ La clave del usuario admin es «admin»: solo aceptable en desarrollo local." >&2
+fi
+
+# Contraseña maestra: propia y distinta de la del usuario admin (S-04).
+MASTER_PASSWORD="${ODOO_MASTER_PASSWORD:-}"
+if [[ -n "$MASTER_PASSWORD" && "$MASTER_PASSWORD" == "$ADMIN_USER_PASSWORD" ]]; then
+  echo "⚠ ODOO_MASTER_PASSWORD es igual a la clave de admin: se ignora y se usa una aleatoria." >&2
+  MASTER_PASSWORD=""
+fi
+if [[ -z "$MASTER_PASSWORD" ]]; then
+  MASTER_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+fi
+
+# Nivel de log de Odoo por entorno: producción «warn», lo demás «info» (ODOO_LOG_LEVEL lo pisa).
+LOG_LEVEL_DEFECTO=info
+[[ "${DCASA_ENTORNO:-produccion}" == "produccion" ]] && LOG_LEVEL_DEFECTO=warn
+
+cat > "$CONF" <<CONF
+[options]
+addons_path = ${ODOO_ADDONS_PATH}
+data_dir = ${ODOO_DATA_DIR}
+db_host = ${DB_HOST}
+db_port = ${DB_PORT}
+db_user = ${DB_USER}
+${DB_PASSWORD:+db_password = ${DB_PASSWORD}}
+db_name = ${DB_NAME}
+db_sslmode = ${DB_SSLMODE}
+dbfilter = ^${DB_NAME}\$
+list_db = False
+admin_passwd = ${MASTER_PASSWORD}
+proxy_mode = True
+http_interface = 0.0.0.0
+http_port = ${ODOO_HTTP_PORT}
+workers = 0
+max_cron_threads = ${ODOO_CRON_THREADS:-1}
+# Con workers = 0 todas las peticiones simultáneas comparten este pool: con 16 se
+# medía ~75 % de errores 500 (PoolError) a 20-50 peticiones a la vez. Debe quedar
+# por debajo de max_connections de PostgreSQL (ver docs/DESPLIEGUE.md).
+db_maxconn = ${ODOO_DB_MAXCONN:-48}
+# Sesiones HTTP en la base (dcasa_sesiones): el disco del contenedor es efímero.
+server_wide_modules = base,web,dcasa_sesiones
+limit_time_real = ${ODOO_LIMIT_TIME_REAL:-300}
+# En modo hilos Odoo compara limit_memory_soft con la memoria VIRTUAL del proceso
+# (odoo/tools/osutil.py: vms), no con la RSS. Medido (odoo-medicion y BITACORA): VmSize
+# 368 MiB caliente y ~790 MiB con 50 peticiones simultáneas, con RSS de solo 229-273 MiB;
+# al 45 % de 1 GiB (460 MiB) Odoo se reiniciaba en bucle. Soft 1,5 GiB ≈ 2× el pico
+# medido: reinicio limpio (al terminar la petición) solo ante una fuga real. Hard 2 GiB
+# (RLIMIT_AS) corta un desborde antes de que el OOM del contenedor alcance a PostgreSQL;
+# además Odoo corre con oom_score_adj 500 para que el kernel lo elija a él primero.
+limit_memory_soft = ${ODOO_LIMIT_MEMORY_SOFT:-1610612736}
+limit_memory_hard = ${ODOO_LIMIT_MEMORY_HARD:-2147483648}
+# Producción a «warn» (solo avisos y errores; cada línea es un evento de Workers Logs);
+# staging y local a «info». ODOO_LOG_LEVEL lo pisa. Las métricas y alertas de D'CASA
+# (DCASA_METRICA, DCASA_LIMPIEZA, DCASA_ALERTA) y la línea {"evento":"memoria"} del
+# arranque siguen saliendo: ver log_handler y registrar_memoria más abajo.
+log_level = ${ODOO_LOG_LEVEL:-$LOG_LEVEL_DEFECTO}
+# Sin una línea por petición (werkzeug a WARNING): cada línea es un evento de Workers Logs
+# (20 M/mes incluidos) y el Worker ya registra cada invocación con su estado. Los errores
+# de Odoo (500, excepciones) salen por odoo.http a ERROR con su traza: no se pierden.
+# dcasa_base.models.mantenimiento a INFO: sus DCASA_METRICA / DCASA_LIMPIEZA salen aunque
+# el nivel general sea warn. Para depurar: ODOO_LOG_HANDLER=werkzeug:INFO.
+log_handler = ${ODOO_LOG_HANDLER:-werkzeug:WARNING,odoo.addons.dcasa_base.models.mantenimiento:INFO}
+# Búsquedas sin importar tildes: «sofa» encuentra «Sofá», «colchon» encuentra «Colchón».
+unaccent = True
+CONF
+chmod 600 "$CONF"
+unset MASTER_PASSWORD
+
+odoo() { python3 "$ODOO_BIN" -c "$CONF" "$@"; }
+
+# odoo-bin shell con un script por stdin. El script debe imprimir «$1» al terminar
+# bien: así un fallo (excepción, base caída) nunca pasa por éxito.
+odoo_shell() {
+  local salida
+  salida="$(python3 "$ODOO_BIN" shell -c "$CONF" -d "$DB_NAME" --log-level=warn)" || return 1
+  printf '%s\n' "$salida" | grep -vx "$1" || true
+  grep -qx "$1" <<<"$salida"
+}
+
+export PGPASSWORD="$DB_PASSWORD" PGSSLMODE="$DB_SSLMODE" PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-10}"
+
+# Ejecuta una consulta. Reintenta solo los fallos de CONEXIÓN (psql sale con 2);
+# un error de SQL o la conexión caída tras los reintentos devuelven error (y con
+# `set -e` abortan el arranque). Código 10: la base de datos no existe todavía.
+sql() {
+  local intento err rc salida
+  err="$(mktemp)"
+  for ((intento = 1; intento <= DB_REINTENTOS; intento++)); do
+    rc=0
+    salida="$(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -X -tAq \
+      -v ON_ERROR_STOP=1 -c "$1" 2>"$err")" || rc=$?
+    if ((rc == 0)); then
+      rm -f "$err"
+      printf '%s' "$salida"
+      return 0
+    fi
+    if ((rc == 2)) && grep -q "database \"$DB_NAME\" does not exist" "$err"; then
+      rm -f "$err"
+      return 10
+    fi
+    if ((rc != 2)); then
+      echo "✖ Error de SQL: $(cat "$err")" >&2
+      rm -f "$err"
+      return "$rc"
+    fi
+    echo "… PostgreSQL no responde (intento $intento/$DB_REINTENTOS): $(head -n1 "$err")" >&2
+    sleep 3
+  done
+  echo "✖ No hay conexión con PostgreSQL en $DB_HOST:$DB_PORT: no arranco (no asumo base nueva)." >&2
+  rm -f "$err"
+  return 1
+}
+
+set_param() {
+  sql "INSERT INTO ir_config_parameter (key, value, create_date, write_date)
+       VALUES ('$1', '$2', now(), now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, write_date = now()" >/dev/null
+}
+
+# Tras instalar o actualizar: la versión primero; la huella del código y el orden de la imagen después (las
+# imágenes anteriores a este control solo marcan la versión: así se nota cuándo la huella quedó vieja).
+marcar_base_actualizada() {
+  set_param dcasa.deployed_version "$APP_VERSION"
+  [[ -z "$CODIGO" ]] || set_param dcasa.codigo_desplegado "$CODIGO"
+  [[ -z "$ORDEN_IMAGEN" ]] || set_param dcasa.codigo_orden "$ORDEN_IMAGEN"
+}
+# 't' si la versión se marcó después que la huella (la marcó una imagen que no sabe de huellas).
+SQL_HUELLA_VIEJA="SELECT COALESCE(
+  (SELECT write_date FROM ir_config_parameter WHERE key = 'dcasa.codigo_desplegado')
+  < (SELECT write_date FROM ir_config_parameter WHERE key = 'dcasa.deployed_version'), false)"
+
+# --- ¿Qué hay en la base? ----------------------------------------------------
+# «sin_base»: la base no existe (Odoo la crea); «vacia»: existe sin tablas de Odoo;
+# si no, el estado de dcasa_base («installed», «ausente», «to install»…).
+# Dos consultas: en una sola, PostgreSQL resuelve ir_module_module al planificar y falla
+# con la base vacía que crea el modo local (antes Odoo creaba la base: «sin_base»).
+rc=0
+estado="$(sql "SELECT CASE WHEN to_regclass('public.ir_module_module') IS NULL THEN 'vacia' ELSE 'odoo' END")" || rc=$?
+if ((rc == 10)); then
+  estado="sin_base"
+elif ((rc != 0)); then
+  exit "$rc"
+elif [[ "$estado" == "odoo" ]]; then
+  estado="$(sql "SELECT COALESCE((SELECT state FROM ir_module_module WHERE name = 'dcasa_base'), 'ausente')")"
+fi
+
+if [[ "$estado" != "sin_base" ]]; then
+  # Extensión para buscar sin tildes (unaccent = True). Si no hay permiso, Odoo busca con tildes.
+  sql "CREATE EXTENSION IF NOT EXISTS unaccent" >/dev/null \
+    || echo "⚠ No pude crear la extensión unaccent: las búsquedas distinguirán tildes." >&2
+fi
+
+# --- 2. Instalar o actualizar ------------------------------------------------
+if [[ "$estado" != "installed" ]]; then
+  echo "▶ Base nueva ($estado): instalando $ODOO_MODULES ($ODOO_LANG)"
+  odoo -d "$DB_NAME" -i "$ODOO_MODULES" --load-language="$ODOO_LANG" --stop-after-init
+  marcar_base_actualizada
+  INSTALADA=1
+else
+  deployed="$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa.deployed_version'")"
+  # Huella del código con que se actualizó la base por última vez. Si no coincide con la de esta
+  # imagen se actualiza, aunque la versión diga lo mismo: es lo que de verdad decide (#97).
+  codigo_base="$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa.codigo_desplegado'")"
+  # Una imagen anterior a este control solo marca la versión: si la versión se marcó DESPUÉS que la
+  # huella, la huella quedó vieja y no prueba nada (revisión adversarial del 2026-10-16).
+  huella_vieja="$(sql "$SQL_HUELLA_VIEJA")"
+  orden_base="$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa.codigo_orden'")"
+  # Solo si el código cambia: con el mismo código (p. ej. volver atrás solo el Worker) no hay nada que bajar.
+  if [[ -n "$ORDEN_IMAGEN" && "$orden_base" =~ ^[0-9]+$ && -n "$CODIGO" && "$codigo_base" != "$CODIGO" ]] \
+    && ((ORDEN_IMAGEN < 10#$orden_base)) && [[ "${DCASA_PERMITIR_BAJAR:-}" != "$APP_VERSION" ]]; then
+    # Nunca hacia atrás: con el código viejo, `-u` borraría las columnas y tablas nuevas y sus datos.
+    # Para volver atrás de verdad: restaurar la base primero (docs/OPERACION.md «Volver atrás un despliegue»)
+    # o, si se decide bajar igual, DCASA_PERMITIR_BAJAR=<este commit>.
+    NO_BAJAR=1
+    echo "✖ Esta imagen ($APP_VERSION) es más vieja que la que actualizó la base: NO la actualizo hacia atrás." >&2
+    echo "  El despliegue no la dará por sana (base_al_dia=false). Ver docs/OPERACION.md «Volver atrás un despliegue»." >&2
+  elif [[ "$deployed" != "$APP_VERSION" || (-n "$CODIGO" && ("$codigo_base" != "$CODIGO" || "$huella_vieja" == "t")) ]]; then
+    echo "▶ Nueva versión (base: ${deployed:-?}, código ${codigo_base:0:12} → imagen: $APP_VERSION, código ${CODIGO:0:12}): actualizando $ODOO_MODULES"
+    # -i instala los módulos nuevos de la lista (p. ej. dcasa_catalogo); en los ya
+    # instalados no hace nada. -u actualiza los instalados.
+    odoo -d "$DB_NAME" -i "$ODOO_MODULES" -u "$ODOO_MODULES" --stop-after-init
+    marcar_base_actualizada
+    echo "✔ Base actualizada a $APP_VERSION (código ${CODIGO:0:12})"
+  else
+    echo "▶ La base ya está al día con esta imagen ($APP_VERSION, código ${CODIGO:0:12})"
+  fi
+fi
+
+# --- 2b. Dónde van los adjuntos ------------------------------------------------
+# r2 solo con credenciales y con dcasa_adjuntos_r2 instalado (sin el módulo, Odoo no
+# conoce «r2» y fallaría). Los que siguen en la base los sube el cron del módulo por lotes.
+# Nunca se borra nada de R2 al cambiar: ver docs/OPERACION.md «Adjuntos en R2».
+adjuntos_ubicacion="db"
+case "${DCASA_ADJUNTOS:-r2}" in
+  r2) [[ -n "${DCASA_ADJUNTOS_R2_BUCKET:-}" ]] && adjuntos_ubicacion="r2" ;;
+  db) echo "▶ DCASA_ADJUNTOS=db: adjuntos nuevos en la base; el cron trae de vuelta los de R2" ;;
+  *) echo "⚠ DCASA_ADJUNTOS inválido («$DCASA_ADJUNTOS»): se usa «db»." >&2 ;;
+esac
+if [[ "$adjuntos_ubicacion" == "r2" \
+  && "$(sql "SELECT state FROM ir_module_module WHERE name = 'dcasa_adjuntos_r2'")" != "installed" ]]; then
+  echo "⚠ dcasa_adjuntos_r2 no está instalado: los adjuntos se quedan en la base." >&2
+  adjuntos_ubicacion="db"
+fi
+set_param ir_attachment.location "$adjuntos_ubicacion"
+echo "▶ Adjuntos: ir_attachment.location = $adjuntos_ubicacion"
+if [[ -z "${DCASA_ADJUNTOS_R2_BUCKET:-}" ]]; then
+  en_r2="$(sql "SELECT count(*) FROM ir_attachment WHERE store_fname LIKE 'r2://%'")"
+  if ((en_r2 > 0)); then
+    echo "⚠ Hay $en_r2 adjuntos en R2 y no hay credenciales de R2: esos archivos no se podrán leer." >&2
+  fi
+fi
+
+# --- 2c. Existencias de prueba (solo staging) ----------------------------------
+# dcasa_catalogo.stock_prueba = unidades que recibe cada producto inventariable que nunca
+# tuvo existencias ni movimientos (addons/dcasa_catalogo: aplicar_stock_prueba). Staging:
+# DCASA_STOCK_PRUEBA o 10. Producción: SIEMPRE 0 (no hay existencias inventadas), aunque
+# alguien defina la variable. Se aplica una vez por versión; nunca pisa un conteo real.
+entorno="${DCASA_ENTORNO:-produccion}"
+stock_prueba=0
+if [[ "$entorno" == "staging" ]]; then
+  stock_prueba="${DCASA_STOCK_PRUEBA:-10}"
+elif [[ -n "${DCASA_STOCK_PRUEBA:-}" && "${DCASA_STOCK_PRUEBA}" != "0" ]]; then
+  echo "⚠ DCASA_STOCK_PRUEBA solo vale en staging: en $entorno se ignora (queda en 0)." >&2
+fi
+if [[ ! "$stock_prueba" =~ ^[0-9]+$ ]]; then
+  echo "⚠ DCASA_STOCK_PRUEBA inválido («$stock_prueba»): queda en 0." >&2
+  stock_prueba=0
+fi
+set_param dcasa_catalogo.stock_prueba "$stock_prueba"
+# Una imagen que no actualizó la base (más vieja que ella, NO_BAJAR) no la toca: ni existencias ni módulos (§5).
+if ((stock_prueba > 0)) && [[ "${NO_BAJAR:-0}" != "1" ]] \
+  && [[ "$(sql "SELECT state FROM ir_module_module WHERE name = 'dcasa_catalogo'")" == "installed" ]] \
+  && [[ "$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa_catalogo.stock_prueba_version'")" != "$APP_VERSION" ]]; then
+  echo "▶ Existencias de prueba ($entorno): $stock_prueba unidades a los productos sin existencias ni movimientos"
+  if odoo_shell DCASA_STOCK_OK <<'PY'; then
+from odoo.addons.dcasa_catalogo.catalogo import aplicar_stock_prueba
+print(f'· {aplicar_stock_prueba(env)} productos con existencias de prueba')
+env.cr.commit()
+print('DCASA_STOCK_OK')
+PY
+    set_param dcasa_catalogo.stock_prueba_version "$APP_VERSION"
+  else
+    echo "⚠ No se pudieron poner las existencias de prueba: Odoo arranca igual y se reintenta." >&2
+  fi
+fi
+
+# --- 2c'. Sin ITBMS (negocios que no lo cobran, p. ej. Tommalo) -------------
+# DCASA_COBRA_ITBMS=0 (Tommalo, docker/negocio.env: ver «1b»): la empresa sin impuesto de venta por
+# defecto y los productos sin ITBMS (addons/dcasa_base: aplicar_sin_itbms). Sin la variable (o "1") no se toca nada:
+# así se comporta D'CASA y así corren las pruebas. Una vez por versión, como las existencias de prueba. Volver a
+# cobrarlo no es automático: se ponen los impuestos a mano (docs/TOMMALO.md).
+if [[ "${DCASA_COBRA_ITBMS:-1}" == "0" ]] && [[ "${NO_BAJAR:-0}" != "1" ]] \
+  && [[ "$(sql "SELECT state FROM ir_module_module WHERE name = 'dcasa_base'")" == "installed" ]] \
+  && [[ "$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa_base.sin_itbms_version'")" != "$APP_VERSION" ]]; then
+  echo "▶ Sin ITBMS: la empresa y los productos dejan de sumar el 7 %"
+  if odoo_shell DCASA_ITBMS_OK <<'PY'; then
+from odoo.addons.dcasa_base import aplicar_sin_itbms
+print(f'· {aplicar_sin_itbms(env)} productos sin ITBMS')
+env.cr.commit()
+print('DCASA_ITBMS_OK')
+PY
+    set_param dcasa_base.sin_itbms_version "$APP_VERSION"
+  else
+    echo "⚠ No se pudo quitar el ITBMS: Odoo arranca igual y se reintenta en el próximo arranque." >&2
+  fi
+fi
+
+# --- 2c'''. Sin tienda física (negocios que venden solo en línea, p. ej. Tommalo) -------------
+# DCASA_TIENDA_FISICA=0 (Tommalo, docker/negocio.env: ver «1b»): el pago no ofrece «Pago en la
+# tienda» y la entrega «Retiro en tienda» queda archivada (addons/website_dcasa/models/tienda.py:
+# _dcasa_aplicar_sin_tienda_fisica). Se apagan, no se borran, y las migraciones no los vuelven a encender. Sin la
+# variable (o "1") no se toca nada: así se comporta D'CASA y así corren las pruebas. Una vez por versión.
+if [[ "${DCASA_TIENDA_FISICA:-1}" == "0" ]] && [[ "${NO_BAJAR:-0}" != "1" ]] \
+  && [[ "$(sql "SELECT state FROM ir_module_module WHERE name = 'website_dcasa'")" == "installed" ]] \
+  && [[ "$(sql "SELECT value FROM ir_config_parameter WHERE key = 'website_dcasa.sin_tienda_fisica_version'")" != "$APP_VERSION" ]]; then
+  echo "▶ Sin tienda física: fuera «Pago en la tienda» y «Retiro en tienda»"
+  if odoo_shell DCASA_SIN_TIENDA_OK <<'PY'; then
+print(f"· Apagados: {', '.join(env['website']._dcasa_aplicar_sin_tienda_fisica()) or 'nada'}")
+env.cr.commit()
+print('DCASA_SIN_TIENDA_OK')
+PY
+    set_param website_dcasa.sin_tienda_fisica_version "$APP_VERSION"
+  else
+    echo "⚠ No se pudo quitar el pago y el retiro en tienda: Odoo arranca igual y se reintenta en el próximo arranque." >&2
+  fi
+fi
+
+# --- 2c''. Conocimiento inicial del negocio (addons/dcasa_conversaciones/conocimiento_inicial.py) --
+# DCASA_CONOCIMIENTO_INICIAL=tommalo siembra las fichas de «Conocimiento del bot» que nunca se cargaron en esta
+# base (cada una UNA vez: lo que el equipo cambie, apague, archive o borre en el panel no se vuelve a pisar ni a
+# crear). Sin la variable, nada: el conocimiento de fábrica es cero. Una vez por versión.
+if [[ -n "${DCASA_CONOCIMIENTO_INICIAL:-}" ]] && [[ "${NO_BAJAR:-0}" != "1" ]] \
+  && [[ "$DCASA_CONOCIMIENTO_INICIAL" =~ ^[a-z_]+$ ]] \
+  && [[ "$(sql "SELECT state FROM ir_module_module WHERE name = 'dcasa_conversaciones'")" == "installed" ]] \
+  && [[ "$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa_conversaciones.conocimiento_inicial_version'")" != "$APP_VERSION" ]]; then
+  echo "▶ Conocimiento inicial ($DCASA_CONOCIMIENTO_INICIAL): las fichas que falten"
+  if DCASA_NEGOCIO="$DCASA_CONOCIMIENTO_INICIAL" odoo_shell DCASA_CONOCIMIENTO_OK <<'PY'; then
+import os
+from odoo.addons.dcasa_conversaciones.conocimiento_inicial import cargar_conocimiento_inicial
+print(f'· {len(cargar_conocimiento_inicial(env, os.environ["DCASA_NEGOCIO"]))} fichas nuevas')
+env.cr.commit()
+print('DCASA_CONOCIMIENTO_OK')
+PY
+    set_param dcasa_conversaciones.conocimiento_inicial_version "$APP_VERSION"
+  else
+    echo "⚠ No se pudo cargar el conocimiento inicial: Odoo arranca igual y se reintenta en el próximo arranque." >&2
+  fi
+fi
+
+# --- 2d. Black Weekend (addons/website_dcasa/models/black_weekend.py) --------
+# dcasa_black_weekend.activo = 1 muestra la campaña sin mirar fechas (vista previa): staging
+# DCASA_BLACK_WEEKEND o 1; producción DCASA_BLACK_WEEKEND o 0 (se ve solo dentro de la ventana).
+# dcasa_black_weekend.inicio / .fin (AAAA-MM-DD, hora de Panamá, inclusivas) solo se fijan si
+# DCASA_BLACK_WEEKEND_INICIO / _FIN vienen definidas: vacías, se respeta lo que haya en Odoo.
+# El cron horario de dcasa_tienda_borde nota el cambio y regenera la tienda del borde.
+if [[ "$(sql "SELECT state FROM ir_module_module WHERE name = 'website_dcasa'")" == "installed" ]]; then
+  bw_activo=0
+  [[ "$entorno" == "staging" ]] && bw_activo=1
+  bw_activo="${DCASA_BLACK_WEEKEND:-$bw_activo}"
+  if [[ "$bw_activo" != "0" && "$bw_activo" != "1" ]]; then
+    echo "⚠ DCASA_BLACK_WEEKEND inválido («$bw_activo»): queda en 0." >&2
+    bw_activo=0
+  fi
+  set_param dcasa_black_weekend.activo "$bw_activo"
+  for bw_lado in INICIO FIN; do
+    bw_variable="DCASA_BLACK_WEEKEND_$bw_lado"
+    bw_fecha="${!bw_variable:-}"
+    [[ -z "$bw_fecha" ]] && continue
+    if [[ "$bw_fecha" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && date -d "$bw_fecha" +%F >/dev/null 2>&1; then
+      set_param "dcasa_black_weekend.${bw_lado,,}" "$bw_fecha"
+    else
+      echo "⚠ $bw_variable inválida («$bw_fecha», se espera AAAA-MM-DD): no se cambia." >&2
+    fi
+  done
+  echo "▶ Black Weekend ($entorno): activo=$bw_activo, inicio=$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa_black_weekend.inicio'"), fin=$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa_black_weekend.fin'") (hora de Panamá)"
+fi
+
+# --- 2d'. Caché de páginas del borde tras un despliegue ----------------------
+# Versión nueva = plantillas y estilos nuevos que ningún cambio del ORM anota: el cron de aviso
+# (dcasa.tienda.pendiente._dcasa_revisar_version) marca «regenerar todo» por APP_VERSION. Aquí
+# solo se adelanta para que corra apenas Odoo abra, y no a los 15 min.
+if [[ "$(sql "SELECT state FROM ir_module_module WHERE name = 'dcasa_tienda_borde'")" == "installed" ]] \
+  && [[ "$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa_tienda_borde.version_avisada'")" != "$APP_VERSION" ]]; then
+  sql "UPDATE ir_cron SET nextcall = now() AT TIME ZONE 'UTC'
+       WHERE id = (SELECT res_id FROM ir_model_data
+                   WHERE module = 'dcasa_tienda_borde' AND name = 'cron_avisar_borde')" >/dev/null
+  echo "▶ Caché de páginas: versión nueva ($APP_VERSION), se regenera al abrir Odoo"
+fi
+
+# --- 2e. Seguridad de acceso (addons/dcasa_seguridad) ----------------------------
+# Doble factor obligatorio APAGADO por defecto: la dueña enrola su app primero y luego se
+# enciende (docs/SEGURIDAD_ACCESO.md). Nunca se usa auth_totp.policy de Odoo (código por
+# correo): sin servidor de correo saliente dejaría a todo el personal fuera.
+if [[ "$(sql "SELECT state FROM ir_module_module WHERE name = 'dcasa_seguridad'")" == "installed" ]]; then
+  seg_2fa="${DCASA_2FA_OBLIGATORIO:-0}"
+  if [[ "$seg_2fa" != "0" && "$seg_2fa" != "1" ]]; then
+    echo "⚠ DCASA_2FA_OBLIGATORIO inválido («$seg_2fa»): queda en 0 (apagado)." >&2
+    seg_2fa=0
+  fi
+  seg_alcance="${DCASA_2FA_ALCANCE:-admins}"
+  if [[ "$seg_alcance" != "admins" && "$seg_alcance" != "internos" ]]; then
+    echo "⚠ DCASA_2FA_ALCANCE inválido («$seg_alcance»): queda en «admins»." >&2
+    seg_alcance=admins
+  fi
+  set_param dcasa_seguridad.2fa_obligatorio "$seg_2fa"
+  set_param dcasa_seguridad.2fa_alcance "$seg_alcance"
+  if [[ "$seg_2fa" == "1" ]]; then
+    sin_app="$(sql "SELECT string_agg(u.login, ', ') FROM res_users u
+      JOIN res_groups_users_rel r ON r.uid = u.id
+      JOIN ir_model_data d ON d.res_id = r.gid AND d.model = 'res.groups' AND d.module = 'base' AND d.name = 'group_system'
+      WHERE u.active AND COALESCE(u.totp_secret, '') = ''")"
+    if [[ -n "$sin_app" ]]; then
+      echo "▶ 2FA obligatorio: estos administradores enrolarán la app al entrar: $sin_app"
+    fi
+  fi
+  if [[ -n "$(sql "SELECT value FROM ir_config_parameter WHERE key = 'auth_totp.policy'")" ]] \
+    && [[ "$(sql "SELECT count(*) FROM ir_mail_server WHERE active")" == "0" ]]; then
+    echo "⚠ auth_totp.policy está puesto y no hay servidor de correo saliente: quien no tenga la app" \
+      "no podrá entrar (el código va por correo). Quítalo en Ajustes › Permisos." >&2
+  fi
+  # Aviso por Telegram de cada inicio de sesión: «1» a todo el personal (por defecto), «admins» solo a los
+  # administradores, «0» nada.
+  seg_aviso="${DCASA_AVISO_LOGIN_TELEGRAM:-1}"
+  [[ "$seg_aviso" == "0" || "$seg_aviso" == "admins" ]] || seg_aviso=1
+  set_param dcasa_seguridad.aviso_telegram "$seg_aviso"
+  if [[ -n "${DCASA_ROBOTS_IA:-}" ]]; then
+    case "$DCASA_ROBOTS_IA" in
+      abierta | equilibrada | cerrada) set_param dcasa_seguridad.robots_ia "$DCASA_ROBOTS_IA" ;;
+      *) echo "⚠ DCASA_ROBOTS_IA inválido («$DCASA_ROBOTS_IA»): no se cambia." >&2 ;;
+    esac
+  fi
+  # Sesiones de administrador (auth_timeout en el grupo base.group_system). Solo si vienen.
+  seg_horas="${DCASA_SESION_ADMIN_HORAS:-}"
+  seg_min="${DCASA_INACTIVIDAD_ADMIN_MIN:-}"
+  if [[ -n "$seg_horas" || -n "$seg_min" ]]; then
+    if [[ "${seg_horas:-0}" =~ ^[0-9]{1,4}$ && "${seg_min:-0}" =~ ^[0-9]{1,5}$ ]]; then
+      grupo_admin="(SELECT res_id FROM ir_model_data WHERE module = 'base' AND name = 'group_system')"
+      if [[ -n "$seg_horas" ]]; then
+        seg_mfa=false
+        if ((10#$seg_horas > 0)); then seg_mfa=true; fi
+        sql "UPDATE res_groups SET lock_timeout = $((10#$seg_horas * 60)), lock_timeout_mfa = $seg_mfa
+          WHERE id = $grupo_admin" >/dev/null
+      fi
+      if [[ -n "$seg_min" ]]; then
+        sql "UPDATE res_groups SET lock_timeout_inactivity = $((10#$seg_min)), lock_timeout_inactivity_mfa = false
+          WHERE id = $grupo_admin" >/dev/null
+      fi
+      echo "▶ Sesiones de administrador: ${seg_horas:-sin cambio} h / ${seg_min:-sin cambio} min"
+    else
+      echo "⚠ DCASA_SESION_ADMIN_HORAS / DCASA_INACTIVIDAD_ADMIN_MIN inválidas: no se cambian." >&2
+    fi
+  fi
+  # Turnstile (website_cf_turnstile de Odoo): las dos claves o ninguna. off = apagado (rescate).
+  if [[ "${DCASA_TURNSTILE:-}" == "off" ]]; then
+    set_param cf.turnstile_site_key ""
+    set_param cf.turnstile_secret_key ""
+    echo "▶ Turnstile apagado (DCASA_TURNSTILE=off)"
+  elif [[ -n "${TURNSTILE_SITE_KEY:-}" && -n "${TURNSTILE_SECRET:-}" ]]; then
+    if [[ "$TURNSTILE_SITE_KEY$TURNSTILE_SECRET" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+      set_param cf.turnstile_site_key "$TURNSTILE_SITE_KEY"
+      set_param cf.turnstile_secret_key "$TURNSTILE_SECRET"
+      echo "▶ Turnstile activo en el login y los formularios"
+    else
+      echo "⚠ TURNSTILE_SITE_KEY / TURNSTILE_SECRET con caracteres raros: no se cambian." >&2
+    fi
+  elif [[ -n "${TURNSTILE_SITE_KEY:-}${TURNSTILE_SECRET:-}" ]]; then
+    echo "⚠ Turnstile necesita TURNSTILE_SITE_KEY y TURNSTILE_SECRET juntas: no se cambia nada." >&2
+  fi
+  unset TURNSTILE_SECRET
+  # Rescate: quitar el doble factor a un usuario que perdió el teléfono (docs/SEGURIDAD_ACCESO.md).
+  if [[ -n "${DCASA_2FA_RESCATE:-}" ]]; then
+    if [[ ! "$DCASA_2FA_RESCATE" =~ ^[A-Za-z0-9@._+-]{1,128}$ ]]; then
+      echo "⚠ DCASA_2FA_RESCATE inválido: no se toca nada." >&2
+    elif [[ "$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa_seguridad.rescate_hecho'")" \
+      == "$DCASA_2FA_RESCATE:$APP_VERSION" ]]; then
+      echo "⚠ DCASA_2FA_RESCATE sigue puesta («$DCASA_2FA_RESCATE»), ya se usó en esta versión: QUÍTALA." >&2
+    else
+      rescatado="$(sql "UPDATE res_users SET totp_secret = NULL, totp_last_counter = NULL
+        WHERE login = '$DCASA_2FA_RESCATE' AND active RETURNING id")"
+      if [[ -n "$rescatado" ]]; then
+        sql "DELETE FROM auth_totp_device WHERE user_id = $rescatado" >/dev/null
+        sql "INSERT INTO dcasa_seguridad_acceso (login, user_id, resultado, metodo, ip, agente, es_admin,
+               create_date, write_date)
+             VALUES ('$DCASA_2FA_RESCATE', $rescatado, 'rescate', 'despliegue', '', 'DCASA_2FA_RESCATE',
+               false, now() AT TIME ZONE 'UTC', now() AT TIME ZONE 'UTC')" >/dev/null
+        echo "⚠ RESCATE: se quitó el doble factor a «$DCASA_2FA_RESCATE». Entra, actívalo de nuevo y" \
+          "QUITA DCASA_2FA_RESCATE del despliegue." >&2
+      else
+        echo "⚠ DCASA_2FA_RESCATE: no hay un usuario activo «$DCASA_2FA_RESCATE»." >&2
+      fi
+      set_param dcasa_seguridad.rescate_hecho "$DCASA_2FA_RESCATE:$APP_VERSION"
+    fi
+  fi
+  echo "▶ Seguridad: 2FA obligatorio=$seg_2fa (alcance $seg_alcance), aviso Telegram=$seg_aviso"
+  # La puerta del equipo (addons/dcasa_seguridad/models/puerta.py): el MODO (0, avisar o 1) lo decide el Worker en cada
+  # petición y viaja firmado; aquí solo llega el secreto con que Odoo verifica esas cabeceras. Sin un secreto de 32+
+  # caracteres Odoo no verifica nada y por tanto no exige la puerta a nadie.
+  puerta_secreto="${DCASA_PUERTA_SECRETO:-}"
+  if [[ -z "$puerta_secreto" ]]; then
+    echo "▶ Puerta del equipo: sin secreto cargado (apagada)"
+  elif [[ ${#puerta_secreto} -lt 32 ]]; then
+    echo "⚠ DCASA_PUERTA_SECRETO tiene menos de 32 caracteres: la puerta NO se exige (docs/SEGURIDAD_ACCESO.md §8)." >&2
+  else
+    echo "▶ Puerta del equipo: secreto cargado (el modo lo manda el Worker en cada petición)"
+  fi
+fi
+
+# --- 2f. Alertas de operación (addons/dcasa_base/models/mantenimiento.py) ---------
+# Umbrales del cron horario de vigilancia (disco, memoria real, tamaño de la base). Solo se
+# fijan si la variable viene; sin variable manda el valor por defecto del módulo (80 %, 90 %,
+# 0.7 GB, 24 h; docs/OPERACION.md «Alertas por Telegram»). El aviso sale por el Telegram de
+# Brian a los administradores vinculados (dcasa_seguridad); DCASA_ALERTA_TELEGRAM=0 lo apaga.
+alerta_param() {
+  local variable="$1" clave="$2" valor="${!1:-}"
+  [[ -z "$valor" ]] && return 0
+  if [[ "$valor" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    set_param "$clave" "$valor"
+    echo "▶ Alerta: $clave = $valor"
+  else
+    echo "⚠ $variable inválida («$valor», se espera un número): no se cambia." >&2
+  fi
+}
+alerta_param DCASA_ALERTA_DISCO_PCT dcasa.alerta.disco_pct
+alerta_param DCASA_ALERTA_MEMORIA_PCT dcasa.alerta.memoria_pct
+alerta_param DCASA_ALERTA_BASE_GB dcasa.reporte.alerta_gb
+alerta_param DCASA_ALERTA_SILENCIO_H dcasa.alerta.silencio_h
+alerta_telegram="${DCASA_ALERTA_TELEGRAM:-1}"
+[[ "$alerta_telegram" == "0" ]] || alerta_telegram=1
+set_param dcasa_seguridad.aviso_operacion "$alerta_telegram"
+
+# --- 3. Saneo del usuario admin (S-04) ----------------------------------------
+# Se comprueba en cada arranque hasta que el marcador exista: si el contenedor muere
+# entre la instalación y este paso, el siguiente arranque lo repite antes de abrir
+# el puerto. Solo cambia la clave si sigue siendo «admin» (o está vacía).
+saneado="$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa.admin_saneado'")"
+if [[ "$saneado" != "1" ]]; then
+  echo "▶ Saneando el usuario admin"
+  ADMIN_USER_PASSWORD="$ADMIN_USER_PASSWORD" odoo_shell DCASA_ADMIN_OK <<'PY' || {
+import os
+admin = env.ref('base.user_admin', raise_if_not_found=False)
+if admin:
+    env.cr.execute("SELECT COALESCE(password, '') FROM res_users WHERE id = %s", [admin.id])
+    [hashed] = env.cr.fetchone()
+    try:
+        insegura = not hashed or env['res.users']._crypt_context().verify('admin', hashed)
+    except ValueError:
+        insegura = True
+    if insegura:
+        admin.password = os.environ['ADMIN_USER_PASSWORD']
+        print('· clave de admin cambiada (tenía la de fábrica)')
+    else:
+        print('· admin ya tenía una clave propia: no se toca')
+env['ir.config_parameter'].sudo().set_param('dcasa.admin_saneado', '1')
+env.cr.commit()
+print('DCASA_ADMIN_OK')
+PY
+    echo "✖ No pude sanear el usuario admin: no arranco Odoo con una clave por defecto." >&2
+    exit 1
+  }
+fi
+
+# --- 4. URL canónica -----------------------------------------------------------
+# web.base.url fija y congelada: sin freeze, Odoo la reescribe con el Host de la
+# primera petición de un administrador (p. ej. la URL interna del contenedor).
+if [[ -n "${CANONICAL_HOST:-}" ]]; then
+  url="$CANONICAL_HOST"
+  [[ "$url" == http://* || "$url" == https://* ]] || url="https://$url"
+  url="${url%/}"
+  if [[ "$url" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then
+    set_param web.base.url "$url"
+    set_param web.base.url.freeze True
+    echo "▶ web.base.url = $url (congelada)"
+  else
+    echo "⚠ CANONICAL_HOST no es un dominio válido («$CANONICAL_HOST»): no toco web.base.url." >&2
+  fi
+fi
+
+# --- 5. Módulos sobrantes -----------------------------------------------------
+# Una vez por versión (también si el arranque anterior murió a mitad). Un fallo se
+# registra y no impide arrancar: se reintenta en el siguiente arranque.
+revisados="$(sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa.sobrantes_version'")"
+if [[ "${ODOO_DESINSTALAR_SOBRANTES:-1}" != "0" && "$revisados" != "$APP_VERSION" && "${NO_BAJAR:-0}" != "1" ]]; then
+  echo "▶ Revisando módulos sobrantes"
+  if DCASA_SOBRANTES="$DCASA_SOBRANTES" DCASA_PROTEGIDOS="$DCASA_PROTEGIDOS" \
+    odoo_shell DCASA_SOBRANTES_OK <<'PY'; then
+import fnmatch
+import os
+
+sobrantes = os.environ['DCASA_SOBRANTES'].split()
+protegidos = os.environ['DCASA_PROTEGIDOS'].split()
+
+
+def coincide(nombre, patrones):
+    return any(fnmatch.fnmatchcase(nombre, patron) for patron in patrones)
+
+
+def protegido(modulo):
+    return coincide(modulo.name, protegidos)
+
+
+Modulo = env['ir.module.module']
+instalados = Modulo.search([('state', 'in', ('installed', 'to upgrade'))])
+candidatos = instalados.filtered(lambda m: coincide(m.name, sobrantes) and not protegido(m))
+# Punto fijo: un sobrante se queda si algo que NO se va depende de él (un módulo
+# protegido o uno instalado a propósito); los puentes automáticos se van con él.
+for _vuelta in range(100):
+    cambio = False
+    for modulo in candidatos.sorted('name'):
+        dependientes = modulo.downstream_dependencies() - candidatos
+        if not dependientes:
+            continue
+        bloquean = dependientes.filtered(lambda d: protegido(d) or not d.auto_install)
+        if bloquean:
+            print(f"· se queda {modulo.name}: lo requiere {', '.join(sorted(bloquean.mapped('name')))}")
+            candidatos -= modulo
+        else:
+            print(f"· con {modulo.name} se van: {', '.join(sorted(dependientes.mapped('name')))}")
+            candidatos |= dependientes
+        cambio = True
+        break
+    if not cambio:
+        break
+
+if candidatos:
+    nombres = ', '.join(sorted(candidatos.mapped('name')))
+    print(f"· desinstalando {len(candidatos)}: {nombres}")
+    try:
+        candidatos.button_immediate_uninstall()
+    except Exception as error:  # noqa: BLE001 - se registra y se sigue
+        env.cr.rollback()
+        print(f"· no se pudo desinstalar ({type(error).__name__}: {error}); se reintenta en el próximo arranque")
+        raise
+else:
+    print('· nada que desinstalar')
+# Con todo ya instalado (y lo sobrante fuera), apagar o espaciar las acciones planificadas
+# de Odoo que no aplican (dcasa.mantenimiento.CRONS_ODOO). También corre al actualizar
+# dcasa_base (data/crons_odoo.xml); aquí cubre la instalación nueva, donde algunos módulos
+# cargan después de dcasa_base.
+ajustes = env['dcasa.mantenimiento']._ajustar_crons_odoo()
+ajustados = sorted(x for x, r in ajustes.items() if r == 'ajustado')
+print(f"· crons de Odoo ajustados: {', '.join(ajustados) or 'ninguno (ya estaban)'}")
+env.cr.commit()
+print('DCASA_SOBRANTES_OK')
+PY
+    set_param dcasa.sobrantes_version "$APP_VERSION"
+  else
+    echo "⚠ No se pudieron desinstalar los módulos sobrantes: Odoo arranca igual y se reintenta." >&2
+  fi
+fi
+
+# --- 5b. Prueba de humo: ¿el código y la base coinciden? (#97) ------------------
+# Cada campo guardado con su columna y el Inicio, las cotizaciones y las conversaciones armados de
+# verdad (dcasa_base/models/humo.py). Si faltan columnas se actualiza una vez más. El resultado queda
+# en dcasa.humo: /dcasa/salud lo dice y el despliegue lo exige. Nunca impide arrancar.
+revisar_humo() {
+  odoo_shell DCASA_HUMO_HECHO <<'PY'
+import json
+resultado = env['dcasa.humo']._revisar()
+env.cr.commit()
+print('· humo: ' + json.dumps(resultado, ensure_ascii=False)[:1500])
+print('DCASA_HUMO_HECHO')
+PY
+}
+leer_humo() { sql "SELECT value FROM ir_config_parameter WHERE key = 'dcasa.humo'" || true; }
+if [[ "${DCASA_HUMO:-1}" == "0" ]]; then
+  echo "⚠ DCASA_HUMO=0: sin prueba de humo en este arranque." >&2
+  sql "DELETE FROM ir_config_parameter WHERE key = 'dcasa.humo'" >/dev/null || true
+else
+  echo "▶ Prueba de humo (columnas de la base y pantallas principales)"
+  # Si la prueba no llega a terminar, que no quede el «ok» de un arranque anterior.
+  set_param dcasa.humo '{"ok": false, "columnas_faltantes": [], "errores": ["la prueba de humo no terminó"]}'
+  if revisar_humo; then
+    humo="$(leer_humo)"
+    if [[ "$humo" != *'"columnas_faltantes": []'* && "${NO_BAJAR:-0}" != "1" ]]; then
+      # Los módulos de D'CASA y, además, los que definen los campos sin columna (p. ej. `sale` tras cambiar la
+      # versión de Odoo: `-u dcasa_*` no actualiza los módulos de los que depende).
+      extra="$(python3 -c 'import json, re, sys
+try:
+    modulos = json.loads(sys.stdin.read()).get("modulos") or []
+except ValueError:
+    modulos = []
+print(",".join(m for m in modulos if isinstance(m, str) and re.fullmatch(r"[a-z0-9_]+", m)))' <<<"$humo" || true)"
+      echo "⚠ Faltan columnas en la base para este código: actualizo los módulos otra vez${extra:+ (y $extra)}." >&2
+      if odoo -d "$DB_NAME" -u "$ODOO_MODULES${extra:+,$extra}" --stop-after-init; then
+        marcar_base_actualizada
+      else
+        echo "✖ La actualización de los módulos falló: revisa el log de arriba." >&2
+      fi
+      revisar_humo || true
+      humo="$(leer_humo)"
+    fi
+    if [[ "$humo" == *'"ok": true'* ]]; then
+      echo "✔ Humo: la base coincide con el código y las pantallas principales abren"
+    else
+      echo "✖ Humo con problemas (el despliegue no lo dará por sano): ${humo:0:1500}" >&2
+    fi
+  else
+    echo "⚠ No pude correr la prueba de humo: el despliegue no lo dará por sano." >&2
+  fi
+fi
+
+if [[ "$DB_MODO" != "local" ]]; then
+  echo "▶ Iniciando Odoo ($APP_VERSION)"
+  exec python3 "$ODOO_BIN" -c "$CONF" "$@"
+fi
+
+# --- 6. Modo local: primer respaldo, vigilante y Odoo supervisado ---------------
+if [[ "$INSTALADA" == "1" ]]; then
+  # Base recién instalada: copia completa ya, para no depender de reproducir el WAL
+  # de toda la instalación en la próxima restauración.
+  respaldo_fisico full || echo "⚠ El primer respaldo completo falló: lo reintenta el vigilante." >&2
+fi
+pg_vigilante &
+VIG_PID=$!
+
+iniciar_odoo() {
+  # oom_score_adj 500: ante falta de memoria el kernel mata a Odoo (se relanza aquí)
+  # y no a PostgreSQL (eso obligaría a restaurar). Subirlo no requiere privilegios.
+  (
+    echo 500 >/proc/self/oom_score_adj 2>/dev/null || true
+    exec python3 "$ODOO_BIN" -c "$CONF" "$@"
+  ) &
+  ODOO_PID=$!
+}
+
+# Memoria real (cgroup: anónima vs caché; RSS/PSS de Odoo y PostgreSQL; contadores de OOM)
+# en UNA línea JSON {"evento":"memoria",...}: una vez con Odoo ya caliente tras arrancar
+# y cada vez que Odoo se cae (¿fue un OOM?). El panel de Cloudflare no separa la caché.
+DCASA_MEMORIA="${DCASA_MEMORIA:-/opt/dcasa/addons/dcasa_base/memoria.py}"
+MEMORIA_TRAS_S="${MEMORIA_TRAS_S:-180}"
+registrar_memoria() {
+  if [[ -r "$DCASA_MEMORIA" ]]; then
+    python3 "$DCASA_MEMORIA" "$1" 2>/dev/null || true
+  fi
+}
+
+echo "▶ Iniciando Odoo ($APP_VERSION) tras $((SECONDS - ENTRYPOINT_T0)) s de arranque"
+iniciar_odoo "$@"
+caidas=()
+memoria_en=$((SECONDS + MEMORIA_TRAS_S))
+while true; do
+  sleep 5 &
+  wait $! || true
+  if ((memoria_en > 0 && SECONDS >= memoria_en)); then
+    registrar_memoria arranque
+    memoria_en=0
+  fi
+  if ! pg_vivo; then
+    pg_alerta "PostgreSQL se detuvo: recuperación local"
+    if ! { pg_iniciar && pg_esperar_promocion && pg_tras_promover; }; then
+      echo "✖ PostgreSQL no vuelve: el contenedor sale (el próximo arranque restaura desde R2)." >&2
+      exit 1
+    fi
+  fi
+  if ! kill -0 "$ODOO_PID" 2>/dev/null; then
+    rc=0
+    wait "$ODOO_PID" || rc=$?
+    ahora=$SECONDS
+    recientes=()
+    for t in "${caidas[@]}"; do
+      ((ahora - t < 600)) && recientes+=("$t")
+    done
+    caidas=("${recientes[@]}" "$ahora")
+    if ((${#caidas[@]} > ${ODOO_REINICIOS_MAX:-5})); then
+      echo "✖ Odoo terminó ${#caidas[@]} veces en 10 min (último código $rc): salgo." >&2
+      exit 1
+    fi
+    pg_alerta "Odoo terminó (código $rc): se relanza (${#caidas[@]} en 10 min)"
+    registrar_memoria odoo_caido
+    iniciar_odoo "$@"
+  fi
+done
