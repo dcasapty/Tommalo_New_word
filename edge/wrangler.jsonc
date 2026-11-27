@@ -143,7 +143,7 @@
       "kv_namespaces": [{ "binding": "TIENDA" }],
       "triggers": { "crons": ["7 * * * *", "17 8 * * *"] },
       "vars": {
-        "CANONICAL_HOST": "tommalo-staging.subdominio-pendiente.workers.dev",
+        "CANONICAL_HOST": "",
         "DCASA_ENTORNO": "staging",
         // Tilopay (docs/TILOPAY.md): staging SIEMPRE en prueba (su cuenta es la de pruebas de desarrollador). Va fijado aquí
         // a propósito: lo que está en este archivo manda sobre el panel, así que ni un descuido deja a staging aceptando
@@ -158,7 +158,9 @@
         // en D'CASA) para que el aviso de Yappy no dependa de que staging cambie de dirección. Si algún día staging tiene
         // un dominio propio que no apunte al Worker, esta línea sigue llevando el aviso al Worker. Producción NO la lleva
         // (y Odoo la ignoraría).
-        "YAPPY_URL_BASE": "https://tommalo-staging.subdominio-pendiente.workers.dev",
+        // PENDIENTE: vacío hasta que exista el subdominio workers.dev de Tommalo; entonces va ahí (con CANONICAL_HOST y
+        // TIENDA_AVISO_URL). El CI rechaza valores que digan PENDIENTE en las variables (I-11).
+        "YAPPY_URL_BASE": "",
         // 10 unidades a cada producto sin existencias ni movimientos, para probar ventas
         // (addons/dcasa_catalogo: aplicar_stock_prueba; nunca pisa un conteo real).
         "DCASA_STOCK_PRUEBA": "10",
@@ -176,7 +178,7 @@
         // (navbar píldora, héroe, footer; probado idéntico byte a byte salvo el token CSRF, que el
         // JS refresca). La plantilla propia de antes (apagada el 2026-10-02) ya no existe.
         // Staging vive en workers.dev: el aviso de invalidación va ahí.
-        "TIENDA_AVISO_URL": "https://tommalo-staging.subdominio-pendiente.workers.dev/__edge/tienda/regenerar",
+        "TIENDA_AVISO_URL": "",
         "TIENDA_ESTATICA": "on",
         // Doble factor OBLIGATORIO en staging (pedido de la dueña, 2026-10-10: «blindar el acceso»):
         // cada administrador enrola la app de códigos la primera vez que entra después de la clave

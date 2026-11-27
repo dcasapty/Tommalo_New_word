@@ -28,8 +28,9 @@ describe("CANONICAL_HOST en el despliegue", () => {
     expect(armar).toBeLessThan(pasar);
   });
 
-  it("wrangler.jsonc apunta a donde el sitio responde: vacío en producción (sin dominio todavía; el despliegue usa URL_SITIO), workers.dev en staging", () => {
+  it("wrangler.jsonc apunta a donde el sitio responde: vacío en producción (sin dominio todavía; el despliegue usa URL_SITIO), vacío también en staging hasta que exista el subdominio", () => {
     expect(wranglerJsonc).toContain('"CANONICAL_HOST": ""');
-    expect(wranglerJsonc).toContain('"CANONICAL_HOST": "tommalo-staging.subdominio-pendiente.workers.dev"');
+    // Staging también va vacío (PENDIENTE) hasta que exista el subdominio workers.dev de Tommalo.
+    expect(wranglerJsonc.match(/"CANONICAL_HOST": ""/g)).toHaveLength(2);
   });
 });

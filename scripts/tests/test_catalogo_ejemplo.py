@@ -1,4 +1,4 @@
-"""El catálogo de EJEMPLO (scripts/ejemplo_catalogo_tommalo.json) tiene el formato de la carga y es claramente de prueba."""
+"""El catálogo de EJEMPLO (scripts/ejemplo_catalogo_tommalo.json) tiene el formato de la carga y es de prueba."""
 import json
 import unittest
 from pathlib import Path

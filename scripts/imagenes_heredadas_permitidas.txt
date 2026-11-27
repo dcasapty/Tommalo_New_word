@@ -1,0 +1,7 @@
+# Imágenes heredadas de los moldes que SÍ se quedan (una ruta por línea) y por qué. Revisadas a mano; lo que no esté aquí
+# y coincida con una huella de huellas_imagenes_ajenas.txt hace fallar scripts/revisar_datos_ajenos.sh.
+# Mascota del asistente Brian (ícono de la herramienta, sin marca ni datos del otro negocio): PENDIENTE de que el cliente confirme.
+addons/dcasa_brian/static/src/img/brian_robot.webp
+addons/dcasa_brian/static/src/img/brian_robot_menu.png
+# Ícono genérico de «abrir en el mapa».
+addons/dcasa_ubicacion/static/src/img/enlace_mapa.png

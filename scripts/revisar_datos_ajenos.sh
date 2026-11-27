@@ -30,5 +30,19 @@ if [[ -n "$claves" ]]; then
   echo "✖ Posibles claves en: $claves"
   dura="$dura$claves"
 fi
+# Imágenes heredadas de los moldes: se compara la huella (sha256) de cada imagen del repositorio con la de todas las imágenes de
+# Baby Caleb y D'CASA (scripts/huellas_imagenes_ajenas.txt). Las permitidas a mano están en imagenes_heredadas_permitidas.txt.
+imagenes=""
+while IFS= read -r f; do
+  [[ -f "$f" ]] || continue
+  grep -qxF "$f" <(grep -v '^#' scripts/imagenes_heredadas_permitidas.txt) && continue
+  h=$(sha256sum "$f" | cut -d' ' -f1)
+  grep -qxF "$h" <(grep -v '^#' scripts/huellas_imagenes_ajenas.txt) && imagenes="$imagenes$f"$'\n'
+done < <(git ls-files | grep -iE '\.(jpe?g|png|webp|gif|svg|ico)$' | grep -v '^vendor/')
+if [[ -n "$imagenes" ]]; then
+  echo "✖ Imágenes heredadas de otro negocio (misma huella que en un molde):"
+  echo "$imagenes"
+  dura="$dura$imagenes"
+fi
 [[ -z "$dura" ]] || exit 1
 echo "✔ Sin datos duros de otros negocios."

@@ -510,7 +510,7 @@ describe("wrangler.jsonc (producción y staging)", () => {
     expect(staging.vars.DCASA_BLACK_WEEKEND).toBe("0");
     // La puerta del equipo arranca apagada en una instalación nueva (incidente 4: "1" sin Access deja a todos afuera).
     expect(staging.vars.DCASA_PUERTA_OBLIGATORIA).toBe("0");
-    expect(staging.vars.CANONICAL_HOST).not.toBe(config.vars.CANONICAL_HOST);
+    expect(staging.vars.CANONICAL_HOST).toBe(""); // PENDIENTE: el subdominio de Tommalo todavía no existe
     const c = contenedor(staging);
     expect(c.instance_type).toBe("basic");
     expect(c.max_instances).toBe(1);
