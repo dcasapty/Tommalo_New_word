@@ -190,7 +190,7 @@ class TestMarketing(MarketingCommon):
         if codigo:
             self.assertEqual(self.ids(Marketing.buscar_fotos(texto=codigo, filtro='todos')['productos']),
                              [self.lampara.id])
-        lampara = Marketing.buscar_fotos(texto='ZZMK-LAMPARA', filtro='todos')['productos'][0]
+        lampara = Marketing.buscar_fotos(texto='ZZMK-LINTERNA', filtro='todos')['productos'][0]
         self.assertEqual(lampara['fotos'], 2)
         with self.assertRaises(UserError):
             Marketing.buscar_fotos(filtro='raro')

@@ -39,7 +39,8 @@ class TestDcasaBase(TransactionCase):
         self.assertFalse(self.company.partner_id.dcasa_ruc_display)
 
     def test_company_logo_es_el_marcador_provisional(self):
-        """El logo de la empresa (documentos, sitio y correos) es el marcador provisional (PENDIENTE: el logo de Tommalo):
+        """El logo de la empresa (documentos, sitio y correos)
+        es el marcador provisional (PENDIENTE: el logo de Tommalo):
         dcasa_base/static/img/logo.png."""
         import base64
 

@@ -313,6 +313,10 @@ class TestCifrasEnLasPantallas(PantallasMixin, HttpCase):
                                 timeout=120)
 
     def test_valor_del_inventario_sube_y_actualizar_sin_cambios_no_anima(self):
+        # El catálogo de fábrica está vacío: el valor por tipo necesita al menos un producto con existencias.
+        ubicacion = self.env['stock.warehouse'].search([('company_id', '=', self.env.company.id)],
+                                                       limit=1).lot_stock_id
+        self.env['stock.quant']._update_available_quantity(self.mesa, ubicacion, 5.0)
         codigo = '(async () => {' + COMUN_JS + ESPIAR_JS + r"""
             await esperar(() => document.querySelector('.o_dcasa_vi_costo'), 'Valor del inventario');
             await esperar(() => !document.querySelector('[data-sube]'), 'las cifras quietas');
