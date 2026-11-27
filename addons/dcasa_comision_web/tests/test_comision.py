@@ -73,7 +73,7 @@ class TestMedirYComisionar(ComisionReloj):
 
     def test_cada_interruptor_cambia_lo_que_se_anota(self):
         """Una venta con premio de 100, envío de 50, ITBMS y una devolución de 200: la base de cada interruptor."""
-        lineas = [(self.mueble, 1000.0, 1, {}), (self.premio, -100.0, 1, {}),
+        lineas = [(self.articulo, 1000.0, 1, {}), (self.premio, -100.0, 1, {}),
                   (self.envio, 50.0, 1, {'is_delivery': True})]
         casos = [({}, 90000 - 20000), ({'base_envio': 'con'}, 90000 + 5000 - 20000),
                  ({'base_descuentos': 'antes'}, 100000 - 22222), ({'base_devoluciones': 'no_resta'}, 90000)]

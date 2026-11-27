@@ -38,7 +38,7 @@
  * ser de este mismo sitio (o api.whatsapp.com para WhatsApp).
  *
  * Ojo: nada de plantillas de texto con comillas invertidas dentro de otra; el minificador de Odoo les come los
- * espacios del borde («abramos(atendemos», «2×Colchón»). Se arma con «+» (lo revisa test_ajustes.py).
+ * espacios del borde («abramos(atendemos», «2×Crema»). Se arma con «+» (lo revisa test_ajustes.py).
  */
 import { Interaction } from "@web/public/interaction";
 import { registry } from "@web/core/registry";
@@ -47,9 +47,9 @@ import { registry } from "@web/core/registry";
 // Datos fijos
 // ---------------------------------------------------------------------------------------------------------------------
 
-// Sugerencias del saludo (pedido de la dueña, 2026-11-15, «opción 2»): las dos primeras son las categorías con más
+// Sugerencias del saludo («opción 2»): las dos primeras son las categorías con más
 // productos publicados, que manda Odoo con el pase (`sugerencias`). De fábrica no hay ninguna: las de antes eran
-// categorías de Tommalo («Colchones», «Salas») y no se inventan otras; sin las de Odoo quedan solo las fijas.
+// categorías de otro negocio y no se inventan otras; sin las de Odoo quedan solo las fijas.
 const SUGERENCIAS_DE_FABRICA = [];
 const INICIO_FIJAS = ["¿Cuánto cuesta el envío?", "Formas de pago"];
 const SIGUE_TRAS_AGREGAR = ["¿Cuánto cuesta el envío?", "Formas de pago", "Seguir viendo"];
@@ -162,8 +162,8 @@ export function urlPropia(valor, origen = window.location.origin) {
         if (url.origin === propio.origin) {
             return url.pathname + url.search + url.hash;
         }
-        // La ficha que Odoo da con la dirección pública del sitio (tommalo.example) también es de aquí.
-        if (/^(?:www\.)?dcasapty\.com$/.test(url.hostname) && url.protocol === "https:") {
+        // La ficha que Odoo da con la dirección pública del sitio (tommalo.example, dominio provisional) también es de aquí.
+        if (/^(?:www\.)?tommalo\.example$/.test(url.hostname) && url.protocol === "https:") {
             return url.pathname + url.search;
         }
         return null;
@@ -680,7 +680,7 @@ export class ChatBrian {
             this.restaurado = null;
         }
         // La conversación que sigue de otra página ya «saludó» y no volvía a leer el carrito: el chat decía «Tu carrito
-        // está vacío» con la cama ya puesta desde la página (2026-11-15). Se lee siempre al abrir.
+        // está vacío» con el producto ya puesto desde la página (2026-11-15). Se lee siempre al abrir.
         this.refrescarCarrito();
         this.pintarCabCarrito();
         this.pintarBarra();

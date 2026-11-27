@@ -22,7 +22,7 @@ class TestRevision2OrigenPorContexto(VendedoraCommon):
     def _crear(self, usuario, contexto, **extra):
         return self.env['sale.order'].with_user(usuario).with_context(**contexto).create({
             'partner_id': self.cliente.id, 'company_id': self.company.id, **extra,
-            'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1,
+            'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1,
                                            'price_unit': 1000.0})]})
 
     def test_revision2_01a_default_dcasa_nacio_en_web_en_el_contexto_fabrica_el_origen(self):
@@ -148,7 +148,7 @@ class TestRevision2Anticipos(ComisionReloj):
 
     def _con_anticipo(self, **opciones):
         self.version(10.0, **opciones)
-        orden = self.orden(lineas=[(self.mueble, 1000.0, 1, {})])
+        orden = self.orden(lineas=[(self.articulo, 1000.0, 1, {})])
         asistente = self.env['sale.advance.payment.inv'].with_context(
             active_model='sale.order', active_ids=orden.ids).create({
                 'advance_payment_method': 'fixed', 'fixed_amount': 300.0})

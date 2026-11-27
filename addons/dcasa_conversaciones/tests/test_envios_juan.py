@@ -156,7 +156,7 @@ class TestCotizarEnvio(EnviosJuanCase):
             elegido = self.envio(lugar_id=lugar_id)
             self.assertEqual((elegido['estado'], elegido['motivo']), ('no_encontrado', 'mismo_nombre'))
             self.assertNotIn('$', json.dumps(elegido))
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.assertEqual(self.agregar(duplicados[0])['motivo'], 'mismo_nombre')
 
     def test_h19_el_lugar_claro_se_decide_con_todas_las_coincidencias(self):
@@ -195,7 +195,7 @@ class TestCotizarEnvio(EnviosJuanCase):
 
     def test_i1_juan_nunca_ofrece_una_promocion_que_ya_termino(self):
         """Segunda vuelta (I-1/R10): en enero, una cotización de noviembre sin el envío no recibe la promoción."""
-        self.cotizar({'codigo': 'ZZ-SOFA'})                      # $800
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})                      # $800
         self.hoy = date(2027, 1, 10)
         datos = self.envio(lugar='Costa Inventada')
         self.assertIsNone(datos['promocion'])
@@ -204,7 +204,7 @@ class TestCotizarEnvio(EnviosJuanCase):
 
     def test_i1_lo_ya_sumado_se_recuerda_sin_hasta_cuando(self):
         """Segunda vuelta (I-1): en diciembre, con la cotización vigente que ya tiene el envío gratis de noviembre."""
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         (orden,) = self.ordenes()
         orden.validity_date = date(2026, 12, 20)
         self.sumar(self.costa)
@@ -245,7 +245,7 @@ class TestCotizarEnvio(EnviosJuanCase):
             self.assertEqual(datos['estado'], 'en_revision')
             self.assertIn('pasar_a_vendedora', datos['instruccion'])
             self.assertNotIn('$', json.dumps(datos))
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.assertEqual(self.sumar(self.costa)['motivo'], 'en_revision')
         self.assertFalse(self.ordenes().order_line.filtered('is_delivery'))
 
@@ -254,7 +254,7 @@ class TestCotizarEnvio(EnviosJuanCase):
         datos = self.envio(lugar='Costa Inventada')
         self.assertEqual(datos['estado'], 'apagado')
         self.assertNotIn('$', json.dumps(datos))
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.assertEqual(self.sumar(self.costa)['motivo'], 'apagado')
 
     def test_h20_un_lugar_que_agrego_una_vendedora_no_tiene_precio_para_el_cliente(self):
@@ -273,7 +273,7 @@ class TestCotizarEnvio(EnviosJuanCase):
                                  'El costo del envío a Residencial Inventado H20 te lo confirma una vendedora.')
                 self.assertIn('pasar_a_vendedora', datos['instruccion'])
                 self.assertNotIn('$', json.dumps(datos))
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         no = self.sumar(nuevo)
         self.assertEqual((no['sumado'], no['motivo']), (False, 'sin_revisar'))
         self.assertFalse(self.ordenes().order_line.filtered('is_delivery'))
@@ -286,7 +286,7 @@ class TestCotizarEnvio(EnviosJuanCase):
         self.assertEqual(self.envio(lugar='Costa Inventada, casa 45')['lugar']['nombre'], 'Costa Inventada')
 
     def test_la_promocion_se_aplica_con_la_compra_real_de_la_cotizacion(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})                      # $800 sin ITBMS
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})                      # $800 sin ITBMS
         (orden,) = self.ordenes()
         datos = self.envio(lugar='Costa Inventada')
         self.assertEqual(datos['cotizacion'], {'numero': orden.name, 'envio_ya_sumado': False})
@@ -300,7 +300,7 @@ class TestCotizarEnvio(EnviosJuanCase):
         self.assertIn('¿Quieres que te lo sume a la cotización?', datos['instruccion'])
         self.assertIn(f'agregar_envio con lugar_id={self.costa.id}', datos['instruccion'])
 
-    def test_compra_chica_o_con_colchon_no_tiene_promocion(self):
+    def test_compra_chica_o_con_jabon_no_tiene_promocion(self):
         self.cotizar({'codigo': 'ZZ-MESA'})                      # $90
         chica = self.envio(lugar='Costa Inventada')
         self.assertEqual(chica['promocion']['motivo'], 'monto')
@@ -310,18 +310,18 @@ class TestCotizarEnvio(EnviosJuanCase):
                          'su precio normal.')
         self.assertEqual(self.papeles(chica), ((COSTA, 45.0, None, None, False, False, 200.0, 90.0), None))
         otra = self.conversacion(nombre='Otra', id_externo='50769990001')
-        self.colchon.dcasa_tipo_combo = 'colchon'            # (el nombre de prueba «ZZCOLCHÓN» no lo sugiere solo)
-        self.cotizar({'codigo': self.colchon.dcasa_codigo_publico, 'opcion': 'Zzqueen'}, conv=otra)
-        con_colchon = self.envio(conv=otra, lugar='Costa Inventada')
-        self.assertEqual(con_colchon['promocion']['motivo'], 'colchon')
-        self.assertIn('no aplica cuando la compra lleva colchón', con_colchon['frase_para_el_cliente'])
+        self.jabon.dcasa_tipo_combo = 'colchon'            # (el nombre de prueba «ZZCOLCHÓN» no lo sugiere solo)
+        self.cotizar({'codigo': self.jabon.dcasa_codigo_publico, 'opcion': 'Zzgrande'}, conv=otra)
+        con_jabon = self.envio(conv=otra, lugar='Costa Inventada')
+        self.assertEqual(con_jabon['promocion']['motivo'], 'colchon')
+        self.assertIn('no aplica cuando la compra lleva colchón', con_jabon['frase_para_el_cliente'])
 
 
 @tagged('post_install', '-at_install')
 class TestAgregarEnvio(EnviosJuanCase):
 
     def test_suma_el_envio_y_la_promocion_y_rearma_el_pdf(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         (orden,) = self.ordenes()
         self.assertEqual(len(self.avisos_con_pdf()), 1)
         datos = self.sumar(self.costa)
@@ -331,7 +331,7 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertEqual(orden.carrier_id, self.env['sale.order']._dcasa_envio_transportista())
         self.assertAlmostEqual(orden.amount_untaxed, 800.0)
         cotizacion = datos['cotizacion']
-        self.assertEqual([linea['codigo'] for linea in cotizacion['lineas']], [self.sofa.dcasa_codigo_publico],
+        self.assertEqual([linea['codigo'] for linea in cotizacion['lineas']], [self.espejo.dcasa_codigo_publico],
                          'el envío no va entre los productos')
         self.assertEqual([linea['monto_texto'] for linea in cotizacion['envio']['lineas']], ['$45', '−$45'])
         self.assertEqual(cotizacion['envio']['total_envio_texto'], '$0')
@@ -348,7 +348,7 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertEqual(self.envio(lugar='Costa Inventada')['cotizacion']['envio_ya_sumado'], True)
 
     def test_i1_volver_a_sumar_el_mismo_envio_en_diciembre_respeta_lo_prometido(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         (orden,) = self.ordenes()
         orden.validity_date = date(2026, 12, 20)
         self.sumar(self.costa)
@@ -362,7 +362,7 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertEqual(sorted(orden.order_line.filtered('is_delivery').mapped('price_unit')), [-45.0, 45.0])
 
     def test_otro_lugar_reemplaza_el_envio(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         (orden,) = self.ordenes()
         self.sumar(self.costa)
         datos = self.sumar(self.colon)
@@ -373,9 +373,9 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertAlmostEqual(orden.amount_untaxed, 885.0)
 
     def test_volver_a_cotizar_lo_mismo_reutiliza_la_cotizacion_con_su_envio(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.sumar(self.costa)
-        otra_vez = self.cotizar({'codigo': 'ZZ-SOFA'})
+        otra_vez = self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.assertTrue(otra_vez['reutilizada'])
         self.assertEqual(len(self.ordenes()), 1)
         self.assertEqual(len(otra_vez['cotizacion']['lineas']), 1)
@@ -385,12 +385,12 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertEqual(self.sumar(self.costa)['motivo'], 'sin_cotizacion')
         # Una cotización del mismo cliente que no salió de esta conversación (sin su origen ni su oportunidad).
         ajena = self.env['sale.order'].create({'partner_id': self.conv.partner_id.id, 'order_line': [
-            Command.create({'product_id': self.sofa.product_variant_id.id})]})
+            Command.create({'product_id': self.espejo.product_variant_id.id})]})
         self.assertEqual(self.sumar(self.costa)['motivo'], 'sin_cotizacion')
         self.assertFalse(ajena.order_line.filtered('is_delivery'))
         # La de otra conversación (otro cliente) tampoco.
         otra = self.conversacion(nombre='Otra', id_externo='50769990002')
-        self.cotizar({'codigo': 'ZZ-SOFA'}, conv=otra)
+        self.cotizar({'codigo': 'ZZ-ESPEJO'}, conv=otra)
         self.assertEqual(self.sumar(self.costa)['motivo'], 'sin_cotizacion')
         self.assertFalse(self.ordenes(otra).order_line.filtered('is_delivery'))
         # Confirmada: nunca.
@@ -403,7 +403,7 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertFalse(orden.order_line.filtered('is_delivery'))
 
     def test_el_envio_que_puso_una_vendedora_no_se_cambia(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         (orden,) = self.ordenes()
         orden.set_delivery_line(self.env['sale.order']._dcasa_envio_transportista(), 30.0)
         resultado = self.sumar(self.costa)
@@ -411,7 +411,7 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertEqual(orden.order_line.filtered('is_delivery').price_unit, 30.0)
 
     def test_sin_pdf_avisa_a_las_vendedoras_y_el_envio_queda(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.pdf.return_value = (b'no es un pdf', 'html')
         datos = self.sumar(self.costa)
         self.assertTrue(datos['sumado'])
@@ -421,7 +421,7 @@ class TestAgregarEnvio(EnviosJuanCase):
 
     def test_h8_solo_suma_un_lugar_cuyo_precio_dio_cotizar_envio_en_esta_conversacion(self):
         """Revisión adversarial (M5): un lugar_id cualquiera de la tabla (más barato) no se suma."""
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         (orden,) = self.ordenes()
         barato = self.env['dcasa.envio.lugar'].search([('name', '=', 'Villa Prueba')])
         no = self.agregar(barato)
@@ -439,14 +439,14 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertEqual(orden.order_line.filtered('dcasa_envio_lugar_id').dcasa_envio_lugar_id, barato)
 
     def test_h18_con_dos_cotizaciones_abiertas_pregunta_a_cual(self):
-        """Revisión adversarial (I6): sofá $800 y, aparte, una mesa $90. Ni la promoción se mide con la más reciente ni
+        """Revisión adversarial (I6): espejo $800 y, aparte, una mesa $90. Ni la promoción se mide con la más reciente ni
         el envío se suma a una sin que el cliente diga cuál."""
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.cotizar({'codigo': 'ZZ-MESA'})
-        sofa, mesa = self.ordenes()
+        espejo, mesa = self.ordenes()
         datos = self.envio(lugar='Costa Inventada')
         self.assertIsNone(datos['cotizacion'])
-        self.assertEqual([c['numero'] for c in datos['cotizaciones']], [mesa.name, sofa.name])
+        self.assertEqual([c['numero'] for c in datos['cotizaciones']], [mesa.name, espejo.name])
         self.assertTrue(all(c['total_texto'].startswith('$') for c in datos['cotizaciones']))
         self.assertTrue(datos['promocion']['condicional'], 'con sus condiciones, sin medirla con ninguna')
         self.assertIn('en compras de más de $200 sin ITBMS', datos['frase_para_el_cliente'])
@@ -454,17 +454,17 @@ class TestAgregarEnvio(EnviosJuanCase):
         self.assertIn('cotizacion=', datos['instruccion'])
         no = self.sumar(self.costa)
         self.assertEqual((no['sumado'], no['motivo']), (False, 'cual_cotizacion'))
-        self.assertEqual({c['numero'] for c in no['cotizaciones']}, {sofa.name, mesa.name})
+        self.assertEqual({c['numero'] for c in no['cotizaciones']}, {espejo.name, mesa.name})
         self.assertEqual(self.sumar(self.costa, cotizacion='S99999')['motivo'], 'cotizacion_no_encontrada')
-        self.assertFalse((sofa | mesa).order_line.filtered('is_delivery'))
-        si = self.sumar(self.costa, cotizacion=sofa.name.lower())
+        self.assertFalse((espejo | mesa).order_line.filtered('is_delivery'))
+        si = self.sumar(self.costa, cotizacion=espejo.name.lower())
         self.assertTrue(si['sumado'])
-        self.assertEqual(si['cotizacion']['numero'], sofa.name)
-        self.assertEqual(sorted(sofa.order_line.filtered('is_delivery').mapped('price_unit')), [-45.0, 45.0])
+        self.assertEqual(si['cotizacion']['numero'], espejo.name)
+        self.assertEqual(sorted(espejo.order_line.filtered('is_delivery').mapped('price_unit')), [-45.0, 45.0])
         self.assertFalse(mesa.order_line.filtered('is_delivery'))
 
     def test_un_lugar_que_no_existe_es_un_error_para_corregir(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.assertIn('ya no está en la tabla de envíos', self.error('agregar_envio', {'lugar_id': 99999999}))
         self.assertIn('número del lugar', self.error('agregar_envio', {'lugar_id': 'Costa'}))
 

@@ -92,9 +92,9 @@ class TestMiCuentaHttp(MiCuentaComun, HttpCase):
         self.assertIn('Canceladas', html)
         self.assertIn(f'Apartado hasta el {dia_mes(self.apartado.dcasa_apartado_vence)}', html)
         # El cliente lee el nombre en formato título (F5); por dentro sigue en MAYÚSCULAS.
-        self.assertIn('Sofá Milán de Prueba', html)
-        self.assertNotIn('SOFÁ MILÁN DE PRUEBA', html)
-        self.assertIn('y 1 cosa más', html, 'el mueble principal y el resto')
+        self.assertIn('Crema Milán de Prueba', html)
+        self.assertNotIn('CREMA MILÁN DE PRUEBA', html)
+        self.assertIn('y 1 cosa más', html, 'el articulo principal y el resto')
 
     def test_el_apartado_de_la_web_dice_que_es_por_pagina_web(self):
         """Decisión de la dueña (2026-10-17): un apartado de la tienda en línea se llama así en todo el sistema."""
@@ -184,7 +184,7 @@ class TestMiCuentaHttp(MiCuentaComun, HttpCase):
         self.assertIn(f'Entregado el {fecha_corta(max(salidas.mapped("date_done")))}', html)
 
     def test_con_saldo_no_se_anuncia_lista_hasta_pagar_completo(self):
-        """El mueble se entrega pagado completo (decisión de la dueña, 2026-10-17): aunque ya esté apartado en la
+        """El articulo se entrega pagado completo (decisión de la dueña, 2026-10-17): aunque ya esté apartado en la
         bodega, con saldo la compra no dice «Listo» ni marca el paso «Lista»."""
         salidas = self.pedido.picking_ids.filtered(lambda p: p.picking_type_code == 'outgoing')
         self.assertTrue(salidas.filtered(lambda p: p.state == 'assigned'), 'la mercancía ya está apartada en bodega')
@@ -204,7 +204,7 @@ class TestMiCuentaHttp(MiCuentaComun, HttpCase):
 
     def test_usuario_de_la_tienda_ve_sus_compras_con_el_pdf(self):
         usuario = self.usuario_de_la_tienda()
-        pedido = self._pedido(usuario.partner_id, [(self.sofa, 1)])
+        pedido = self._pedido(usuario.partner_id, [(self.crema, 1)])
         pedido.action_confirm()
         factura = pedido._create_invoices()
         factura.action_post()

@@ -56,18 +56,18 @@ class MetaComun:
         return cls.env['product.template'].create(datos)
 
     @classmethod
-    def _cama_con_tamanos(cls, nombre='Cama prueba Meta', precio=300.0, extra_king=50.0):
-        """Una cama con dos tamaños (dos variantes): King cuesta ``extra_king`` más."""
+    def _producto_con_tamanos(cls, nombre='Crema prueba Meta', precio=300.0, extra_king=50.0):
+        """Una crema con dos tamaños (dos variantes): Mini cuesta ``extra_king`` más."""
         atributo = cls.env['product.attribute'].create({
             'name': 'Tamaño prueba Meta', 'create_variant': 'always',
-            'value_ids': [Command.create({'name': 'Queen'}), Command.create({'name': 'King'})],
+            'value_ids': [Command.create({'name': 'Grande'}), Command.create({'name': 'Mini'})],
         })
-        cama = cls._producto(nombre, precio, attribute_line_ids=[Command.create({
+        crema = cls._producto(nombre, precio, attribute_line_ids=[Command.create({
             'attribute_id': atributo.id, 'value_ids': [Command.set(atributo.value_ids.ids)]})])
-        king = cama.product_variant_ids.filtered(
-            lambda v: v.product_template_attribute_value_ids.name == 'King')
-        king.product_template_attribute_value_ids.price_extra = extra_king
-        return cama, cama.product_variant_ids - king, king
+        mini = crema.product_variant_ids.filtered(
+            lambda v: v.product_template_attribute_value_ids.name == 'Mini')
+        mini.product_template_attribute_value_ids.price_extra = extra_king
+        return crema, crema.product_variant_ids - mini, mini
 
     def _existencias(self, plantilla, cantidad):
         variante = plantilla.product_variant_ids[:1]

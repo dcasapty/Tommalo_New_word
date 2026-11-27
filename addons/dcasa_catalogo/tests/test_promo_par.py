@@ -1,13 +1,13 @@
 """La promoción por pares «2 cajas por $35.00»: cada par de cajas va al
 precio del par y una caja suelta, a su precio normal. 1 = $20.00; 2 = $35.00; 3 = $55.00; 4 = $70.00; 5 = $90.00.
 
-Con productos inventados (precio de lista $20.00, par $35.00, sin ITBMS, como Tommalo) y con el DANY-AW600 del
-catálogo: el total exacto en una venta del panel, cambiar y quitar cajas en la cotización, quién cambia el precio por
+Con productos inventados (precio de lista $20.00, par $35.00, sin ITBMS) y con un producto de un catálogo de
+prueba: el total exacto en una venta del panel, cambiar y quitar cajas en la cotización, quién cambia el precio por
 par, el tope de la vendedora, la tarifa (la campaña) que no se suma, lo puesto a mano, la factura, el PDF y la ficha de
 la tienda. El carrito de la web va en ``test_promo_par_carrito.py``.
 """
 from odoo import Command
-from odoo.addons.dcasa_catalogo.catalogo import poner_precios_par
+from odoo.addons.dcasa_catalogo.catalogo import cargar_catalogo, poner_precios_par
 from odoo.exceptions import AccessError, ValidationError
 from odoo.tests import Form, HttpCase, TransactionCase, new_test_user, tagged
 
@@ -33,13 +33,13 @@ class PromoParCommon(TransactionCase):
         Plantilla = cls.env['product.template']
         base = {'type': 'consu', 'is_storable': True, 'sale_ok': True, 'is_published': True,
                 'taxes_id': [Command.clear()]}
-        cls.toallitas = Plantilla.create({**base, 'name': 'ZZTOALLITAS DE PRUEBA', 'default_code': 'ZZ-TOA',
+        cls.con_par = Plantilla.create({**base, 'name': 'ZZCAJA DE PRUEBA', 'default_code': 'ZZ-TOA',
                                           'list_price': 20.0}).product_variant_id
-        cls.toallitas.write({'dcasa_presentacion': 'Toallitas de prueba — caja de 600 toallitas (6 paquetes de 100)',
+        cls.con_par.write({'dcasa_presentacion': 'Pieza de prueba — caja de 12 unidades',
                              'dcasa_precio_par': 35.0})
-        cls.panal = Plantilla.create({**base, 'name': 'ZZPAÑAL DE PRUEBA', 'default_code': 'ZZ-PAN',
+        cls.sin_par = Plantilla.create({**base, 'name': 'ZZPIEZA SIN PAR DE PRUEBA', 'default_code': 'ZZ-PAN',
                                       'list_price': 50.0}).product_variant_id
-        for variante in (cls.toallitas, cls.panal):
+        for variante in (cls.con_par, cls.sin_par):
             cls.env['stock.quant'].with_context(inventory_mode=True).create({
                 'product_id': variante.id, 'location_id': cls.ubicacion.id,
                 'inventory_quantity': 100})._apply_inventory()
@@ -49,13 +49,13 @@ class PromoParCommon(TransactionCase):
             'name': 'CLIENTA DE PRUEBA PROMO PAR', 'phone': '6000-0301', 'email': 'clienta.par@example.com'})
 
     def orden(self, *cantidades, usuario=None, producto=None, **valores):
-        producto = producto or self.toallitas
+        producto = producto or self.con_par
         return self.env['sale.order'].with_user(usuario or self.vendedora).create({
             'partner_id': self.cliente.id, **valores,
             'order_line': [Command.create({'product_id': producto.id, 'product_uom_qty': c}) for c in cantidades]})
 
     def cajas(self, orden, producto=None):
-        producto = producto or self.toallitas
+        producto = producto or self.con_par
         return sorted((ln.product_uom_qty, ln.price_unit) for ln in orden.order_line if ln.product_id == producto)
 
     def assertCajas(self, orden, cajas, mensaje=None):
@@ -83,8 +83,8 @@ class TestPromoParEnElPanel(PromoParCommon):
                     self.assertEqual(etiquetas, [PAR])
 
     def test_sin_precio_por_par_todo_sigue_igual(self):
-        orden = self.orden(3, producto=self.panal)
-        self.assertEqual(self.cajas(orden, self.panal), [(3.0, 50.0)])
+        orden = self.orden(3, producto=self.sin_par)
+        self.assertEqual(self.cajas(orden, self.sin_par), [(3.0, 50.0)])
         self.assertEqual(orden.order_line._dcasa_etiqueta(), '')
 
     def test_cambiar_y_quitar_cajas_en_la_cotizacion(self):
@@ -97,7 +97,7 @@ class TestPromoParEnElPanel(PromoParCommon):
         linea.with_user(self.vendedora).product_uom_qty = 1
         self.assertCajas(orden, 2, 'el par baja a 1 y se junta con la suelta: 2 cajas, $35.00')
         self.env['sale.order.line'].with_user(self.vendedora).create(
-            {'order_id': orden.id, 'product_id': self.toallitas.id, 'product_uom_qty': 3})
+            {'order_id': orden.id, 'product_id': self.con_par.id, 'product_uom_qty': 3})
         self.assertCajas(orden, 5, 'una línea nueva de 3 se junta: 5 cajas')
         suelta = orden.order_line.filtered(lambda ln: ln.product_uom_qty == 1)
         suelta.with_user(self.vendedora).unlink()
@@ -110,8 +110,8 @@ class TestPromoParEnElPanel(PromoParCommon):
     def test_dos_lineas_nuevas_del_mismo_producto_en_un_guardado(self):
         orden = self.orden()
         orden.with_user(self.vendedora).write({'order_line': [
-            Command.create({'product_id': self.toallitas.id, 'product_uom_qty': 1}),
-            Command.create({'product_id': self.toallitas.id, 'product_uom_qty': 1})]})
+            Command.create({'product_id': self.con_par.id, 'product_uom_qty': 1}),
+            Command.create({'product_id': self.con_par.id, 'product_uom_qty': 1})]})
         self.assertCajas(orden, 2, 'dos sueltas en el mismo guardado se vuelven el par')
         orden = self.orden(1, 1, 1)
         self.assertCajas(orden, 3)
@@ -120,11 +120,11 @@ class TestPromoParEnElPanel(PromoParCommon):
         formulario = Form(self.env['sale.order'].with_user(self.vendedora))
         formulario.partner_id = self.cliente
         with formulario.order_line.new() as linea:
-            linea.product_id = self.toallitas
+            linea.product_id = self.con_par
             linea.product_uom_qty = 2
             self.assertEqual(linea.price_unit, 17.5, 'la pantalla ya enseña el precio del par')
         with formulario.order_line.new() as linea:
-            linea.product_id = self.toallitas
+            linea.product_id = self.con_par
             linea.product_uom_qty = 1
         orden = formulario.save()
         self.assertCajas(orden, 3)
@@ -137,16 +137,16 @@ class TestPromoParEnElPanel(PromoParCommon):
     def test_otro_producto_en_la_venta_no_se_mezcla(self):
         orden = self.orden(3)
         self.env['sale.order.line'].with_user(self.vendedora).create(
-            {'order_id': orden.id, 'product_id': self.panal.id, 'product_uom_qty': 2})
+            {'order_id': orden.id, 'product_id': self.sin_par.id, 'product_uom_qty': 2})
         self.assertEqual(self.cajas(orden), ESPERADO[3][0])
-        self.assertEqual(self.cajas(orden, self.panal), [(2.0, 50.0)])
+        self.assertEqual(self.cajas(orden, self.sin_par), [(2.0, 50.0)])
         self.assertAlmostEqual(orden.amount_untaxed, 55.0 + 100.0)
 
     def test_lo_puesto_a_mano_no_se_reparte(self):
         orden = self.orden(usuario=self.gerencia)
         # Como lo manda la pantalla: el precio tecleado y, aparte, el que había calculado el sistema.
         self.env['sale.order.line'].with_user(self.gerencia).create({
-            'order_id': orden.id, 'product_id': self.toallitas.id, 'product_uom_qty': 3, 'price_unit': 19.0,
+            'order_id': orden.id, 'product_id': self.con_par.id, 'product_uom_qty': 3, 'price_unit': 19.0,
             'technical_price_unit': 20.0})
         self.assertEqual(self.cajas(orden), [(3.0, 19.0)], 'un precio a mano no se reparte (como en los combos)')
         self.assertEqual(orden.order_line._dcasa_etiqueta(), '')
@@ -175,7 +175,7 @@ class TestPromoParEnElPanel(PromoParCommon):
             'implied_ids': [Command.link(self.env.ref('sale.group_discount_per_so_line').id)]})
         tarifa = self.env['product.pricelist'].create({'name': 'ZZ tarifa de prueba'})
         regla = self.env['product.pricelist.item'].create({
-            'pricelist_id': tarifa.id, 'applied_on': '0_product_variant', 'product_id': self.toallitas.id,
+            'pricelist_id': tarifa.id, 'applied_on': '0_product_variant', 'product_id': self.con_par.id,
             'compute_price': 'fixed', 'fixed_price': 16.0})
         orden = self.orden(3, usuario=self.gerencia, pricelist_id=tarifa.id)
         self.assertEqual(self.cajas(orden), [(1.0, 16.0), (2.0, 16.0)], 'la tarifa deja la caja más barata: va ella')
@@ -213,7 +213,7 @@ class TestPromoParEnElPanel(PromoParCommon):
         # 1 → 2 → 3 → 5 cajas: el carrito pasa por 20, 35, 55 y 90. Con 1 caja no hay par: el aviso de Odoo ya cuadra.
         for agregadas, importe in ((1, None), (1, 15.0), (1, 20.0), (2, 35.0)):
             with self.subTest(agregadas=agregadas):
-                datos = orden._cart_add(self.toallitas.id, agregadas)
+                datos = orden._cart_add(self.con_par.id, agregadas)
                 linea = orden.order_line.filtered(lambda ln, i=datos['line_id']: ln.id == i)
                 self.assertEqual(orden._dcasa_par_importe_agregado(linea, agregadas, False), importe)
         self.assertAlmostEqual(orden.amount_total, 90.0)
@@ -224,19 +224,19 @@ class TestPrecioPorPar(PromoParCommon):
 
     def test_solo_gerencia_cambia_el_precio_por_par(self):
         with self.assertRaises(AccessError):
-            self.toallitas.with_user(self.vendedora).dcasa_precio_par = 30.0
+            self.con_par.with_user(self.vendedora).dcasa_precio_par = 30.0
         with self.assertRaises(AccessError):
-            self.toallitas.product_tmpl_id.with_user(self.vendedora).dcasa_precio_par = 30.0
+            self.con_par.product_tmpl_id.with_user(self.vendedora).dcasa_precio_par = 30.0
         with self.assertRaises(AccessError):
             self.env['product.product'].with_user(self.vendedora).with_context(default_dcasa_precio_par=30.0).create(
                 {'name': 'ZZ PRODUCTO DE LA VENDEDORA', 'list_price': 20.0})
-        self.toallitas.product_tmpl_id.with_user(self.vendedora).name = 'ZZTOALLITAS DE PRUEBA (RENOMBRADAS)'
-        self.toallitas.product_tmpl_id.with_user(self.gerencia).dcasa_precio_par = 36.0
-        self.assertEqual(self.toallitas.dcasa_precio_par, 36.0, 'desde la ficha del producto (una sola variante)')
+        self.con_par.product_tmpl_id.with_user(self.vendedora).name = 'ZZCAJA DE PRUEBA (RENOMBRADAS)'
+        self.con_par.product_tmpl_id.with_user(self.gerencia).dcasa_precio_par = 36.0
+        self.assertEqual(self.con_par.dcasa_precio_par, 36.0, 'desde la ficha del producto (una sola variante)')
         self.assertEqual(self.orden(2).order_line.price_unit, 18.0)
 
     def test_tiene_que_ser_una_promocion_que_se_cobre_exacta(self):
-        Gerencia = self.toallitas.with_user(self.gerencia)
+        Gerencia = self.con_par.with_user(self.gerencia)
         for precio, aviso in ((40.0, 'menor que el de 2 sueltas'), (45.0, 'menor que el de 2 sueltas'),
                               (35.01, 'partirse en dos al centavo'), (-1.0, 'mayor que 0')):
             with self.subTest(precio=precio), self.assertRaisesRegex(ValidationError, aviso), \
@@ -246,44 +246,55 @@ class TestPrecioPorPar(PromoParCommon):
         self.assertEqual(self.cajas(self.orden(2)), [(2.0, 20.0)], 'vacío: sin promoción')
 
     def test_los_textos_salen_del_dato(self):
-        self.assertEqual(self.toallitas._dcasa_par_texto(), '2 cajas por $35.00')
-        self.assertEqual(self.toallitas._dcasa_par_nota(), 'Va por pares: una caja suelta va a su precio normal.')
-        self.assertEqual(self.toallitas.product_tmpl_id._dcasa_promos_par(),
+        self.assertEqual(self.con_par._dcasa_par_texto(), '2 cajas por $35.00')
+        self.assertEqual(self.con_par._dcasa_par_nota(), 'Va por pares: una caja suelta va a su precio normal.')
+        self.assertEqual(self.con_par.product_tmpl_id._dcasa_promos_par(),
                          ['2 cajas por $35.00. Va por pares: una caja suelta va a su precio normal.'])
-        self.assertEqual(self.panal.product_tmpl_id._dcasa_promos_par(), [])
+        self.assertEqual(self.sin_par.product_tmpl_id._dcasa_promos_par(), [])
 
-    def test_con_tallas_cada_talla_lleva_la_suya(self):
-        talla = self.env['product.attribute'].create({'name': 'ZZ talla', 'create_variant': 'always', 'value_ids': [
+    def test_con_variantes_cada_una_lleva_la_suya(self):
+        variante = self.env['product.attribute'].create({'name': 'ZZ variante', 'create_variant': 'always',
+                                                         'value_ids': [
             Command.create({'name': 'ZZ-M'}), Command.create({'name': 'ZZ-G'})]})
         plantilla = self.env['product.template'].create({
-            'name': 'ZZPAÑAL CON TALLAS', 'list_price': 50.0, 'taxes_id': [Command.clear()],
-            'attribute_line_ids': [Command.create({'attribute_id': talla.id,
-                                                   'value_ids': [Command.set(talla.value_ids.ids)]})]})
+            'name': 'ZZPIEZA CON VARIANTES', 'list_price': 50.0, 'taxes_id': [Command.clear()],
+            'attribute_line_ids': [Command.create({'attribute_id': variante.id,
+                                                   'value_ids': [Command.set(variante.value_ids.ids)]})]})
         mediana = plantilla.product_variant_ids.filtered(lambda v: 'ZZ-M' in v.display_name)
         mediana.dcasa_precio_par = 90.0
-        self.assertEqual(plantilla.dcasa_precio_par, 0.0, 'con tallas, el de la ficha queda vacío')
+        self.assertEqual(plantilla.dcasa_precio_par, 0.0, 'con variantes, el de la ficha queda vacío')
         self.assertEqual(plantilla._dcasa_promos_par(),
                          ['ZZ-M: 2 por $90.00. Va por pares: una suelta va a su precio normal.'])
         orden = self.orden(3, producto=mediana)
         self.assertEqual(self.cajas(orden, mediana), [(1.0, 50.0), (2.0, 45.0)])
         grande = plantilla.product_variant_ids - mediana
-        self.assertEqual(self.cajas(self.orden(2, producto=grande), grande), [(2.0, 50.0)], 'la otra talla, sin promo')
+        self.assertEqual(self.cajas(self.orden(2, producto=grande), grande), [(2.0, 50.0)],
+                         'la otra variante, sin promo')
 
-    def test_el_dany_baby_del_catalogo_trae_su_promocion(self):
-        dany = self.env['product.product'].search([('default_code', '=', 'DANY-AW600')])
-        self.assertEqual((dany.lst_price, dany.dcasa_precio_par), (20.0, 35.0))
-        self.assertEqual(poner_precios_par(self.env), {'DANY-AW600': 'ya_tenia'}, 'el que ya está no se pisa')
+    def test_el_precio_por_par_del_archivo_del_catalogo_entra_solo_donde_esta_vacio(self):
+        """``precio_par`` de data/catalogo.json (hoy vacío): con un producto de prueba cargado desde un catálogo de
+        prueba, entra una vez, no pisa lo que puso Gerencia y no adivina una cifra que ya no es promoción."""
+        catalogo = {'fuente': 'Lista de prueba', 'atributos': {}, 'productos': [{
+            'clave': 'zz-par-catalogo', 'nombre': 'Producto de prueba con par', 'categoria': 'hogar', 'orden': 1,
+            'descripcion': None,
+            'variantes': [{'codigo': 'ZZ-PAR-CAT', 'precio': 20.0, 'existencias': 0, 'precio_par': 35.0}]}]}
+        cargar_catalogo(self.env, catalogo)
+        producto = self.env['product.product'].search([('default_code', '=', 'ZZ-PAR-CAT')])
+        self.assertEqual((producto.lst_price, producto.dcasa_precio_par), (20.0, 0.0))
+        self.assertEqual(poner_precios_par(self.env, catalogo), {'ZZ-PAR-CAT': 'cargado'})
+        self.assertEqual(producto.dcasa_precio_par, 35.0)
+        self.assertEqual(poner_precios_par(self.env, catalogo), {'ZZ-PAR-CAT': 'ya_tenia'}, 'el que ya está no se pisa')
         for cajas, (_lineas, total) in ESPERADO.items():
             with self.subTest(cajas=cajas):
-                orden = self.orden(cajas, producto=dany)
+                orden = self.orden(cajas, producto=producto)
                 self.assertAlmostEqual(orden.amount_untaxed, total)
-        dany.dcasa_precio_par = 0.0
-        self.assertEqual(poner_precios_par(self.env), {'DANY-AW600': 'cargado'}, 'vacío: entra el del catálogo')
-        self.assertEqual(dany.dcasa_precio_par, 35.0)
-        dany.write({'dcasa_precio_par': 0.0})
-        dany.product_tmpl_id.list_price = 17.0   # dos sueltas valen 34: 35 ya no es promoción
-        self.assertEqual(poner_precios_par(self.env), {'DANY-AW600': 'no_vale'}, 'no se adivina otra cifra')
-        self.assertEqual(dany.dcasa_precio_par, 0.0)
+        producto.write({'dcasa_precio_par': 0.0})
+        producto.product_tmpl_id.list_price = 17.0   # dos sueltas valen 34: 35 ya no es promoción
+        self.assertEqual(poner_precios_par(self.env, catalogo), {'ZZ-PAR-CAT': 'no_vale'}, 'no se adivina otra cifra')
+        self.assertEqual(producto.dcasa_precio_par, 0.0)
+
+    def test_el_catalogo_vacio_no_carga_ningun_precio_por_par(self):
+        self.assertEqual(poner_precios_par(self.env), {})
 
 
 @tagged('post_install', '-at_install')
@@ -291,9 +302,9 @@ class TestPromoParEnLaFicha(HttpCase):
 
     def test_la_ficha_dice_la_promocion_aparte_del_precio(self):
         plantilla = self.env['product.template'].create({
-            'name': 'ZZTOALLITAS DE LA FICHA', 'type': 'consu', 'list_price': 20.0, 'is_published': True,
+            'name': 'ZZCAJA DE LA FICHA', 'type': 'consu', 'list_price': 20.0, 'is_published': True,
             'sale_ok': True, 'taxes_id': [Command.clear()]})
-        plantilla.product_variant_id.write({'dcasa_presentacion': 'Caja de 600 toallitas', 'dcasa_precio_par': 35.0})
+        plantilla.product_variant_id.write({'dcasa_presentacion': 'Caja de 12 unidades', 'dcasa_precio_par': 35.0})
         self.env.flush_all()
         respuesta = self.url_open(plantilla.website_url)
         self.assertEqual(respuesta.status_code, 200)
@@ -302,8 +313,8 @@ class TestPromoParEnLaFicha(HttpCase):
 
     def test_la_pagina_de_la_cotizacion_del_cliente_dice_la_promocion(self):
         variante = self.env['product.product'].create({
-            'name': 'ZZTOALLITAS DEL PORTAL', 'type': 'consu', 'list_price': 20.0, 'taxes_id': [Command.clear()],
-            'dcasa_presentacion': 'Caja de 600 toallitas'})
+            'name': 'ZZCAJA DEL PORTAL', 'type': 'consu', 'list_price': 20.0, 'taxes_id': [Command.clear()],
+            'dcasa_presentacion': 'Caja de 12 unidades'})
         variante.dcasa_precio_par = 35.0
         cliente = self.env['res.partner'].create({'name': 'CLIENTA DEL PORTAL PROMO PAR'})
         orden = self.env['sale.order'].create({'partner_id': cliente.id, 'order_line': [

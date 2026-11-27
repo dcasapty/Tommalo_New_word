@@ -1,8 +1,8 @@
 """Los pares de color del pago, con la fórmula WCAG (la misma de los informes de Feuxui): texto ≥ 4.5:1, borde de un
 campo y ícono ≥ 3:1. Los colores se leen del propio ``pago.scss`` y de los tokens de la marca de ``dcasa.scss`` (no se
-copian aquí): si alguien cambia un tono y el par deja de cumplir, esta prueba lo dice. Y la marca de Tommalo
-(docs/MARCA_TOMMALO.md): el pago no usa nada de D'CASA (azul, amarillo, Anton, Oswald, Inter), la letra sobre el
-naranja es navy, y no hay degradados ni sombras."""
+copian aquí): si alguien cambia un tono y el par deja de cumplir, esta prueba lo dice. Y la marca provisional
+neutra de Tommalo: el pago no usa nada de las tiendas de origen (azul, amarillo, Anton, Oswald, Inter), la letra sobre el
+acento es la oscura, y no hay degradados ni sombras."""
 import re
 from pathlib import Path
 
@@ -10,8 +10,8 @@ from odoo.tests import TransactionCase, tagged
 
 SCSS = Path(__file__).resolve().parent.parent / 'static' / 'src' / 'scss'
 BLANCO = '#FFFFFF'
-NAVY = '#262626'
-NARANJA = '#D4D4D4'
+TEXTO = '#262626'
+ACENTO = '#D4D4D4'
 
 
 def luminancia(color):
@@ -63,41 +63,41 @@ class TestContrasteDelPago(TransactionCase):
                        'pago-error', 'pago-error-fondo'):
             self.assertIn(nombre, self.c, '$' + nombre)
         c = self.c
-        # Los de MARCA_TOMMALO.md, tal cual.
-        self.assertEqual((c['pago-tinta'], c['pago-accion'], c['pago-en-accion']), (NAVY, NARANJA, NAVY),
-                         'el botón de pagar: naranja con letra navy')
+        # Los de la paleta provisional (primary_variables.scss), tal cual.
+        self.assertEqual((c['pago-tinta'], c['pago-accion'], c['pago-en-accion']), (TEXTO, ACENTO, TEXTO),
+                         'el botón de pagar: acento con letra oscura')
         self.assertEqual((c['pago-enlace'], c['pago-filo'], c['pago-panel'], c['pago-elegida']),
                          ('#595959', '#8A8A8A', '#FFFFFF', '#FAFAFA'))
-        # Los ya mezclados son los de la marca: el naranja al pasar el puntero es el `$bc-accent-hover` de dcasa.scss
-        # (mix al 88 % con el crema), y `muted`, `line` y `control` son el navy al 70, 12 y 55 % sobre el crema.
-        self.assertEqual(c['pago-accion-encima'], mezcla(NARANJA, c['bc-bg'], .88))
-        self.assertEqual(c['pago-gris'], mezcla(NAVY, c['bc-bg'], .70))
-        self.assertEqual(c['pago-borde'], mezcla(NAVY, c['bc-bg'], .12))
-        self.assertEqual(c['pago-borde-campo'], mezcla(NAVY, c['bc-bg'], .55))
+        # Los ya mezclados son los de la marca: el acento al pasar el puntero es el `$bc-accent-hover` de dcasa.scss
+        # (mix al 88 % con el fondo), y `muted`, `line` y `control` son el texto al 70, 12 y 55 % sobre el fondo.
+        self.assertEqual(c['pago-accion-encima'], mezcla(ACENTO, c['bc-bg'], .88))
+        self.assertEqual(c['pago-gris'], mezcla(TEXTO, c['bc-bg'], .70))
+        self.assertEqual(c['pago-borde'], mezcla(TEXTO, c['bc-bg'], .12))
+        self.assertEqual(c['pago-borde-campo'], mezcla(TEXTO, c['bc-bg'], .55))
         self.assertEqual(c['pago-encima'], mezcla(c['pago-panel'], c['pago-elegida'], .5))
 
     def test_todo_texto_llega_a_4_5_a_1(self):
         c = self.c
         pares = [
-            ('tinta sobre el crema de la página', c['pago-tinta'], c['bc-bg']),
+            ('tinta sobre el fondo de la página', c['pago-tinta'], c['bc-bg']),
             ('tinta sobre la superficie (lista y resumen)', c['pago-tinta'], c['pago-panel']),
             ('tinta sobre la fila elegida', c['pago-tinta'], c['pago-elegida']),
             ('tinta sobre la fila bajo el puntero', c['pago-tinta'], c['pago-encima']),
-            ('gris sobre el crema (líneas del total, ayuda por WhatsApp)', c['pago-gris'], c['bc-bg']),
+            ('gris sobre el fondo (líneas del total, ayuda por WhatsApp)', c['pago-gris'], c['bc-bg']),
             ('gris sobre la superficie', c['pago-gris'], c['pago-panel']),
             ('gris sobre la fila elegida (ayuda del método)', c['pago-gris'], c['pago-elegida']),
             ('gris sobre la fila bajo el puntero', c['pago-gris'], c['pago-encima']),
             ('texto de ejemplo de un campo (placeholder)', c['pago-gris'], c['pago-campo']),
-            ('enlace sobre el crema', c['pago-enlace'], c['bc-bg']),
+            ('enlace sobre el fondo', c['pago-enlace'], c['bc-bg']),
             ('enlace sobre la superficie (resumen plegable, «Editar»)', c['pago-enlace'], c['pago-panel']),
-            ('«Aplicar» navy sobre el campo', c['pago-tinta'], c['pago-campo']),
-            ('«Aplicar» navy sobre la fila elegida', c['pago-tinta'], c['pago-elegida']),
-            ('texto del botón de pagar (navy sobre naranja)', c['pago-en-accion'], c['pago-accion']),
+            ('«Aplicar» oscuro sobre el campo', c['pago-tinta'], c['pago-campo']),
+            ('«Aplicar» oscuro sobre la fila elegida', c['pago-tinta'], c['pago-elegida']),
+            ('texto del botón de pagar (oscuro sobre acento)', c['pago-en-accion'], c['pago-accion']),
             ('texto del botón de pagar bajo el puntero', c['pago-en-accion'], c['pago-accion-encima']),
-            ('cantidad navy en la insignia verde', c['pago-tinta'], c['pago-insignia']),
-            ('«Modo de prueba» navy sobre el crema', c['pago-tinta'], c['pago-elegida']),
+            ('cantidad oscuro en la insignia suave', c['pago-tinta'], c['pago-insignia']),
+            ('«Modo de prueba» oscuro sobre el fondo', c['pago-tinta'], c['pago-elegida']),
             ('antetítulo de la entrega (salvia fuerte) sobre la superficie', c['pago-icono'], c['pago-panel']),
-            ('«El pago no se completó» sobre el crema', c['pago-error'], c['bc-bg']),
+            ('«El pago no se completó» sobre el fondo', c['pago-error'], c['bc-bg']),
             ('«El pago no se completó» sobre la superficie', c['pago-error'], c['pago-panel']),
             ('botón de pagar sin método elegido', c['pago-apagado-letra'], c['pago-apagado']),
         ]
@@ -110,10 +110,10 @@ class TestContrasteDelPago(TransactionCase):
         pares = [
             ('borde del campo del código de descuento', c['pago-borde-campo'], c['pago-campo']),
             ('radio sin elegir sobre la superficie', c['pago-borde-campo'], c['pago-panel']),
-            ('radio elegido (navy)', c['pago-tinta'], c['pago-campo']),
-            ('el filo naranja de la fila elegida sobre la fila', c['pago-filo'], c['pago-elegida']),
-            ('el filo naranja sobre la superficie de al lado', c['pago-filo'], c['pago-panel']),
-            ('candado e íconos de estado sobre el crema', c['pago-icono'], c['pago-elegida']),
+            ('radio elegido (oscuro)', c['pago-tinta'], c['pago-campo']),
+            ('el filo acento de la fila elegida sobre la fila', c['pago-filo'], c['pago-elegida']),
+            ('el filo acento sobre la superficie de al lado', c['pago-filo'], c['pago-panel']),
+            ('candado e íconos de estado sobre el fondo', c['pago-icono'], c['pago-elegida']),
             ('ícono de fallo sobre su recuadro', c['pago-error'], c['pago-error-fondo']),
         ]
         for nombre, trazo, fondo in pares:
@@ -143,7 +143,7 @@ class TestContrasteDelPago(TransactionCase):
         pago = (SCSS / 'pago.scss').read_text()
         # Los titulares van como frase: la única caja alta del pago es el antetítulo de la entrega (12 px, .14em).
         self.assertEqual(pago.count('text-transform: uppercase'), 1)
-        # La letra blanca nunca va sobre el naranja: en el pago, lo que va sobre $pago-accion es $pago-en-accion (navy).
+        # La letra blanca nunca va sobre el acento: en el pago, lo que va sobre $pago-accion es $pago-en-accion (oscuro).
         for bloque in re.findall(r'background: \$pago-accion;[^}]*', pago):
             self.assertNotIn('#fff', bloque.lower())
             self.assertNotIn('$bc-blanco', bloque)

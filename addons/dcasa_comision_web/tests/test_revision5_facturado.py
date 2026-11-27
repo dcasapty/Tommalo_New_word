@@ -83,7 +83,7 @@ class TestFacturadoDistintoDelPedido(ComisionReloj):
 
     def test_descuento_de_la_linea_envio_y_premio_no_se_senalan(self):
         self.version(10.0)
-        orden = self.orden(lineas=[(self.mueble, 1000.0, 2, {'discount': 10.0}), (self.premio, -50.0, 1, {}),
+        orden = self.orden(lineas=[(self.articulo, 1000.0, 2, {'discount': 10.0}), (self.premio, -50.0, 1, {}),
                                    (self.envio, 40.0, 1, {'is_delivery': True})])
         factura = self.facturar(orden)
         self.pagar(factura)
@@ -95,7 +95,7 @@ class TestFacturadoDistintoDelPedido(ComisionReloj):
 
     def test_un_pedido_con_varias_cantidades_no_se_senala(self):
         self.version(10.0)
-        factura = self.facturar(self.orden(lineas=[(self.mueble, 1000.0, 3, {})]))
+        factura = self.facturar(self.orden(lineas=[(self.articulo, 1000.0, 3, {})]))
         self.pagar(factura)
         self.assertNormal(factura, 'tres unidades')
 
@@ -148,7 +148,7 @@ class TestFacturadoDistintoDelPedido(ComisionReloj):
     def test_una_factura_parcial_y_la_que_completa_el_pedido_no_se_senalan(self):
         """Se factura primero una parte de las unidades y después el resto: cada factura sale igual del pedido."""
         self.version(10.0)
-        orden = self.orden(lineas=[(self.mueble, 1000.0, 3, {})])
+        orden = self.orden(lineas=[(self.articulo, 1000.0, 3, {})])
         primera = orden._create_invoices()
         primera.invoice_date = DIA
         primera.invoice_line_ids.quantity = 1
@@ -279,7 +279,7 @@ class TestFacturadoDistintoDelPedido(ComisionReloj):
         """Si una factura junta un pedido online y uno de la tienda, solo cuenta (y se compara) lo online."""
         self.version(10.0)
         online = self.orden()
-        mostrador = self.orden(web=False, lineas=[(self.mueble, 700.0, 1, {})])
+        mostrador = self.orden(web=False, lineas=[(self.articulo, 700.0, 1, {})])
         factura = (online | mostrador)._create_invoices(grouped=False)
         self.assertEqual(len(factura), 1)
         factura.invoice_date = DIA

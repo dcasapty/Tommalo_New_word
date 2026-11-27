@@ -11,8 +11,8 @@ from odoo.addons.website_dcasa.tests.chrome_movil import ChromeMovilCase
 from odoo.tests import tagged
 
 # Ancho × alto de pantalla (CSS): Android común, iPhone 12-15 y iPhone Pro Max.
-# Las insignias de la marca Tommalo: [fondo, letra, punto]. «Disponible», salvia claro con letra navy y el punto
-# verde de texto; «Quedan pocas», el naranja de relleno con letra navy (5.56); «Agotado», navy con letra crema.
+# Las insignias de la marca Tommalo: [fondo, letra, punto]. «Disponible», verde claro con letra oscura y el punto
+# verde; «Quedan pocas», el gris de relleno con letra oscura; «Agotado», fondo oscuro con letra clara (provisionales).
 COLORES = {
     'disponible': ['rgba(189, 189, 189, 0.3)', 'rgb(38, 38, 38)', 'rgb(83, 115, 92)'],
     'pocas': ['rgb(212, 212, 212)', 'rgb(38, 38, 38)', 'rgb(38, 38, 38)'],
@@ -57,8 +57,8 @@ class TestDisponibilidadALaVistaEnElCelular(ChromeMovilCase):
         super().setUpClass()
         base = {'type': 'consu', 'is_storable': True, 'sale_ok': True, 'is_published': True,
                 'allow_out_of_stock_order': True, 'list_price': 238.99, 'image_1920': _foto(),
-                'public_categ_ids': [(6, 0, cls.env.ref('website_dcasa.public_category_colchones').ids)]}
-        nombre = 'COLCHÓN DR. PRUEBA ORTOPÉDICO A CUADROS AZUL Y BLANCO, LATERAL GRIS'
+                'public_categ_ids': [(6, 0, cls.env.ref('website_dcasa.public_category_hogar').ids)]}
+        nombre = 'LÁMPARA DE PRUEBA DE MESA CON PANTALLA DE TELA A CUADROS GRIS Y BLANCO, BASE NEGRA'
         ubicacion = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1).lot_stock_id
         cls.productos = {}
         for estado, cantidad in (('disponible', 12), ('pocas', 3), ('agotado', 0)):
@@ -85,6 +85,6 @@ class TestDisponibilidadALaVistaEnElCelular(ChromeMovilCase):
                     centro_etiqueta, centro_precio = (arriba + abajo) / 2, (m['precio'][0] + m['precio'][1]) / 2
                     self.assertAlmostEqual(centro_etiqueta, centro_precio, delta=12, msg='en la línea del precio')
                     self.assertGreater(izquierda, m['precio'][2], 'a la derecha del precio y de «+ ITBMS»')
-                    # Las insignias de Tommalo (fondo, letra, punto); nada del amarillo de D'CASA.
+                    # Las insignias de Tommalo (fondo, letra, punto); nada del amarillo de la plantilla de origen.
                     self.assertEqual(m['colores'], COLORES[estado], estado)
                     self.assertNotIn('rgb(254, 208, 15)', m['colores'])

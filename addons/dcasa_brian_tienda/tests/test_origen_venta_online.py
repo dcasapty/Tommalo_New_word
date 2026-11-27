@@ -16,7 +16,7 @@ class TestOrigenVentaOnline(TiendaCase):
         return self.env['sale.order'].sudo().search([('website_id', '!=', False)], order='id desc', limit=1)
 
     def test_el_carrito_de_andres_de_un_visitante_nace_en_la_web_y_pasa_por_andres(self):
-        self.assertTrue(self.agregar(self.colchon, 2).json()['ok'])
+        self.assertTrue(self.agregar(self.jabon, 2).json()['ok'])
         pedido = self.ultimo_pedido()
         self.assertTrue(pedido.dcasa_nacio_en_web and pedido.dcasa_via_andres and pedido.dcasa_venta_online)
         self.assertEqual(pedido.dcasa_creada_por_id, self.env.ref('base.public_user'))
@@ -26,17 +26,17 @@ class TestOrigenVentaOnline(TiendaCase):
         cliente = new_test_user(self.env, login='zzbt_origen', password='zzbt_origen', name='ZZBT Cliente Origen',
                                 groups='base.group_portal')
         self.authenticate('zzbt_origen', 'zzbt_origen')
-        self.assertTrue(self.agregar(self.colchon).json()['ok'])
+        self.assertTrue(self.agregar(self.jabon).json()['ok'])
         pedido = self.ultimo_pedido()
         self.assertTrue(pedido.dcasa_nacio_en_web and pedido.dcasa_via_andres)
         self.assertEqual(pedido.dcasa_creada_por_id, cliente)
         self.assertTrue(pedido.dcasa_creada_por_id.share, 'un cliente no es del equipo: no sale en la vigilancia')
 
     def test_un_carrito_que_ya_existia_y_toca_andres_queda_marcado(self):
-        self.agregar(self.colchon)
+        self.agregar(self.jabon)
         pedido = self.ultimo_pedido()
         pedido.sudo()._dcasa_escribir_marca(dcasa_via_andres=False)
         self.assertFalse(pedido.dcasa_via_andres)
-        self.post('carrito/cantidad', {'producto_id': self.colchon.product_variant_id.id, 'cantidad': 3})
+        self.post('carrito/cantidad', {'producto_id': self.jabon.product_variant_id.id, 'cantidad': 3})
         self.assertTrue(pedido.dcasa_via_andres and pedido.dcasa_venta_online,
                         f'{RAIZ}: queda marcado y sigue siendo online')

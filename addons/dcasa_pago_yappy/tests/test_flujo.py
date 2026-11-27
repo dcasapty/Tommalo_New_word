@@ -595,7 +595,7 @@ class TestElAvisoQueNoLlego(BaseYappy):
         self.envejecer(tx, minutes=20)
         self.env['payment.transaction']._cron_dcasa_yappy_sin_aviso()
         nota = self.actividades(pedido, 'sin aviso de pago')[0].note
-        self.assertIn('sofá de prueba (yappy)', nota.lower())
+        self.assertIn('crema de prueba (yappy)', nota.lower())
         self.assertIn('2 ×', nota)
         self.assertIn('Ana Prueba Yappy', nota)
 

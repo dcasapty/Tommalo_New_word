@@ -124,7 +124,7 @@ class TestRv2TotalCambiaDespues(BaseRevision):
     def test_si_el_total_baja_y_se_cobra_de_mas_el_equipo_se_entera(self):
         """Hallazgo del revisor (ya corregido, menor).
 
-        Mismo hueco al revés: el cliente quita muebles en otra pestaña y paga el total viejo. El
+        Mismo hueco al revés: el cliente quita articulos en otra pestaña y paga el total viejo. El
         pedido queda confirmado y cobrado de MÁS; nada avisa que hay que devolver la diferencia
         en el panel de Tilopay."""
         pedido = self.pedido(cantidad=3)

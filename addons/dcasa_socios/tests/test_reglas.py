@@ -149,7 +149,7 @@ class TestPersonas(BaseCase):
         self.assertEqual(R.problema_del_pin('777777'), 'repetidos')
         self.assertEqual(R.problema_del_pin('123456'), 'secuencia')
         self.assertEqual(R.problema_del_pin('654321'), 'secuencia')
-        self.assertEqual(R.problema_del_pin('026191', '60000001'), 'es-el-telefono')
+        self.assertEqual(R.problema_del_pin('000001', '60000001'), 'es-el-telefono')
 
     def test_celular_panameno(self):
         self.assertEqual(R.celular_normal('+507 6000-0001'), '60000001')

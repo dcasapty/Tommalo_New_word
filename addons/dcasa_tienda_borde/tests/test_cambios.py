@@ -19,7 +19,7 @@ class TestMarcasDeCambio(TransactionCase):
         self.Pendiente = self.env['dcasa.tienda.pendiente'].sudo()
         self.Pendiente.search([]).unlink()
         self.producto = self.env['product.template'].create({
-            'name': 'Silla marcas prueba', 'list_price': 25, 'is_published': True, 'is_storable': True,
+            'name': 'Taza marcas prueba', 'list_price': 25, 'is_published': True, 'is_storable': True,
         })
         self.variante = self.producto.product_variant_id
         self._confirmar()
@@ -45,7 +45,7 @@ class TestMarcasDeCambio(TransactionCase):
 
     def test_varios_cambios_una_marca(self):
         self.producto.list_price = 31
-        self.producto.name = 'Silla marcas prueba 2'
+        self.producto.name = 'Taza marcas prueba 2'
         self._confirmar()
         self.assertEqual(self.Pendiente.search_count([('producto_id', '=', self.producto.id)]), 1)
 

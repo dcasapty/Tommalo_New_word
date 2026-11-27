@@ -81,7 +81,7 @@ class TestRevision(CorreoCase):
         """Un mensaje en una cotización de Ana con el contexto ``dcasa_correo_tipo='factura'``, a Beto."""
         orden = self.env['sale.order'].with_user(self.vendedora).create({
             'partner_id': self.ana.id, 'user_id': self.vendedora.id,
-            'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1})]})
+            'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1})]})
         registro = orden.with_user(usuario)
         if sudo:
             registro = registro.sudo()   # como /mail/message/post, el chatter del portal
@@ -156,7 +156,7 @@ class TestRevision(CorreoCase):
             'venta de antes': lambda ficha: self.env.cr.execute(
                 "UPDATE sale_order SET create_date = '2019-06-01' WHERE id = %s", [self.env['sale.order'].create({
                     'partner_id': ficha.id,
-                    'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1})]}).id]),
+                    'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1})]}).id]),
             'contacto de antes': lambda ficha: self.env.cr.execute(
                 "UPDATE res_partner SET create_date = '2019-06-01' WHERE id = %s", [self.env['res.partner'].create({
                     'name': 'Contacto Viejo', 'parent_id': ficha.id}).id]),

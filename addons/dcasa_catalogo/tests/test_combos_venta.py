@@ -176,14 +176,14 @@ class TestVentaDeCombos(SociosCommon):
         self.assertEqual(texto.count('$ 22.40'), 1)
         self.assertEqual(texto.count('7%'), 2, 'El ITBMS de cada pieza')
 
-    def test_el_titulo_del_combo_suma_solo_sus_piezas_aunque_despues_vengan_flete_y_otros_muebles(self):
+    def test_el_titulo_del_combo_suma_solo_sus_piezas_aunque_despues_vengan_flete_y_otros_productos(self):
         """Odoo suma en un título todo lo que sigue hasta el próximo título: con el flete (o una mesa de noche) después
-        del combo, el título cobraría de más. En la factura de D'CASA suma solo las piezas del combo."""
+        del combo, el título cobraría de más. En la factura suma solo las piezas del combo."""
         orden, _combo, _piezas = self.orden()
         flete = self.env.ref('dcasa_invoice.product_flete')
         self.env['sale.order.line'].create(
             {'order_id': orden.id, 'product_id': flete.id, 'product_uom_qty': 1, 'price_unit': 25})
-        orden._dcasa_agregar_producto(self.extra, 2)      # un mueble suelto después del combo
+        orden._dcasa_agregar_producto(self.extra, 2)      # un producto suelto después del combo
         orden.action_confirm()
         factura = orden._create_invoices()
         factura.action_post()
@@ -192,7 +192,7 @@ class TestVentaDeCombos(SociosCommon):
         self.assertEqual(factura.amount_untaxed, 320.0 + 25.0 + 2 * 230.0)
         principales, servicios = factura._dcasa_lineas(factura._get_move_lines_to_report())
         self.assertEqual(servicios.product_id, flete)
-        self.assertEqual(principales[0].product_id, self.extra, 'El mueble suelto va antes del título del combo')
+        self.assertEqual(principales[0].product_id, self.extra, 'El producto suelto va antes del título del combo')
         self.assertEqual(principales[1].display_type, 'line_section')
         html = self.env['ir.actions.report']._render_qweb_html('account.report_invoice', factura.ids)[0].decode()
         texto = self._texto(html)

@@ -301,7 +301,7 @@ TIPOS_COMBO = ('cama', 'colchon')
 def tipo_combo_del_nombre(nombre):
     """¿Es una cama o un colchón para armar combos? Se sugiere por el nombre; Gerencia lo corrige en el producto.
 
-    «Colchón Flex semiortopédico» → 'colchon'; «Cama tapizada Queen», «Camarote full», «Box spring de metal»,
+    «Colchón de prueba semiortopédico» → 'colchon'; «Cama tapizada Queen», «Camarote full», «Box spring de metal»,
     «Base de cama metálica» → 'cama'. No son: un combo ya armado («COMBO CAMA … + COLCHÓN …»), una colchoneta, un
     protector o forro de colchón, un sofá cama, una mesa de noche o un cabecero solo → ``None``.
     """

@@ -41,7 +41,7 @@ class HerramientasCase(JuanCase):
         cls.otra_categoria = cls.env['product.public.category'].create({'name': 'Zzcocina'})
         base = {'type': 'consu', 'is_storable': True, 'sale_ok': True, 'is_published': True,
                 'taxes_id': [Command.set(impuesto.ids)]}
-        cls.lámpara = Template.create({
+        cls.lampara = Template.create({
             **base, 'name': 'ZZCAMA ROBLE GRANDE', 'default_code': 'ZZ-LÁMPARA', 'list_price': 349.99,
             'standard_price': 123.45, 'dcasa_medidas': 'Ancho × Largo: 160 × 200 cm',
             'dcasa_combo': 'Combo con jabón First Class $469.99',
@@ -63,7 +63,7 @@ class HerramientasCase(JuanCase):
                                                    'value_ids': [Command.set(tamano.value_ids.ids)]})]})
         almacen = cls.env['stock.warehouse'].search([], limit=1)
         cls.stock = cls.env['stock.quant']
-        for plantilla, cantidad in ((cls.lámpara, 7777), (cls.espejo, 3), (cls.mesa, 0), (cls.secreto, 10)):
+        for plantilla, cantidad in ((cls.lampara, 7777), (cls.espejo, 3), (cls.mesa, 0), (cls.secreto, 10)):
             if cantidad:
                 cls.stock._update_available_quantity(plantilla.product_variant_id, almacen.lot_stock_id, cantidad)
         variante_grande = cls.jabon.product_variant_ids.filtered(lambda v: 'Zzgrande' in v.display_name)
@@ -110,17 +110,17 @@ class TestBuscarProductos(HerramientasCase):
         self.assertEqual(self.salida('buscar_productos', {'consulta': 'secreto borrador'})['encontrados'], 0)
 
     def test_precio_con_mas_itbms_y_ficha_completa(self):
-        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
-        self.assertEqual(lámpara['precio'], 349.99)
-        self.assertEqual(lámpara['precio_texto'], '$349.99 + ITBMS')
-        self.assertTrue(lámpara['mas_itbms'])
-        self.assertEqual(lámpara['codigo'], self.lámpara.dcasa_codigo_publico, 'el cliente ve el código público')
-        self.assertEqual(lámpara['medidas'], 'Ancho × Largo: 160 × 200 cm')
-        self.assertEqual(lámpara['combo'], {'texto': 'Combo con jabón First Class', 'precio': 469.99,
+        (lampara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertEqual(lampara['precio'], 349.99)
+        self.assertEqual(lampara['precio_texto'], '$349.99 + ITBMS')
+        self.assertTrue(lampara['mas_itbms'])
+        self.assertEqual(lampara['codigo'], self.lampara.dcasa_codigo_publico, 'el cliente ve el código público')
+        self.assertEqual(lampara['medidas'], 'Ancho × Largo: 160 × 200 cm')
+        self.assertEqual(lampara['combo'], {'texto': 'Combo con jabón First Class', 'precio': 469.99,
                                          'precio_texto': '$469.99 + ITBMS'})
-        self.assertEqual(lámpara['categorias'], ['Zzdormitorio'])
-        self.assertTrue(lámpara['url'].endswith(f'-{self.lámpara.id}'), lámpara['url'])
-        self.assertTrue(lámpara['url'].startswith('http'))
+        self.assertEqual(lampara['categorias'], ['Zzdormitorio'])
+        self.assertTrue(lampara['url'].endswith(f'-{self.lampara.id}'), lampara['url'])
+        self.assertTrue(lampara['url'].startswith('http'))
 
     def test_existencias_solo_como_etiqueta_nunca_el_numero(self):
         productos = self.salida('buscar_productos', {'consulta': 'zz'})['productos']
@@ -182,12 +182,12 @@ class TestBuscarProductos(HerramientasCase):
         self.assertIn('una vendedora la confirma', nota)
 
     def test_producto_sin_foto_tiene_foto_nula(self):
-        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
-        self.assertIsNone(lámpara['foto'])
-        self.lámpara.image_1920 = _PNG
+        (lampara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertIsNone(lampara['foto'])
+        self.lampara.image_1920 = _PNG
         self.env.flush_all()
-        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
-        self.assertTrue(lámpara['foto'].endswith(f'/web/image/product.template/{self.lámpara.id}/image_1024'))
+        (lampara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertTrue(lampara['foto'].endswith(f'/web/image/product.template/{self.lampara.id}/image_1024'))
 
 
 @tagged('post_install', '-at_install')
@@ -197,20 +197,20 @@ class TestTarjetasDeLaTienda(HerramientasCase):
     que Juan ya usaba no cambia."""
 
     def test_cada_producto_trae_lo_de_la_tarjeta(self):
-        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
-        self.assertEqual(lámpara['producto_id'], self.lámpara.product_variant_id.id)
-        self.assertEqual(lámpara['plantilla_id'], self.lámpara.id)
-        self.assertEqual(lámpara['ruta'], self.lámpara.website_url)
-        self.assertTrue(lámpara['ruta'].startswith('/shop/'), 'relativa: sirve en producción, staging y local')
-        self.assertIsNone(lámpara['imagen'], 'sin foto, sin imagen (como «foto»)')
-        self.assertIs(lámpara['agregable'], True)
-        self.lámpara.image_1920 = _PNG
+        (lampara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertEqual(lampara['producto_id'], self.lampara.product_variant_id.id)
+        self.assertEqual(lampara['plantilla_id'], self.lampara.id)
+        self.assertEqual(lampara['ruta'], self.lampara.website_url)
+        self.assertTrue(lampara['ruta'].startswith('/shop/'), 'relativa: sirve en producción, staging y local')
+        self.assertIsNone(lampara['imagen'], 'sin foto, sin imagen (como «foto»)')
+        self.assertIs(lampara['agregable'], True)
+        self.lampara.image_1920 = _PNG
         self.env.flush_all()
-        (lámpara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
-        self.assertEqual(lámpara['imagen'], f'/web/image/product.template/{self.lámpara.id}/image_512')
+        (lampara,) = self.salida('buscar_productos', {'consulta': 'ZZ-LÁMPARA'})['productos']
+        self.assertEqual(lampara['imagen'], f'/web/image/product.template/{self.lampara.id}/image_512')
         # Lo de siempre sigue igual.
-        self.assertTrue(lámpara['foto'].endswith(f'/web/image/product.template/{self.lámpara.id}/image_1024'))
-        self.assertEqual(lámpara['precio_texto'], '$349.99 + ITBMS')
+        self.assertTrue(lampara['foto'].endswith(f'/web/image/product.template/{self.lampara.id}/image_1024'))
+        self.assertEqual(lampara['precio_texto'], '$349.99 + ITBMS')
 
     def test_con_medidas_que_elegir_no_se_agrega_directo(self):
         ficha = self.salida('ver_producto', {'codigo': self.jabon.dcasa_codigo_publico})
@@ -222,8 +222,8 @@ class TestTarjetasDeLaTienda(HerramientasCase):
                       'sin precio tampoco')
 
     def test_ver_producto_por_producto_id(self):
-        ficha = self.salida('ver_producto', {'producto_id': self.lámpara.product_variant_id.id})
-        self.assertEqual((ficha['nombre'], ficha['codigo']), ('Zzcama Roble Grande', self.lámpara.dcasa_codigo_publico))
+        ficha = self.salida('ver_producto', {'producto_id': self.lampara.product_variant_id.id})
+        self.assertEqual((ficha['nombre'], ficha['codigo']), ('Zzcama Roble Grande', self.lampara.dcasa_codigo_publico))
         self.assertIn('descripcion', ficha)
         for producto_id in (self.secreto.product_variant_id.id, 99999999, 0, -3):
             with self.subTest(producto_id=producto_id):
@@ -350,7 +350,7 @@ class TestLoQueSeVendeSinPublicar(HerramientasCase):
         self.assertFalse({'Zzsecreto Borrador', 'Zztrono Nube Ortopédico'} & set(nombres))
         self.assertNotIn('estado', datos)
         self.assertEqual(datos['sin_publicar']['cuantos'], 2)
-        self.assertEqual(datos['sin_publicar']['categorias'], ['Zzjabonería', 'Zzdormitorio'])
+        self.assertEqual(datos['sin_publicar']['categorias'], ['Zzdormitorio', 'Zzjabonería'])
         self.assertIn('no digas que no lo manejamos', datos['nota_sin_publicar'])
         texto = json.dumps(datos, ensure_ascii=False)
         for dato in ('Secreto', 'Nube', '4321', '8765'):
@@ -362,14 +362,14 @@ class TestCodigoPublicoEnJuan(HerramientasCase):
     """El cliente conoce el código público (DC-K7M4PX); la referencia del proveedor no sale en lo que Juan dice."""
 
     def test_buscar_por_el_codigo_publico_aunque_lo_escriba_distinto(self):
-        codigo = self.lámpara.dcasa_codigo_publico
+        codigo = self.lampara.dcasa_codigo_publico
         for escrito in (codigo, codigo.lower(), codigo.replace('-', ''), f'  {codigo.lower()} '):
-            (lámpara,) = self.salida('buscar_productos', {'consulta': escrito})['productos']
-            self.assertEqual((lámpara['nombre'], lámpara['codigo']), ('Zzcama Roble Grande', codigo), escrito)
+            (lampara,) = self.salida('buscar_productos', {'consulta': escrito})['productos']
+            self.assertEqual((lampara['nombre'], lampara['codigo']), ('Zzcama Roble Grande', codigo), escrito)
 
     def test_ver_producto_por_el_codigo_publico_y_todavia_por_la_referencia_del_proveedor(self):
         """El cliente puede traer la referencia vieja (una foto, una conversación anterior): se le atiende igual."""
-        codigo = self.lámpara.dcasa_codigo_publico
+        codigo = self.lampara.dcasa_codigo_publico
         for escrito in (codigo, codigo.lower(), codigo.replace('-', ''), 'ZZ-LÁMPARA'):
             ficha = self.salida('ver_producto', {'codigo': escrito})
             self.assertEqual((ficha['nombre'], ficha['codigo']), ('Zzcama Roble Grande', codigo), escrito)
@@ -378,7 +378,7 @@ class TestCodigoPublicoEnJuan(HerramientasCase):
         for consulta in ('zz', 'jabón'):
             self.assertNotIn('ZZ-', json.dumps(self.salida('buscar_productos', {'consulta': consulta}),
                                                ensure_ascii=False))
-        for codigo in (self.lámpara, self.jabon):
+        for codigo in (self.lampara, self.jabon):
             ficha = self.salida('ver_producto', {'codigo': codigo.dcasa_codigo_publico})
             self.assertNotIn('ZZ-', json.dumps(ficha, ensure_ascii=False))
             self.assertEqual(ficha['codigo'], codigo.dcasa_codigo_publico)
@@ -387,10 +387,10 @@ class TestCodigoPublicoEnJuan(HerramientasCase):
 
     def test_brian_tambien_encuentra_el_producto_por_su_codigo_publico(self):
         """La vendedora le dice a Brian el código que le dio el cliente."""
-        codigo = self.lámpara.dcasa_codigo_publico
+        codigo = self.lampara.dcasa_codigo_publico
         for escrito in (codigo, codigo.lower(), codigo.replace('-', '')):
-            self.assertEqual(self.env['brian.herramientas']._b_producto(escrito), self.lámpara.product_variant_id, escrito)
-        self.assertEqual(self.env['brian.herramientas']._b_plantilla(codigo), self.lámpara)
+            self.assertEqual(self.env['brian.herramientas']._b_producto(escrito), self.lampara.product_variant_id, escrito)
+        self.assertEqual(self.env['brian.herramientas']._b_plantilla(codigo), self.lampara)
 
     def test_un_codigo_publico_de_algo_sin_publicar_no_se_muestra_pero_tampoco_se_niega(self):
         """Incidente del 2026-11-13: lo que se vende sin estar publicado no es «no lo manejamos»."""
@@ -426,7 +426,7 @@ class TestVerProductoYCategorias(HerramientasCase):
         self.assertTrue(all(v['precio_texto'].endswith('+ ITBMS') for v in ficha['variantes']))
 
     def test_galeria_de_fotos(self):
-        self.env['product.image'].create({'name': 'Lateral', 'product_tmpl_id': self.lámpara.id, 'image_1920': _PNG})
+        self.env['product.image'].create({'name': 'Lateral', 'product_tmpl_id': self.lampara.id, 'image_1920': _PNG})
         ficha = self.salida('ver_producto', {'codigo': 'ZZ-LÁMPARA'})
         self.assertEqual(len(ficha['galeria']), 1)
         self.assertIn('/web/image/product.image/', ficha['galeria'][0])
@@ -759,9 +759,12 @@ class TestHorarioYTienda(HerramientasCase):
     def test_datos_reales_de_la_tienda(self):
         """Los de la empresa de fábrica (Tommalo, 2026-11-18): sin dirección todavía (vende en línea), su WhatsApp,
         su correo y su horario (lunes a sábado de 9 a 6)."""
+        self.env.company.write({'phone': '+507 6000-0002', 'email': 'contacto@tommalo.example'})
+        if 'dcasa_whatsapp_number' in self.env['website']._fields:
+            self.env['website'].search([]).write({'dcasa_whatsapp_number': '+507 6000-0002'})
         with freeze_time(panama(2026, 10, 9, 10, 0)):
             datos = self.salida('horario_y_tienda')
-        self.assertEqual(datos['tienda'], 'Tommalo Panamá')
+        self.assertEqual(datos['tienda'], 'Tommalo')
         self.assertEqual(datos['direccion'], '', 'sin dirección cargada no se dice ninguna')
         self.assertIn('/visitanos', datos['como_llegar'])
         self.assertEqual(datos['whatsapp'], '+507 6000-0002')
@@ -907,6 +910,9 @@ class TestConocimientoYAprendizaje(HerramientasCase):
             self.assertIn('registrar_pregunta_sin_respuesta', datos['nota'])
 
     def test_buscar_conocimiento_devuelve_el_texto_del_equipo(self):
+        self.env.company.write({'phone': '+507 6000-0002', 'email': 'contacto@tommalo.example'})
+        if 'dcasa_whatsapp_number' in self.env['website']._fields:
+            self.env['website'].search([]).write({'dcasa_whatsapp_number': '+507 6000-0002'})
         self.tienda()
         datos = self.salida('buscar_conocimiento', {'consulta': '¿A qué hora abren y dónde están?'})
         self.assertGreaterEqual(datos['encontrados'], 1)

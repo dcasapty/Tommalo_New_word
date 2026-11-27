@@ -23,7 +23,7 @@ class ComisionCommon(NominaCommon):
         cls.itbms = cls.company.account_sale_tax_id
         cls.website = cls.env['website'].search([], limit=1)
         Producto = cls.env['product.product']
-        cls.mueble = Producto.create({'name': 'MUEBLE DE PRUEBA COMISION', 'type': 'consu', 'invoice_policy': 'order',
+        cls.articulo = Producto.create({'name': 'ARTICULO DE PRUEBA COMISION', 'type': 'consu', 'invoice_policy': 'order',
                                       'list_price': 1000.0, 'taxes_id': [Command.set(cls.itbms.ids)]})
         cls.premio = Producto.create({'name': 'PREMIO DE PRUEBA COMISION', 'type': 'service',
                                       'invoice_policy': 'order', 'list_price': 0.0,
@@ -74,10 +74,10 @@ class ComisionCommon(NominaCommon):
 
     def orden(self, web=True, lineas=None, cliente=None, vendedora=None, confirmar=True, pago='a_mano', creado_por=None,
               **extra):
-        """Un pedido confirmado. ``lineas``: [(producto, precio, cantidad, extras)]; por defecto un mueble de 1,000.
+        """Un pedido confirmado. ``lineas``: [(producto, precio, cantidad, extras)]; por defecto un articulo de 1,000.
         ``web=True`` lo hace nacer en la tienda en línea; ``creado_por``: el usuario que abrió el carrito (por defecto,
         quien corre la prueba)."""
-        lineas = lineas or [(self.mueble, 1000.0, 1, {})]
+        lineas = lineas or [(self.articulo, 1000.0, 1, {})]
         valores = {
             'partner_id': (cliente or self.cliente).id, 'company_id': self.company.id,
             'order_line': [Command.create({'product_id': p.id, 'product_uom_qty': q, 'price_unit': precio, **plus})

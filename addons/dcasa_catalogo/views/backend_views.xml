@@ -22,7 +22,7 @@
         <field name="arch" type="xml">
             <field name="categ_id" position="after">
                 <field name="dcasa_medidas" placeholder="Ancho × Fondo × Alto: 80 × 40 × 120 cm"/>
-                <field name="dcasa_combo" placeholder="Combo con colchón $349.99"/>
+                <field name="dcasa_combo" placeholder="Combo con pieza extra $49.99"/>
             </field>
         </field>
     </record>

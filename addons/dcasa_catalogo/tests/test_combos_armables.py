@@ -1,6 +1,6 @@
-"""Combos cama + colchón que se arman en la venta (pedido de la dueña, 2026-10-22), con productos inventados.
+"""Combos cama + colchón que se arman en la venta (mecanismo de combos), con productos inventados.
 
-Regla de la dueña: cada colchón, por medida, tiene un «precio en combo» que pone Gerencia; se cobra si en la misma venta
+Regla de negocio: cada colchón, por medida, tiene un «precio en combo» que pone Gerencia; se cobra si en la misma venta
 va una cama de su misma medida; sin precio en combo, va a su precio normal; la cama, siempre a su precio normal.
 Estas pruebas fijan las reglas en el servidor (no en la pantalla): medidas, existencias, cambiar o quitar la cama, el
 tope de descuento de la vendedora, la factura, el PDF y que los combos de siempre (tipo «Combo») siguen igual.
@@ -63,7 +63,7 @@ class TestReglasCombos(TransactionCase):
     def test_medida_por_el_nombre(self):
         self.assertEqual(reglas.medida_del_nombre('Cama king de metal'), 'King')
         self.assertEqual(reglas.medida_del_nombre('COLCHON DR DREAM FULL 4/6', 'colchon'), 'Full')
-        self.assertEqual(reglas.medida_del_nombre('COLCHON IMPERIAL 3/4 BUEN SUEÑO', 'colchon'), 'Twin')
+        self.assertEqual(reglas.medida_del_nombre('COLCHON DE PRUEBA 3/4 BUEN SUEÑO', 'colchon'), 'Twin')
         self.assertEqual(reglas.medida_del_nombre('COLCHON DULCESUENOS SEMI RESORTE Q (A)', 'colchon'), 'Queen')
         self.assertIsNone(reglas.medida_del_nombre('CAMA ... Q (A)', 'cama'), 'La «Q» suelta solo vale en colchones')
         self.assertIsNone(reglas.medida_del_nombre('Cama con estantes'))
@@ -467,7 +467,7 @@ class TestPanelArmarCombo(CombosCommon):
 
 @tagged('post_install', '-at_install')
 class TestCombosYCampana(CombosCommon):
-    """«Los combos son inamovibles» (la dueña, 2026-11-16): con la campaña del sitio rigiendo, la cama y el colchón de
+    """«Los combos son inamovibles» (regla de negocio): con la campaña del sitio rigiendo, la cama y el colchón de
     un combo con precio en combo van a su precio de siempre; cada pieza sola, con su precio de campaña."""
 
     @classmethod
@@ -488,9 +488,9 @@ class TestCombosYCampana(CombosCommon):
         # Precios de campaña inventados para la prueba, elegidos para que el COMBO SIGA SIENDO EL MÁS BARATO, que es
         # lo que esta clase prueba: la cama king 400 → 385 (pierde 15 al entrar al combo) y el colchón king 300 → 280
         # (gana 20 al entrar, porque en combo vale 260). Gana más de lo que pierde, así que el combo se queda tal cual
-        # (regla de la dueña del 2026-11-16: se compara el total del par). El colchón sin precio en combo, 280 → 250.
+        # (regla de negocio: se compara el total del par). El colchón sin precio en combo, 280 → 250.
         # El caso al revés (la campaña deja el colchón más barato suelto que en combo, y entonces deja de ser combo:
-        # decisión de la dueña del 2026-11-16) va en tests/test_rv2_combos_campana.py.
+        # regla de negocio) va en tests/test_rv2_combos_campana.py.
         cls.cama_king.product_tmpl_id.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 385.0})
         cls.colchon_king.product_tmpl_id.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 230.0})
         cls.colchon_sin.product_tmpl_id.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 250.0})
@@ -643,7 +643,7 @@ class TestFacturaYPapel(CombosCommon):
         return orden
 
     def assertDescuentoEnSuRenglon(self, texto, descuento, donde):
-        """Decisión de la dueña (2026-10-23): la cama y el colchón a su precio normal, «Combo cama + colchón» en los
+        """Regla de negocio: la cama y el colchón a su precio normal, «Combo cama + colchón» en los
         dos, y el descuento del combo en su propio renglón (no rebajado en ninguna pieza)."""
         self.assertEqual(texto.count('Combo cama + colchón'), 2, f'{donde}: las dos piezas')
         self.assertEqual(texto.count('Descuento combo cama + colchón'), 1, donde)
@@ -745,7 +745,7 @@ class TestFacturaYPapel(CombosCommon):
 
 @tagged('post_install', '-at_install')
 class TestPreciosAprobados(CombosCommon):
-    """Los descuentos de combo que aprobó la dueña (2026-10-23) se cargan una vez (migración 19.0.1.12.0) y solo donde
+    """Los descuentos de combo aprobados por Gerencia se cargan una vez (migración 19.0.1.12.0) y solo donde
     todo cuadra: si el precio normal cambió o Gerencia ya puso uno, no se adivina ni se pisa."""
 
     def test_solo_donde_todo_cuadra_y_una_sola_vez(self):
@@ -770,7 +770,7 @@ class TestPreciosAprobados(CombosCommon):
         self.assertEqual(ya_tenia.dcasa_precio_combo, 150.0, 'Lo que puso Gerencia no se pisa')
 
     def test_sin_cifras_de_dcasa_no_se_carga_ningun_precio_en_combo(self):
-        """Los precios en combo aprobados por la dueña de D'CASA no son de este negocio: la lista viene vacía y la carga
+        """Los precios en combo de otro negocio no aplican aquí: la lista viene vacía y la carga
         no pone ninguno (los de Tommalo, si los hay, los pone Gerencia o los decide su dueño)."""
         self.assertEqual(combo_armable.PRECIOS_COMBO_APROBADOS, {})
         self.assertEqual(self.env['product.product']._dcasa_cargar_precios_combo_aprobados(), {})

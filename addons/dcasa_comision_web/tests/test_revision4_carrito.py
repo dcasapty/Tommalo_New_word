@@ -24,7 +24,7 @@ class TestRecalcularPreciosNoMarcaAlVisitante(VendedoraCommon):
             'applied_on': '3_global', 'compute_price': 'percentage', 'percent_price': 10})]})
 
     def carrito(self, producto=None):
-        return self.orden(creado_por=self.publico, confirmar=False, lineas=[(producto or self.mueble, 1000.0, 1, {})])
+        return self.orden(creado_por=self.publico, confirmar=False, lineas=[(producto or self.articulo, 1000.0, 1, {})])
 
     @staticmethod
     def neto(linea):
@@ -41,7 +41,7 @@ class TestRecalcularPreciosNoMarcaAlVisitante(VendedoraCommon):
                               ('se factura al pedir', {'invoice_policy': 'order'})):
             with self.subTest(producto=nombre):
                 producto = self.env['product.product'].create({
-                    'name': 'MUEBLE DE PRUEBA RECALCULO ' + nombre, 'type': 'consu', 'list_price': 1000.0,
+                    'name': 'ARTICULO DE PRUEBA RECALCULO ' + nombre, 'type': 'consu', 'list_price': 1000.0,
                     'taxes_id': [Command.set(self.itbms.ids)], **extra})
                 orden = self.carrito(producto)
                 self.assertFalse(orden.dcasa_tocada_por_id)
@@ -147,7 +147,7 @@ class TestCostoDeVigilarLasLineas(VendedoraCommon):
         return total['n']
 
     def pedido(self, web):
-        lineas = [(self.mueble, 100.0, 1, {}) for _ in range(self.LINEAS)]
+        lineas = [(self.articulo, 100.0, 1, {}) for _ in range(self.LINEAS)]
         return self.orden(web=web, confirmar=False, lineas=lineas, creado_por=self.env.ref('base.public_user'))
 
     def test_cambiar_la_cantidad_de_muchas_lineas_cuesta_lo_mismo_en_un_pedido_de_la_pagina_que_en_uno_de_mostrador(self):

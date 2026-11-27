@@ -198,7 +198,7 @@ class TestVersionesYDiaDeCobro(Liquida):
         """Una nota libre, sin producto, no se puede atribuir al envío: resta de lo vendido (decisión de la segunda
         revisión) y se avisa para que alguien la mire."""
         self.version(10.0)
-        factura = self.facturar(self.orden(lineas=[(self.mueble, 1000.0, 1, {}),
+        factura = self.facturar(self.orden(lineas=[(self.articulo, 1000.0, 1, {}),
                                                    (self.envio, 50.0, 1, {'is_delivery': True})]))
         self.pagar(factura)
         venta = self.venta(factura)
@@ -216,7 +216,7 @@ class TestVersionesYDiaDeCobro(Liquida):
         nota = self.env['account.move'].create({
             'move_type': 'out_refund', 'partner_id': factura.partner_id.id, 'invoice_date': '2030-03-04',
             'reversed_entry_id': factura.id,
-            'invoice_line_ids': [Command.create({'product_id': self.mueble.id, 'name': 'Devolución', 'quantity': 1,
+            'invoice_line_ids': [Command.create({'product_id': self.articulo.id, 'name': 'Devolución', 'quantity': 1,
                                                  'price_unit': 100.0})]})
         nota.action_post()
         self.assertFalse(venta.nota_sin_producto)
@@ -254,7 +254,7 @@ class TestSinDuenoTrasRepago(VendedoraCommon):
         con fecha del 2 (antes de la regla). Ahora cuenta para el bono y deja de pagar al sitio: paga a una sola parte."""
         self.version(10.0)
         self.avanzar('2030-03-06 15:00:00')
-        orden = self.orden(web=True, vendedora=self.u_vendedora, lineas=[(self.mueble, 1000.0, 1, {})])
+        orden = self.orden(web=True, vendedora=self.u_vendedora, lineas=[(self.articulo, 1000.0, 1, {})])
         factura = self.facturar(orden, '2030-03-02')        # facturada ANTES de la regla, cobrada DESPUÉS
         self.pagar(factura, '2030-03-06')
         venta = self.venta(factura)

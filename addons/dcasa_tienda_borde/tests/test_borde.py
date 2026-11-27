@@ -71,9 +71,9 @@ class TestCacheDelBorde(HttpCase):
 
     def setUp(self):
         super().setUp()
-        recamaras = self.env.ref('website_dcasa.public_category_recamaras')
+        recamaras = self.env.ref('website_dcasa.public_category_salud')
         self.producto = self.env['product.template'].create({
-            'name': 'Mesa borde prueba', 'list_price': 77.5, 'is_published': True, 'sale_ok': True,
+            'name': 'Lampara borde prueba', 'list_price': 77.5, 'is_published': True, 'sale_ok': True,
             'type': 'consu', 'public_categ_ids': [(6, 0, recamaras.ids)], 'dcasa_black_weekend': True,
         })
         self.env['ir.config_parameter'].sudo().set_param('dcasa_black_weekend.activo', '1')

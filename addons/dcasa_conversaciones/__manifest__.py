@@ -6,7 +6,7 @@ Conversaciones con clientes (Juan)
 ==================================
 
 La parte de Odoo de «Juan», el asistente que atiende a los clientes por WhatsApp, Telegram,
-Messenger e Instagram con el nombre público «Tommalo Panamá». El motor de IA vive en el Worker
+Messenger e Instagram con el nombre público «Tommalo». El motor de IA vive en el Worker
 ``juan`` (Cloudflare); aquí vive **la verdad**:
 
 * **Bandeja**: cada conversación (canal + id externo) con el cliente como ficha de Odoo (el celular

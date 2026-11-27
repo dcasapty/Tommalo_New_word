@@ -155,7 +155,7 @@ class TestPaginasSinPixel(SitioMetaCase):
                 html = self.url_open(ruta).text
                 self.assertNotIn('data-dcasa-meta-pixel', html)
                 self.assertIn(self.REFERER, html, 'La página siguiente no recibe esta dirección')
-        for ruta in ('/', '/shop?search=mesa', '/shop?fbclid=IwAR0123456789abcdef&utm_source=facebook'):
+        for ruta in ('/', '/shop?search=lampara', '/shop?fbclid=IwAR0123456789abcdef&utm_source=facebook'):
             with self.subTest(ruta=ruta):
                 html = self.url_open(ruta).text
                 self.assertIn('data-dcasa-meta-pixel', html, 'Las páginas de siempre sí miden')

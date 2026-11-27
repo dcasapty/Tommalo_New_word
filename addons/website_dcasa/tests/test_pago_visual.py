@@ -33,6 +33,7 @@ class PagoVisualDatos:
     @classmethod
     def preparar_pago(cls):
         cls.website = cls.env.ref('website.default_website')
+        cls.website.dcasa_whatsapp_number = '+507 6000-0002'   # de fábrica va vacío (PENDIENTE)
         cls.producto = cls.env['product.product'].create({
             'name': 'SERVICIO DE PRUEBA DEL PAGO', 'type': 'service', 'list_price': 100.0, 'is_published': True,
             'sale_ok': True})
@@ -41,7 +42,7 @@ class PagoVisualDatos:
             'group_ids': [Command.set([cls.env.ref('base.group_portal').id])]})
         cls.cliente = cls.usuario.partner_id
         cls.cliente.write({
-            'phone': '+507 6000-0505', 'street': 'Calle de prueba 5', 'city': 'La Chorrera',
+            'phone': '+507 6000-0505', 'street': 'Calle de prueba 5', 'city': 'Ciudad de Prueba',
             'country_id': cls.env.ref('base.pa').id})
 
     def entrar_y_llenar_el_carrito(self, cantidad=1):
@@ -96,7 +97,7 @@ class TestPaginaDePago(PagoVisualComun):
         self.assertEqual(len(volver), 1)
         self.assertEqual(volver[0].get('href'), '/shop/cart')
         self.assertIn('Volver al carrito', self.texto(volver[0]))
-        # Como la cabecera del sitio (MARCA_TOMMALO.md): solo el nombre escrito, sin el sello, y lleva a la tienda.
+        # Como la cabecera del sitio (layout_templates.xml): solo el nombre escrito, sin el sello, y lleva a la tienda.
         inicio = cabecera[0].xpath('.//a[@href="/"]')
         self.assertEqual(len(inicio), 1)
         self.assertEqual(self.texto(inicio[0]), self.website.name, 'el nombre del sitio, nunca uno escrito a mano')
@@ -312,7 +313,7 @@ class TestVentanaDelPortalYEstados(PagoVisualComun):
             arbol.xpath('//a[contains(@class, "o_dcasa_pago_wa")][starts-with(@href, "https://api.whatsapp.com/send?phone=")]'))
         seguir = arbol.xpath('//a[@class="o_dcasa_pago_seguir"][@href="/shop"]')
         self.assertTrue(seguir)
-        self.assertEqual(self.texto(seguir[0]), 'Seguir viendo productos', 'Tommalo no vende muebles')
+        self.assertEqual(self.texto(seguir[0]), 'Seguir viendo productos', 'Tommalo no vende articulos')
         # El mensaje de WhatsApp saluda a la tienda por su nombre (el del sitio), con el número del pedido.
         wa = arbol.xpath('//a[contains(@class, "o_dcasa_pago_wa")]')[0].get('href')
         self.assertIn(quote(f'Hola {self.website.name}, quiero coordinar mi pedido {orden.name}'), wa)

@@ -155,16 +155,16 @@ class TestHuellaSucesos(HuellaBase):
 
     def test_nota_de_credito_a_borrador_y_otra_vez_publicada_con_otro_producto_mismo_total(self):
         """La huella de una nota solo trae id, estado, base e ITBMS: si se cambia el PRODUCTO de la linea (envio en vez
-        de mueble) con el mismo total, la huella no cambia. Los ganchos de ``_post`` lo cubren; a ciegas, no."""
+        de articulo) con el mismo total, la huella no cambia. Los ganchos de ``_post`` lo cubren; a ciegas, no."""
         self.version(10.0)
         for modo, ctx in self.modos():
             with self.subTest(modo=modo):
-                factura = self.facturar(self.orden(lineas=[(self.mueble, 1000.0, 1, {}),
+                factura = self.facturar(self.orden(lineas=[(self.articulo, 1000.0, 1, {}),
                                                            (self.envio, 50.0, 1, {'is_delivery': True})]))
                 self.pagar(factura)
                 venta = self.venta(factura)
-                nota = self.nota_con(factura, self.mueble, 50.0)
-                self.assertEqual(venta.comision_centavos, 9500, 'la nota devolvio 50 de mueble')
+                nota = self.nota_con(factura, self.articulo, 50.0)
+                self.assertEqual(venta.comision_centavos, 9500, 'la nota devolvio 50 de articulo')
                 nota.button_draft()
                 nota.invoice_line_ids.write({'product_id': self.envio.id, 'price_unit': 50.0, 'tax_ids': [Command.clear()]})
                 self.assertEqual(nota.amount_untaxed, 50.0)
@@ -256,7 +256,7 @@ class TestHuellaSucesos(HuellaBase):
                 with self.subTest(modo=modo, que=que):
                     factura, venta = self.pagada()
                     factura.button_draft()
-                    linea = factura.invoice_line_ids.filtered(lambda ln: ln.product_id == self.mueble)
+                    linea = factura.invoice_line_ids.filtered(lambda ln: ln.product_id == self.articulo)
                     if que == 'precio':
                         linea.price_unit = 800.0
                     else:
@@ -275,7 +275,7 @@ class TestHuellaSucesos(HuellaBase):
                 factura, venta = self.pagada()
                 self.assertEqual(venta.comision_centavos, 10700)
                 factura.button_draft()
-                factura.invoice_line_ids.filtered(lambda ln: ln.product_id == self.mueble).tax_ids = [Command.clear()]
+                factura.invoice_line_ids.filtered(lambda ln: ln.product_id == self.articulo).tax_ids = [Command.clear()]
                 with ctx():
                     factura.action_post()
                     if factura.payment_state not in ('paid', 'in_payment'):

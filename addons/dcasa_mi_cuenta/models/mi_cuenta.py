@@ -45,7 +45,7 @@ CANCELADAS_A_LA_VISTA = 5
 
 TEXTO_SIN_FACTURA = 'Tu comprobante y tus pagos aparecen aquí cuando se emita.'
 TEXTO_COMO = 'Retiro en la tienda o entrega a domicilio: lo coordinamos por WhatsApp.'
-# El mueble se entrega pagado completo (decisión de la dueña, 2026-10-17): con saldo, nunca «Listo».
+# El pedido se entrega pagado completo: con saldo, nunca «Listo».
 TEXTO_AL_TERMINAR = 'Cuando termines de pagar, te escribimos para coordinar la entrega o el retiro.'
 # Cómo ve el cliente en qué quedó su opinión (models/resena.py de website_dcasa).
 ESTADO_OPINION = {'pendiente': 'La estamos leyendo', 'aprobada': 'Publicada en la ficha',
@@ -235,7 +235,7 @@ class DcasaMiCuenta(models.AbstractModel):
                 'importe_fmt': monto(importe),
                 'flete': flete,
                 'por_cotizar': flete and not importe,
-                'mueble': producto.type != 'service' and not flete and not linea.dcasa_canje_id,
+                'principal': producto.type != 'service' and not flete and not linea.dcasa_canje_id,
                 'piezas': [self._mc_nombre(pieza.product_id, pieza.name) for pieza in piezas],
             })
         return items
@@ -253,13 +253,13 @@ class DcasaMiCuenta(models.AbstractModel):
                 'importe_fmt': monto(linea.price_total),
                 'flete': flete,
                 'por_cotizar': flete and not linea.price_total,
-                'mueble': bool(producto) and producto.type != 'service' and not flete,
+                'principal': bool(producto) and producto.type != 'service' and not flete,
                 'piezas': [],
             })
         return items
 
     def _mc_foto(self, website, producto):
-        """La foto del mueble (256 px) si está publicado en la tienda; si no, False (la plantilla pone un icono)."""
+        """La foto del producto (256 px) si está publicado en la tienda; si no, False (la plantilla pone un icono)."""
         if not website or not producto:
             return False
         plantilla = producto.product_tmpl_id.sudo()
@@ -268,12 +268,12 @@ class DcasaMiCuenta(models.AbstractModel):
         return website._dcasa_img_url(producto, 256) or False
 
     def _mc_principal(self, items, website):
-        """(nombre, foto, cuántas cosas más): el mueble de mayor importe y el resto."""
-        muebles = [item for item in items if item['mueble']] or [item for item in items if not item['flete']]
-        if not muebles:
+        """(nombre, foto, cuántas cosas más): el producto de mayor importe y el resto."""
+        principales = [item for item in items if item['principal']] or [item for item in items if not item['flete']]
+        if not principales:
             return '', False, 0
-        principal = max(muebles, key=lambda item: item['importe'])
-        return principal['nombre'], self._mc_foto(website, principal['producto']), len(muebles) - 1
+        principal = max(principales, key=lambda item: item['importe'])
+        return principal['nombre'], self._mc_foto(website, principal['producto']), len(principales) - 1
 
     # ------------------------------------------------------------------------
     # Pagos: solo lo que dice _dcasa_estado_abono() de cada factura publicada
@@ -335,7 +335,7 @@ class DcasaMiCuenta(models.AbstractModel):
 
     @staticmethod
     def _mc_entrega(pedido, por_pagar=False):
-        """``por_pagar``: la compra todavía tiene saldo. El mueble no se entrega hasta pagarlo completo, así que aunque
+        """``por_pagar``: la compra todavía tiene saldo. El pedido no se entrega hasta pagarlo completo, así que aunque
         ya esté apartado en la bodega no se anuncia como listo."""
         transportista = pedido.carrier_id.name if pedido.carrier_id else ''
         salidas = pedido.picking_ids.filtered(lambda p: p.picking_type_code == 'outgoing' and p.state != 'cancel')
@@ -389,7 +389,7 @@ class DcasaMiCuenta(models.AbstractModel):
         """Todo lo que la pantalla dice de un pedido. ``tienda``: entró con la cuenta de la tienda (puede bajar PDF)."""
         hoy = hoy_en_panama()
         items = self._mc_items_pedido(pedido)
-        mueble, foto, mas = self._mc_principal(items, website)
+        nombre_principal, foto, mas = self._mc_principal(items, website)
         facturas = pedido.invoice_ids.filtered(lambda f: f.move_type == 'out_invoice' and f.state == 'posted')
         pago = self._mc_pago(facturas)
         entrega = self._mc_entrega(pedido, por_pagar=bool(pago and pago['por_pagar']))
@@ -431,7 +431,7 @@ class DcasaMiCuenta(models.AbstractModel):
             'fecha': fecha_corta(pedido.date_order),
             'orden': _orden(pedido.date_order),
             'estado': pedido.state,
-            'mueble': mueble or 'Tu compra',
+            'principal': nombre_principal or 'Tu compra',
             'foto': foto,
             'mas': cosas_mas(mas),
             'items': items,
@@ -475,7 +475,7 @@ class DcasaMiCuenta(models.AbstractModel):
     def _mc_resumen_factura(self, factura, website, tienda=False):
         """Una factura publicada que no viene de ningún pedido (se hizo directo en Facturación)."""
         items = self._mc_items_factura(factura)
-        mueble, foto, mas = self._mc_principal(items, website)
+        nombre_principal, foto, mas = self._mc_principal(items, website)
         pago = self._mc_pago(factura)
         if pago and pago['por_pagar']:
             grupo, etiqueta, tono = 'por_pagar', f"Te falta {pago['saldo_fmt']}", 'alerta'
@@ -489,7 +489,7 @@ class DcasaMiCuenta(models.AbstractModel):
             'fecha': fecha_corta(factura.invoice_date),
             'orden': _orden(factura.invoice_date),
             'estado': 'sale',
-            'mueble': mueble or 'Tu compra',
+            'principal': nombre_principal or 'Tu compra',
             'foto': foto,
             'mas': cosas_mas(mas),
             'items': items,

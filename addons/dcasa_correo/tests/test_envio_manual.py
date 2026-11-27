@@ -88,13 +88,13 @@ class TestCotizacionManual(CorreoCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.cama = cls.env['product.product'].create({'name': 'CAMA CORREO', 'type': 'consu', 'list_price': 300.0})
+        cls.crema = cls.env['product.product'].create({'name': 'CREMA CORREO', 'type': 'consu', 'list_price': 300.0})
 
     def orden(self, partner=None, usuario=None):
         usuario = usuario or self.vendedora
         return self.env['sale.order'].with_user(usuario).create({
             'partner_id': (partner or self.ana).id, 'user_id': usuario.id,
-            'order_line': [Command.create({'product_id': self.cama.id, 'product_uom_qty': 1})]})
+            'order_line': [Command.create({'product_id': self.crema.id, 'product_uom_qty': 1})]})
 
     def test_sin_clave_el_boton_es_el_de_odoo(self):
         accion = self.orden().action_quotation_send()
@@ -140,7 +140,7 @@ class TestPanelCorreo(CorreoCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.cama = cls.env['product.product'].create({'name': 'CAMA PANEL', 'type': 'consu', 'list_price': 300.0})
+        cls.crema = cls.env['product.product'].create({'name': 'CREMA PANEL', 'type': 'consu', 'list_price': 300.0})
         cls.interno = new_test_user(cls.env, login='correo_interno', email='interno.correo@example.com',
                                     groups='base.group_user')
         cls.portal = new_test_user(cls.env, login='correo_portal', email='portal.correo@example.com',
@@ -153,7 +153,7 @@ class TestPanelCorreo(CorreoCase):
 
     def conversacion(self, partner):
         datos = {'canal': 'whatsapp_qr', 'id_externo': '50760000091', 'id_mensaje': f'wamid.correo{partner.id}',
-                 'direccion': 'entrante', 'autor': 'cliente', 'texto': 'Hola, quiero la cama',
+                 'direccion': 'entrante', 'autor': 'cliente', 'texto': 'Hola, quiero la crema',
                  'ts': datetime(2026, 10, 9, 15, 0), 'nombre': None, 'celular': None, 'adjuntos': []}
         conv = self.env['dcasa.conversacion']._registrar_mensaje(datos)[0]
         conv.partner_id = partner
@@ -162,7 +162,7 @@ class TestPanelCorreo(CorreoCase):
     def orden(self, partner=None):
         return self.env['sale.order'].with_user(self.vendedora).create({
             'partner_id': (partner or self.ana).id, 'user_id': self.vendedora.id,
-            'order_line': [Command.create({'product_id': self.cama.id, 'product_uom_qty': 1})]})
+            'order_line': [Command.create({'product_id': self.crema.id, 'product_uom_qty': 1})]})
 
     def enviar(self, *args):
         with patch(RUTA_PDF, return_value=PDF):
@@ -192,7 +192,7 @@ class TestPanelCorreo(CorreoCase):
         sin = self.conversacion(self.sin_correo)
         self.env['sale.order'].with_user(self.vendedora).create({
             'partner_id': self.sin_correo.id, 'user_id': self.vendedora.id,
-            'order_line': [Command.create({'product_id': self.cama.id, 'product_uom_qty': 1})]})
+            'order_line': [Command.create({'product_id': self.crema.id, 'product_uom_qty': 1})]})
         estado = self.panel.correo_de_cotizacion(sin.id)
         self.assertEqual((estado['puede'], estado['destino']), (False, ''))
         self.assertIn('Carla Sin Correo no tiene correo', estado['motivo'])

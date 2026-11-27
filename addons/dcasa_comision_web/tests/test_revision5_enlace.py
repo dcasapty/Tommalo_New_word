@@ -42,7 +42,7 @@ class TestEnlaceOtrasEntradas(VendedoraCommon):
             Move = Move.with_user(usuario)
         return Move.create({
             'move_type': 'out_invoice', 'partner_id': self.cliente.id, 'invoice_date': DIA,
-            'invoice_line_ids': [Command.create({'name': 'Mueble de mostrador', 'quantity': 1, 'price_unit': 5000.0,
+            'invoice_line_ids': [Command.create({'name': 'Articulo de mostrador', 'quantity': 1, 'price_unit': 5000.0,
                                                  'tax_ids': [Command.set(self.itbms.ids)]})]})
 
     def hay_enlace(self, factura, pedido):
@@ -124,7 +124,7 @@ class TestEnlaceOtrasEntradas(VendedoraCommon):
             borrador = self.borrador_mostrador()
             def g():
                 self.env['ir.default'].with_user(usuario).set('sale.order.line', 'invoice_lines', borrador.invoice_line_ids.ids)
-                self.env['sale.order.line'].with_user(usuario).create({'order_id': online.id, 'product_id': self.mueble.id, 'product_uom_qty': 1, 'price_unit': 1.0})
+                self.env['sale.order.line'].with_user(usuario).create({'order_id': online.id, 'product_id': self.articulo.id, 'product_uom_qty': 1, 'price_unit': 1.0})
                 if not borrador.invoice_line_ids.sale_line_ids:
                     raise UserError('sin enlace')
             r = self.intentar('a04b ir.default invoice_lines', rol, g)
@@ -190,14 +190,14 @@ class TestEnlaceOtrasEntradas(VendedoraCommon):
             def f():
                 self.env['sale.order'].with_user(usuario).create({
                     'partner_id': self.cliente.id,
-                    'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1, 'price_unit': 1.0, 'invoice_lines': [Command.set(borrador.invoice_line_ids.ids)]})]})
+                    'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1, 'price_unit': 1.0, 'invoice_lines': [Command.set(borrador.invoice_line_ids.ids)]})]})
                 if not borrador.invoice_line_ids.sale_line_ids:
                     raise UserError('sin enlace')
             r = self.intentar('a08 sale.order.create anidado invoice_lines', rol, f)
             with self.subTest(rol=rol):
                 self.assertNotEqual(r, 'PASO')
             def g():
-                self.env['sale.order'].with_user(usuario).with_context(default_order_line=[[0, 0, {'product_id': self.mueble.id, 'product_uom_qty': 1, 'price_unit': 1.0, 'invoice_lines': [[6, 0, borrador.invoice_line_ids.ids]]}]]).create({'partner_id': self.cliente.id})
+                self.env['sale.order'].with_user(usuario).with_context(default_order_line=[[0, 0, {'product_id': self.articulo.id, 'product_uom_qty': 1, 'price_unit': 1.0, 'invoice_lines': [[6, 0, borrador.invoice_line_ids.ids]]}]]).create({'partner_id': self.cliente.id})
                 if not borrador.invoice_line_ids.sale_line_ids:
                     raise UserError('sin enlace')
             r = self.intentar('a08b sale.order.create default_order_line', rol, g)

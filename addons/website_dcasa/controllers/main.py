@@ -28,13 +28,13 @@ PAGINAS_LEGALES = {
         'titulo': 'Política de privacidad',
         'descripcion': 'Qué datos guarda Tommalo, para qué los usa, con quién los comparte '
                        '(incluida la inteligencia artificial) y cómo ejercer tus derechos.',
-        'actualizado': 'PENDIENTE',
+        'actualizado': '27 de noviembre de 2026',
         'cuerpo': 'website_dcasa.privacidad_cuerpo',
     },
     '/terminos': {
         'titulo': 'Términos y condiciones',
         'descripcion': 'Cómo funcionan los precios, los pedidos y la atención de Tommalo en este sitio.',
-        'actualizado': 'PENDIENTE',
+        'actualizado': '27 de noviembre de 2026',
         'cuerpo': 'website_dcasa.terminos_cuerpo',
     },
 }

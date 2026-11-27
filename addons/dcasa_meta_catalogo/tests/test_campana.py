@@ -44,16 +44,16 @@ class TestCampana(MetaComun, TransactionCase):
 
     def test_borrar_la_campana_deja_al_producto_sin_campana(self):
         campana = self.Campana.create({'name': 'Liquidación'})
-        mesa = self._producto('Mesa campaña prueba', 90.0, dcasa_meta_campana_id=campana.id)
+        lampara = self._producto('Lampara campaña prueba', 90.0, dcasa_meta_campana_id=campana.id)
         self.assertEqual(campana.producto_count, 1)
         campana.unlink()
-        self.assertTrue(mesa.exists())
-        self.assertFalse(mesa.dcasa_meta_campana_id)
+        self.assertTrue(lampara.exists())
+        self.assertFalse(lampara.dcasa_meta_campana_id)
 
     def test_gerencia_marca_varios_productos_a_la_vez(self):
         campana = self.Campana.create({'name': 'Verano'})
-        productos = self._producto('Silla verano 1', 40.0) | self._producto('Silla verano 2', 45.0) \
-            | self._producto('Silla verano 3', 50.0)
+        productos = self._producto('Taza verano 1', 40.0) | self._producto('Taza verano 2', 45.0) \
+            | self._producto('Taza verano 3', 50.0)
         # «Productos para campañas»: la lista de Productos (edita varios a la vez) trae la columna de la campaña.
         accion = self.env.ref('sale.product_template_action')
         vista_id = accion.view_ids.filtered(lambda v: v.view_mode == 'list').view_id.id

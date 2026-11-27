@@ -1,10 +1,11 @@
 """El bloque «Presentación» de la ficha, con la marca Tommalo (docs/MARCA_TOMMALO.md), medido en Chrome como
-teléfono con la ficha de verdad de los Pañales Nateen (una presentación por talla, del catálogo del dueño).
+teléfono con una ficha de prueba (una presentación por variante, con productos inventados).
 
-Estaba roto (2026-11-19): era una rejilla de dos columnas y, con varias presentaciones, el antetítulo y cada línea se
+Estaba roto: era una rejilla de dos columnas y, con varias presentaciones, el antetítulo y cada línea se
 repartían entre las dos (una angostísima, «Caja L — 15 a 39 lb» palabra por palabra); en el celular la ficha medía
-607 px de ancho a 390. Ahora es una tarjeta `surface` con su filo y radio de 16 px, el antetítulo en el naranja de texto
+607 px de ancho a 390. Ahora es una tarjeta `surface` con su filo y radio de 16 px, el antetítulo en el acento de texto
 y una línea por renglón, a todo el ancho."""
+from odoo.addons.dcasa_catalogo.catalogo import atributo_con_valores
 from odoo.addons.website_dcasa.tests.chrome_movil import ChromeMovilCase
 from odoo.tests import tagged
 
@@ -48,16 +49,23 @@ class TestFichaConPresentacionesEnElCelular(ChromeMovilCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        variante = cls.env['product.product'].search([('default_code', '=', 'NAT-M')])
-        cls.panales = variante.product_tmpl_id
-        cls.panales.is_published = True
+        atributo, valores = atributo_con_valores(cls.env, 'Presentación de la ficha de prueba', ['A', 'B', 'C'])
+        cls.crema = cls.env['product.template'].create({
+            'name': 'Crema de prueba con presentaciones', 'type': 'consu', 'is_storable': True,
+            'list_price': 12.0, 'is_published': True,
+            'attribute_line_ids': [(0, 0, {'attribute_id': atributo.id,
+                                           'value_ids': [(6, 0, [v.id for v in valores.values()])]})]})
+        textos = {'A': 'Frasco A de prueba — 50 ml', 'B': 'Frasco B de prueba — 120 ml',
+                  'C': 'Frasco C de prueba — caja de 12 unidades'}
+        for variante in cls.crema.product_variant_ids:
+            variante.dcasa_presentacion = textos[variante.product_template_attribute_value_ids.name]
 
     def test_una_tarjeta_de_la_marca_a_todo_el_ancho_y_nada_se_sale(self):
-        presentaciones = self.panales._dcasa_presentaciones()
-        self.assertGreaterEqual(len(presentaciones), 3, 'la ficha de verdad, con una presentación por talla')
+        presentaciones = self.crema._dcasa_presentaciones()
+        self.assertGreaterEqual(len(presentaciones), 3, 'una presentación por variante')
         for ancho in (360, 390):
             with self.subTest(ancho=ancho), self._chrome_movil(ancho) as browser:
-                browser.navigate_to(self.base_url() + self.panales.website_url, wait_stop=True)
+                browser.navigate_to(self.base_url() + self.crema.website_url, wait_stop=True)
                 self.assertTrue(browser._wait_ready())
                 m = self._evaluar(browser, MEDIR)
                 self.assertEqual(m['pantalla'], ancho)
@@ -65,11 +73,11 @@ class TestFichaConPresentacionesEnElCelular(ChromeMovilCase):
                 self.assertGreaterEqual(m['caja']['izquierda'], 0)
                 self.assertLessEqual(m['caja']['derecha'], ancho)
                 self.assertLessEqual(m['caja']['derecha'], m['vecina'] + 1, 'alineada con las secciones de la ficha')
-                # La tarjeta de la marca: surface, el filo `line` (no el borde azul de D'CASA) y radio de 16 px.
+                # La tarjeta de la marca: surface, el filo `line` y radio de 16 px.
                 self.assertEqual(m['fondo'], 'rgb(255, 255, 255)')
                 self.assertEqual(m['radio'], '16px')
                 self.assertEqual(m['filo'], ['1px', 'rgba(38, 38, 38, 0.12)', 'rgba(38, 38, 38, 0.12)'])
-                self.assertEqual(m['antetitulo'], ['rgb(152, 93, 47)', 'uppercase'], 'antetítulo en accent-strong')
+                self.assertEqual(m['antetitulo'], ['rgb(89, 89, 89)', 'uppercase'], 'antetítulo en accent-strong')
                 self.assertEqual(m['letra'], 'Montserrat')
                 # Una línea por renglón, todas a todo el ancho de la tarjeta (nada de dos columnas).
                 self.assertEqual(len(m['lineas']), len(presentaciones))

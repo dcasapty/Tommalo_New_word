@@ -147,8 +147,8 @@ class TestVentanaBlackWeekend(_Base, TransactionCase):
         from datetime import date
         self.assertEqual(fechas_en_texto(date(2026, 10, 5), date(2026, 10, 11)), 'del 5 al 11 de octubre de 2026')
         self.assertEqual(fechas_en_texto(date(2026, 10, 5), None), '')
-        self.assertEqual(leer_combo('Combo con colchón First Class $469.99'),
-                         {'texto': 'Combo con colchón First Class', 'colchon': 'First Class', 'precio': 469.99})
+        self.assertEqual(leer_combo('Combo con colchón de Prueba $469.99'),
+                         {'texto': 'Combo con colchón de Prueba', 'colchon': 'de Prueba', 'precio': 469.99})
         self.assertIsNone(leer_combo('El par (-10%) $28.78'))
         self.assertIsNone(leer_combo(''))
 
@@ -171,17 +171,17 @@ class TestPaginasBlackWeekend(_Base, HttpCase):
     def setUp(self):
         super().setUp()
         self.website = self.env.ref('website.default_website')
-        self.recamaras = self.env.ref('website_dcasa.public_category_recamaras')
-        self.cama = self.env['product.template'].create({
-            'name': 'CAMA BLACK DE PRUEBA', 'list_price': 187.99, 'is_published': True,
-            'default_code': 'BW-PRUEBA-1', 'public_categ_ids': [(6, 0, self.recamaras.ids)],
+        self.salud = self.env.ref('website_dcasa.public_category_salud')
+        self.crema = self.env['product.template'].create({
+            'name': 'CREMA BLACK DE PRUEBA', 'list_price': 187.99, 'is_published': True,
+            'default_code': 'BW-PRUEBA-1', 'public_categ_ids': [(6, 0, self.salud.ids)],
             'dcasa_black_weekend': True, 'dcasa_bw_orden': -1000, 'website_sequence': -1000,
             # Con foto propia: el <source> WebP de la tarjeta no depende del catálogo cargado.
             'image_1920': foto(600, 600),
         })
         self.otra = self.env['product.template'].create({
-            'name': 'CAMA NORMAL DE PRUEBA', 'list_price': 77.0, 'is_published': True,
-            'public_categ_ids': [(6, 0, self.recamaras.ids)],
+            'name': 'CREMA NORMAL DE PRUEBA', 'list_price': 77.0, 'is_published': True,
+            'public_categ_ids': [(6, 0, self.salud.ids)],
         })
 
     def _activa(self):
@@ -202,12 +202,12 @@ class TestPaginasBlackWeekend(_Base, HttpCase):
         self._activa()
         html = self.url_open('/').text
         self.assertIn('class="o_dcasa_bw"', html)
-        self.assertIn('Cama Black de Prueba', html)
+        self.assertIn('Crema Black de Prueba', html)
         self.assertLess(html.index('o_dcasa_bw'), html.index('Lo más buscado'))
         self.assertIn('href="/promociones"', html)  # /black-weekend lleva ahí (campaña del sitio)
         self.assertRegex(html, r'187[.,]99')
         self.assertIn('Agregar al carrito', html)
-        self.assertIn(f'c%C3%B3digo%20{self.cama.dcasa_codigo_publico}', html, 'WhatsApp con el código público')
+        self.assertIn(f'c%C3%B3digo%20{self.crema.dcasa_codigo_publico}', html, 'WhatsApp con el código público')
         self.assertNotIn('BW-PRUEBA-1', html, 'la referencia del proveedor no sale')
         self.assertIn('type="image/webp"', html)
 
@@ -216,13 +216,13 @@ class TestPaginasBlackWeekend(_Base, HttpCase):
         respuesta = self.url_open('/black-weekend')
         self.assertEqual(respuesta.status_code, 200)
         html = respuesta.text
-        self.assertIn('Cama Black de Prueba', html)
-        self.assertNotIn('Cama Normal de Prueba', html)
+        self.assertIn('Crema Black de Prueba', html)
+        self.assertNotIn('Crema Normal de Prueba', html)
         self.assertIn('del 5 al 11 de octubre de 2026', html)
         self.assertIn('<link rel="canonical"', html)
         self.assertIn('<meta name="description" content="Black Weekend en Tommalo', html)
         self.assertIn('Venta 100% online con entrega a domicilio — Ciudad de Panamá.', html)
-        self.assertNotIn('La Chorrera', html)
+        self.assertNotIn('Ciudad de Prueba', html)
         og = re.search(r'<meta property="og:image" content="([^"]+)"', html)
         self.assertTrue(og and og.group(1).endswith(OG_IMAGEN), 'Imagen de la campaña al compartir')
         self.assertRegex(html, r'<meta name="twitter:image" content="[^"]+black_weekend/og\.jpg"')
@@ -232,14 +232,14 @@ class TestPaginasBlackWeekend(_Base, HttpCase):
         listas = [d for d in _json_ld(html) if d.get('@type') == 'ItemList']
         self.assertEqual(len(listas), 1)
         nombres = [e['name'] for e in listas[0]['itemListElement']]
-        self.assertIn('Cama Black de Prueba', nombres)
+        self.assertIn('Crema Black de Prueba', nombres)
         self.assertEqual(listas[0]['numberOfItems'], len(nombres))
         self.assertTrue(list(_sitemap_black_weekend(self.env, None, '')))
 
     def test_el_precio_sale_del_producto(self):
         self._activa()
         self.assertRegex(self.url_open('/black-weekend').text, r'187[.,]99')
-        self.cama.list_price = 171.25
+        self.crema.list_price = 171.25
         html = self.url_open('/black-weekend').text
         self.assertRegex(html, r'171[.,]25')
         self.assertNotRegex(html, r'187[.,]99')
@@ -264,10 +264,10 @@ class TestPaginasBlackWeekend(_Base, HttpCase):
 
     def test_no_publicado_no_sale(self):
         self._activa()
-        self.cama.is_published = False
-        self.assertNotIn('Cama Black de Prueba', self.url_open('/').text)
+        self.crema.is_published = False
+        self.assertNotIn('Crema Black de Prueba', self.url_open('/').text)
         html = self.url_open('/black-weekend').text
-        self.assertNotIn('Cama Black de Prueba', html)
+        self.assertNotIn('Crema Black de Prueba', html)
 
     def test_variante_destacada_se_agrega_en_un_clic(self):
         self._activa()
@@ -275,19 +275,19 @@ class TestPaginasBlackWeekend(_Base, HttpCase):
             'name': 'Color BW prueba', 'create_variant': 'always',
             'value_ids': [(0, 0, {'name': 'Beige'}), (0, 0, {'name': 'Negro'})],
         })
-        self.cama.attribute_line_ids = [(0, 0, {'attribute_id': color.id, 'value_ids': [(6, 0, color.value_ids.ids)]})]
-        negra = self.cama.product_variant_ids.filtered(
+        self.crema.attribute_line_ids = [(0, 0, {'attribute_id': color.id, 'value_ids': [(6, 0, color.value_ids.ids)]})]
+        negra = self.crema.product_variant_ids.filtered(
             lambda v: v.product_template_attribute_value_ids.name == 'Negro')
         negra.default_code = 'BW-PRUEBA-1-NEGRO'
-        self.cama.dcasa_bw_variante_id = negra
+        self.crema.dcasa_bw_variante_id = negra
         self.authenticate(None, None)
         html = self.url_open('/black-weekend').text
         self.assertIn(f'name="product_id" value="{negra.id}"', html)
-        self.assertIn(self.cama.dcasa_codigo_publico, html, 'la tarjeta muestra el código público')
+        self.assertIn(self.crema.dcasa_codigo_publico, html, 'la tarjeta muestra el código público')
         self.assertNotIn('BW-PRUEBA-1-NEGRO', html, 'y no la referencia del proveedor de la variante')
         token = re.search(r'name="csrf_token" value=[\'"]([^\'"]+)', html).group(1)
         respuesta = self.url_open('/dcasa/carrito/agregar', data={
-            'csrf_token': token, 'product_template_id': self.cama.id, 'product_id': negra.id,
+            'csrf_token': token, 'product_template_id': self.crema.id, 'product_id': negra.id,
         }, allow_redirects=False)
         self.assertTrue(respuesta.headers['Location'].endswith('/shop/cart'))
         self.assertIn('Negro', self.url_open('/shop/cart').text)

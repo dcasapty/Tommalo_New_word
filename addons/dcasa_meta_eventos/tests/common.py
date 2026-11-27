@@ -56,10 +56,10 @@ class MetaCase(TransactionCase):
         cls.ICP = cls.env['ir.config_parameter'].sudo()
         cls.company = cls.env.company
         cls.website = cls.env.ref('website.default_website')
-        cls.mueble = cls.env['product.product'].create({
-            'name': 'SOFÁ META PRUEBA', 'type': 'consu', 'list_price': 300.0, 'taxes_id': [Command.clear()]})
-        cls.silla = cls.env['product.product'].create({
-            'name': 'SILLA META PRUEBA', 'type': 'consu', 'list_price': 50.0, 'taxes_id': [Command.clear()]})
+        cls.articulo = cls.env['product.product'].create({
+            'name': 'CREMA META PRUEBA', 'type': 'consu', 'list_price': 300.0, 'taxes_id': [Command.clear()]})
+        cls.taza = cls.env['product.product'].create({
+            'name': 'TAZA META PRUEBA', 'type': 'consu', 'list_price': 50.0, 'taxes_id': [Command.clear()]})
         cls.flete = cls.env['product.product'].create({
             'name': 'FLETE META PRUEBA', 'type': 'service', 'list_price': 20.0, 'taxes_id': [Command.clear()]})
         cls.diario = cls.env['account.journal'].search(
@@ -142,7 +142,7 @@ class MetaCase(TransactionCase):
     # ------------------------------------------------------------------
 
     def factura(self, partner=None, lineas=None, publicar=True, tipo='out_invoice'):
-        lineas = lineas or [(self.mueble, 1, 300.0)]
+        lineas = lineas or [(self.articulo, 1, 300.0)]
         factura = self.env['account.move'].create({
             'move_type': tipo, 'partner_id': (partner or self.cliente).id,
             'invoice_date': fields.Date.today(),
@@ -154,7 +154,7 @@ class MetaCase(TransactionCase):
 
     def pedido_web(self, partner=None, lineas=None):
         """Un pedido de la tienda en línea ya confirmado (como el que queda al terminar el checkout)."""
-        lineas = lineas or [(self.mueble, 1)]
+        lineas = lineas or [(self.articulo, 1)]
         pedido = self.env['sale.order'].create({
             'partner_id': (partner or self.cliente).id, 'website_id': self.website.id,
             'order_line': [Command.create({'product_id': p.id, 'product_uom_qty': q, 'tax_ids': [Command.clear()]})

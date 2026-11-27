@@ -80,7 +80,7 @@ class TestLayout(CorreoCase):
         self.assertEqual(next(celda.iter('a')).get('href'), f"{self.env['dcasa.correo']._base()}/mi-cuenta")
         orden = self.env['sale.order'].create({
             'partner_id': self.ana.id,
-            'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1})]})
+            'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1})]})
         cuerpo = self.cuerpo(orden, 'dcasa_correo.plantilla_cotizacion', 'cotizacion')
         (celda,) = self.botones(html.fromstring(cuerpo))
         self.assertEqual(celda.text_content().strip(), 'Escríbenos por WhatsApp')
@@ -103,10 +103,10 @@ class TestLayout(CorreoCase):
     def test_el_pie_corto_sale_de_la_empresa_y_del_sitio(self):
         website = self.env['website'].search([], order='sequence, id', limit=1)
         website.dcasa_whatsapp_number = '+507 6999-0001'
-        self.company.write({'street': 'Frente al Parque de Prueba', 'street2': False, 'city': 'La Chorrera'})
+        self.company.write({'street': 'Frente al Parque de Prueba', 'street2': False, 'city': 'Ciudad de Prueba'})
         texto = html.fromstring(self.cuerpo()).text_content()
         self.assertIn(self.company.name, texto)
-        self.assertIn('Frente al Parque de Prueba, La Chorrera', texto)
+        self.assertIn('Frente al Parque de Prueba, Ciudad de Prueba', texto)
         self.assertIn('WhatsApp +507 6999-0001', texto)
         website.dcasa_whatsapp_number = '+507 6999-0002'
         self.assertIn('WhatsApp +507 6999-0002', html.fromstring(self.cuerpo(self.beto)).text_content())

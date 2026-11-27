@@ -154,8 +154,8 @@ class TestVentaOnline(ComisionCommon):
     # ------------------------------------------------------------------ las líneas
 
     def test_una_factura_que_junta_un_pedido_web_con_otro_de_la_tienda_mide_solo_lo_web(self):
-        web = self.orden(lineas=[(self.mueble, 1000.0, 1, {})])
-        tienda = self.orden(web=False, lineas=[(self.mueble, 500.0, 1, {})])
+        web = self.orden(lineas=[(self.articulo, 1000.0, 1, {})])
+        tienda = self.orden(web=False, lineas=[(self.articulo, 500.0, 1, {})])
         factura = (web | tienda)._create_invoices()
         factura.invoice_date = '2030-03-04'
         factura.action_post()
@@ -166,7 +166,7 @@ class TestVentaOnline(ComisionCommon):
         self.assertAlmostEqual(factura._dcasa_factor_online()[factura.id], 1000 / 1500)
 
     def test_los_componentes_separan_descuento_envio_e_itbms(self):
-        orden = self.orden(lineas=[(self.mueble, 1000.0, 1, {}), (self.premio, -100.0, 1, {}),
+        orden = self.orden(lineas=[(self.articulo, 1000.0, 1, {}), (self.premio, -100.0, 1, {}),
                                    (self.envio, 50.0, 1, {'is_delivery': True})])
         factura = self.facturar(orden)
         self.pagar(factura)
@@ -177,7 +177,7 @@ class TestVentaOnline(ComisionCommon):
         self.assertGreater(venta.itbms_centavos, 0)
 
     def test_el_descuento_de_cada_linea_se_guarda_para_calcular_antes_de_descuentos(self):
-        orden = self.orden(lineas=[(self.mueble, 1000.0, 1, {'discount': 10.0})])
+        orden = self.orden(lineas=[(self.articulo, 1000.0, 1, {'discount': 10.0})])
         factura = self.facturar(orden)
         self.pagar(factura)
         venta = self.venta(factura)

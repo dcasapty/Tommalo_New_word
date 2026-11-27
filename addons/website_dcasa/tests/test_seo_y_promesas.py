@@ -4,15 +4,17 @@ import io
 import json
 import re
 
+from unittest.mock import patch
+
 from markupsafe import Markup
 from PIL import Image
 
 from odoo.addons.website_dcasa.controllers.main import _sin_disponibilidad
+from odoo.addons.website_dcasa.models import website as modulo_website
 from odoo.addons.website_dcasa.models.website import SEO_PORTADA
 from odoo.tests import HttpCase, TransactionCase, tagged
 
-PAGINAS_PUBLICAS = ('/', '/shop', '/visitanos', '/socios', '/contactus', '/privacidad', '/terminos',
-                    '/beneficios', '/historia', '/tips', '/como-comprar', '/faq')
+PAGINAS_PUBLICAS = ('/', '/shop', '/visitanos', '/socios', '/contactus', '/privacidad', '/terminos')
 
 
 def _json_ld(html):
@@ -30,14 +32,14 @@ class TestSitioFase0(HttpCase):
     def setUp(self):
         super().setUp()
         self.website = self.env.ref('website.default_website')
-        self.recamaras = self.env.ref('website_dcasa.public_category_recamaras')
+        self.salud = self.env.ref('website_dcasa.public_category_salud')
         valores = {
-            'name': 'Cama de prueba', 'list_price': 150.0, 'is_published': True,
-            'public_categ_ids': [(6, 0, self.recamaras.ids)],
+            'name': 'Crema de prueba', 'list_price': 150.0, 'is_published': True,
+            'public_categ_ids': [(6, 0, self.salud.ids)],
         }
         if 'is_storable' in self.env['product.template']._fields:
             valores['is_storable'] = True  # con website_sale_stock, Odoo le pondría «InStock/OutOfStock»
-        self.cama = self.env['product.template'].create(valores)
+        self.crema = self.env['product.template'].create(valores)
 
     def _dominio_real(self):
         self.website.domain = False
@@ -46,29 +48,24 @@ class TestSitioFase0(HttpCase):
     # -- Hero / LCP ---------------------------------------------------------------------------
 
     def test_imagen_principal_no_es_perezosa(self):
-        """Odoo pone loading="lazy" a toda <img> sin atributo: la imagen LCP lo lleva explícito. La de la portada es la
-        foto del bebé de tommalo.example (hero-bebe), en WebP, con srcset de 800 y 1200, ancho, alto y texto alternativo.
-        Las cabeceras de las páginas interiores ya no llevan foto (marca de Tommalo, 2026-11-19)."""
-        casos = (('/', 'hero-bebe-1200.webp'),)
-        for ruta, foto in casos:
-            img = re.search(rf'<img[^>]*src="/website_dcasa/static/src/img/{re.escape(foto)}"[^>]*>',
-                            self.url_open(ruta).text)
-            self.assertTrue(img, ruta)
-            etiqueta = img.group(0)
-            self.assertIn('loading="eager"', etiqueta, ruta)
-            self.assertIn('fetchpriority="high"', etiqueta, ruta)
-            self.assertNotIn('loading="lazy"', etiqueta, ruta)
-            self.assertIn('hero-bebe-800.webp 800w', etiqueta)
-            self.assertIn('hero-bebe-1200.webp 1200w', etiqueta)
-            self.assertRegex(etiqueta, r'width="\d+"')
-            self.assertRegex(etiqueta, r'height="\d+"')
-            self.assertIn('alt="Bebé recién nacido cuidado con Nateen"', etiqueta)
-        for archivo in ('hero-bebe-800.webp', 'hero-bebe-1200.webp'):
-            foto = self.url_open(f'/website_dcasa/static/src/img/{archivo}')
-            self.assertEqual(foto.status_code, 200, archivo)
-            self.assertEqual(foto.content[8:12], b'WEBP', archivo)
+        """Odoo pone loading="lazy" a toda <img> sin atributo: la imagen LCP lo lleva explícito. Sin carrusel el hero es
+        solo texto (ninguna foto); con el carrusel de la portada la primera foto es la LCP: «eager», prioridad alta,
+        WebP con srcset, ancho y alto. Las cabeceras de las páginas interiores no llevan foto."""
+        sin = self.url_open('/').text
+        self.assertNotRegex(sin, r'<img[^>]*static/src/img/(hero|promo|panal|sello|tip)', 'sin foto de hero')
+        self.crema.image_1920 = self._foto('gray')
+        self.env['dcasa.portada.diapositiva'].create({'website_id': self.website.id, 'product_tmpl_id': self.crema.id})
+        con = self.url_open('/').text
+        img = re.search(r'<div class="o_dcasa_vitrina_foto is-activa"[^>]*>.*?(<img[^>]*>)', con, re.S)
+        self.assertTrue(img, 'la primera foto del carrusel')
+        etiqueta = img.group(1)
+        self.assertIn('loading="eager"', etiqueta)
+        self.assertIn('fetchpriority="high"', etiqueta)
+        self.assertNotIn('loading="lazy"', etiqueta)
+        self.assertRegex(etiqueta, r'width="\d+"')
+        self.assertRegex(etiqueta, r'height="\d+"')
         visitanos = self.url_open('/visitanos').text
-        self.assertNotRegex(visitanos, r'<img[^>]*static/src/img/(insp|split|hero|cat)-', 'sin fotos de muebles')
+        self.assertNotRegex(visitanos, r'<img[^>]*static/src/img/(insp|split|hero|cat)-', 'sin fotos de otros negocios')
 
     # -- Rendimiento (auditoría ronda 4): fuentes locales y fotos de la tienda ----------------
 
@@ -78,8 +75,8 @@ class TestSitioFase0(HttpCase):
         return self.url_open(enlace.group(1)).text
 
     def test_fuentes_autoalojadas_sin_google(self):
-        """Montserrat, la letra de Tommalo, sale del módulo: ni @import ni preconnect a Google Fonts. Anton, Oswald e
-        Inter (la letra de D'CASA) ya no se cargan en el sitio."""
+        """Montserrat (letra provisional neutra) sale del módulo: ni @import ni preconnect a Google Fonts. Anton, Oswald e
+        Inter no se cargan en el sitio."""
         for ruta in ('/', '/shop'):
             html = self.url_open(ruta).text
             self.assertNotIn('fonts.googleapis.com', html, ruta)
@@ -116,7 +113,7 @@ class TestSitioFase0(HttpCase):
         self.assertTrue(enlace, 'Montserrat (el titular del hero y todo el texto) va precargada')
         for atributo in ('rel="preload"', 'as="font"', 'type="font/woff2"', 'crossorigin'):
             self.assertIn(atributo, enlace.group(0))
-        # Ni la letra de D'CASA ni FontAwesome (iconos) se precargan: en 4G lenta compartían la red con el CSS que
+        # Ni la letra de otro negocio ni FontAwesome (iconos) se precargan: en 4G lenta compartían la red con el CSS que
         # bloquea el pintado y retrasaban la foto LCP.
         self.assertNotRegex(html, r'<link[^>]*rel="preload"[^>]*(anton|oswald|inter)-latin')
         self.assertNotRegex(html, r'<link[^>]*rel="preload"[^>]*fontawesome-webfont')
@@ -128,10 +125,10 @@ class TestSitioFase0(HttpCase):
 
     def test_tarjetas_de_la_tienda_con_foto_a_su_tamano(self):
         """/shop: srcset 256/512/1024 con `sizes`, width/height (CLS) y solo la 1.ª fila «eager»."""
-        for nombre, color in (('Colchón de prueba', 'blue'), ('Zapatera de prueba', 'yellow')):
+        for nombre, color in (('Loción de prueba', 'blue'), ('Zapatera de prueba', 'yellow')):
             self.env['product.template'].create({
                 'name': nombre, 'list_price': 99.0, 'is_published': True, 'image_1920': self._foto(color),
-                'public_categ_ids': [(6, 0, self.recamaras.ids)],
+                'public_categ_ids': [(6, 0, self.salud.ids)],
             })
         html = self.url_open('/shop').text
         fotos = re.findall(r'<img[^>]*class="[^"]*\boe_product_image_img\b[^"]*"[^>]*>', html)
@@ -158,9 +155,9 @@ class TestSitioFase0(HttpCase):
         self.assertRegex(css, r'#o_wsale_products_grid \.oe_product_cart\s*\{\s*contain-intrinsic-size:\s*auto \d+px')
 
     def test_carril_de_la_portada_con_srcset(self):
-        mesa = self.env['product.template'].create({
-            'name': 'Mesa de prueba', 'list_price': 59.0, 'is_published': True, 'image_1920': self._foto('red'),
-            'public_categ_ids': [(6, 0, self.recamaras.ids)],
+        lampara = self.env['product.template'].create({
+            'name': 'Lampara de prueba', 'list_price': 59.0, 'is_published': True, 'image_1920': self._foto('red'),
+            'public_categ_ids': [(6, 0, self.salud.ids)],
             # El carril muestra los 8 primeros por website_sequence: con el catálogo real cargado,
             # un producto nuevo (Odoo lo manda al final) no entraría.
             'website_sequence': -1,
@@ -169,7 +166,7 @@ class TestSitioFase0(HttpCase):
         fotos = re.findall(r'<a[^>]*class="o_dcasa_pcard_media"[^>]*>\s*<picture>.*?<img[^>]*>', html, re.S)
         self.assertTrue(fotos)
         # Con foto: WebP desde /dcasa/img; sin foto, solo la <img> de Odoo (su marcador).
-        con_foto = [f for f in fotos if f'href="{mesa.website_url}"' in f]
+        con_foto = [f for f in fotos if f'href="{lampara.website_url}"' in f]
         self.assertTrue(con_foto)
         self.assertIn('<source type="image/webp"', con_foto[0])
         self.assertRegex(con_foto[0], r'srcset="/dcasa/img/product\.template/\d+/image_1920/'
@@ -184,7 +181,7 @@ class TestSitioFase0(HttpCase):
 
     def test_json_ld_sin_entidades_html_ni_localhost(self):
         self._dominio_real()
-        for ruta in ('/', '/shop', self.cama.website_url):
+        for ruta in ('/', '/shop', self.crema.website_url):
             html = self.url_open(ruta).text
             bloques = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
             self.assertTrue(bloques, ruta)
@@ -212,13 +209,13 @@ class TestSitioFase0(HttpCase):
         self.assertEqual(json.loads(self.website._dcasa_json_ld())['url'], 'https://tommalo.example')
 
     def test_json_ld_organizacion_seguro_en_script(self):
-        self.website.company_id.name = "D'CASA </script><script>alert(1)</script>"
+        self.website.company_id.name = "Prueba D'Marca </script><script>alert(1)</script>"
         texto = str(self.website._dcasa_json_ld_organizacion().__html__())
         self.assertNotIn('<', texto)
         self.assertEqual(json.loads(texto)['name'], self.website.company_id.name)
 
     def test_producto_sin_disponibilidad_inventada_y_migas_en_espanol(self):
-        html = self.url_open(self.cama.website_url).text
+        html = self.url_open(self.crema.website_url).text
         bloques = _json_ld(html)
         producto = next(b for grupo in bloques for b in (grupo if isinstance(grupo, list) else [grupo])
                         if b.get('@type') in ('Product', 'ProductGroup'))
@@ -240,7 +237,7 @@ class TestSitioFase0(HttpCase):
     # -- Textos en español ----------------------------------------------------------------------
 
     def test_tienda_y_migas_en_espanol(self):
-        for ruta in ('/shop', self.cama.website_url):
+        for ruta in ('/shop', self.crema.website_url):
             visible = _texto_visible(self.url_open(ruta).text)
             self.assertIn('Todos los productos', visible, ruta)
             self.assertNotRegex(visible, r'>\s*All [Pp]roducts\s*<', ruta)
@@ -260,16 +257,16 @@ class TestSitioFase0(HttpCase):
             self.assertEqual(pagina.with_context(lang='es_419').website_meta_description,
                              SEO_PORTADA['website_meta_description'])
 
-    def test_seo_de_la_portada_respeta_lo_escrito_por_la_duena(self):
+    def test_seo_de_la_portada_respeta_lo_escrito_en_el_editor(self):
         pagina = self.env['website.page'].search([('url', '=', '/')], limit=1)
-        pagina.with_context(lang='es_419').website_meta_description = 'Texto propio de la dueña'
+        pagina.with_context(lang='es_419').website_meta_description = 'Texto propio escrito en el editor'
         self.env['website']._dcasa_seo_portada()
-        self.assertEqual(pagina.with_context(lang='es_419').website_meta_description, 'Texto propio de la dueña')
+        self.assertEqual(pagina.with_context(lang='es_419').website_meta_description, 'Texto propio escrito en el editor')
 
     # -- SW-03: promesas sin respaldo -------------------------------------------------------------
 
     def test_ninguna_pagina_publica_promete_financiamiento(self):
-        for ruta in (*PAGINAS_PUBLICAS, self.cama.website_url):
+        for ruta in (*PAGINAS_PUBLICAS, self.crema.website_url):
             html = self.url_open(ruta).text
             self.assertNotIn('financiamiento', html.lower(), ruta)
             self.assertNotIn('crédito flexible', html.lower(), ruta)
@@ -284,8 +281,7 @@ class TestSitioFase0(HttpCase):
     # -- SW-07 --------------------------------------------------------------------------------
 
     def test_enlace_activo_del_menu_en_accent_strong(self):
-        """El enlace de la página donde se está va en accent-strong (#595959: 4.90 sobre el crema), como en S01Nav.tsx;
-        nunca en el naranja de relleno (2.20)."""
+        """El enlace de la página donde se está va en accent-strong (#595959), nunca en el acento de relleno (#D4D4D4)."""
         html = self.url_open('/').text
         css_link = re.search(r'href="([^"]*web\.assets_frontend[^"]*\.css)"', html).group(1)
         css = self.url_open(css_link).text
@@ -294,30 +290,36 @@ class TestSitioFase0(HttpCase):
 
 @tagged('post_install', '-at_install')
 class TestRetirarPromesas(TransactionCase):
-    """La migración 19.0.1.8.0 limpia las copias por sitio que traían las promesas viejas."""
+    """La migración 19.0.1.8.0 limpia las copias por sitio que traían promesas sin respaldo (``PROMESAS_RETIRADAS``,
+    vacío en Tommalo): aquí se prueba el mecanismo con promesas de PRUEBA."""
+
+    PROMESAS = [
+        ('<span class="d-none d-md-inline">Promesa de prueba uno</span>', '<span>Texto de reemplazo uno</span>'),
+        ('Promesa de prueba dos del mensaje.', 'Texto de reemplazo dos.'),
+    ]
+
+    def test_de_fabrica_no_hay_promesas_que_retirar(self):
+        self.assertEqual(modulo_website.PROMESAS_RETIRADAS, [])
+        self.assertEqual(self.env['website']._dcasa_retirar_promesas(), 0)
 
     def test_copia_por_sitio_y_mensaje_de_pago(self):
         website = self.env.ref('website.default_website')
         vista = self.env['ir.ui.view'].create({
             'name': 'Copia vieja', 'type': 'qweb', 'key': 'website_dcasa.prueba_copia_vieja',
             'website_id': website.id,
-            'arch_db': '<t t-name="website_dcasa.prueba_copia_vieja"><div>'
-                       '<span class="d-none d-md-inline"><i class="fa fa-credit-card me-2" aria-hidden="true"/>'
-                       'Financiamiento flexible</span>'
-                       '<p>Varias, y también financiamiento flexible. Escríbenos y te explicamos la que mejor '
-                       'te sirve.</p></div></t>',
+            'arch_db': '<t t-name="website_dcasa.prueba_copia_vieja"><div>%s<p>financiamiento de prueba: %s</p></div></t>'
+                       % (self.PROMESAS[0][0], self.PROMESAS[1][0]),
         })
         cod = self.env.ref('delivery.payment_provider_cod')
         cod.with_context(lang='es_419').pending_msg = Markup(
-            '<p>Pagas al recibir o en la tienda: efectivo, Yappy o tarjeta. '
-            'Te escribimos por WhatsApp para confirmar la fecha.</p>')
+            '<p>%s Te escribimos por WhatsApp para confirmar la fecha.</p>' % self.PROMESAS[1][0])
 
-        self.assertGreaterEqual(self.env['website']._dcasa_retirar_promesas(), 2)
-
-        for idioma in ('en_US', 'es_419'):
-            arch = vista.with_context(lang=idioma).arch_db
-            self.assertNotIn('inanciamiento', arch, idioma)
-            self.assertIn('Tienda en La Chorrera', arch, idioma)
-            self.assertIn('Transferencia bancaria, Yappy', arch, idioma)
-        self.assertNotIn('tarjeta', str(cod.with_context(lang='es_419').pending_msg))
-        self.assertEqual(self.env['website']._dcasa_retirar_promesas(), 0, 'Se puede volver a correr')
+        with patch.object(modulo_website, 'PROMESAS_RETIRADAS', self.PROMESAS):
+            self.assertGreaterEqual(self.env['website']._dcasa_retirar_promesas(), 2)
+            for idioma in ('en_US', 'es_419'):
+                arch = vista.with_context(lang=idioma).arch_db
+                self.assertNotIn('Promesa de prueba', arch, idioma)
+                self.assertIn('Texto de reemplazo uno', arch, idioma)
+                self.assertIn('Texto de reemplazo dos.', arch, idioma)
+            self.assertNotIn('Promesa de prueba', str(cod.with_context(lang='es_419').pending_msg))
+            self.assertEqual(self.env['website']._dcasa_retirar_promesas(), 0, 'Se puede volver a correr')

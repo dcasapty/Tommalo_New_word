@@ -1,5 +1,5 @@
 """El aviso de cookies con la marca Tommalo (docs/MARCA_TOMMALO.md), como su aviso de Meta: la tarjeta crema,
-«Aceptar» naranja con letra navy y «Solo las necesarias» de contorno. El texto ya no habla de muebles."""
+«Aceptar» naranja con letra navy y «Solo las necesarias» de contorno. El texto ya no habla de articulos."""
 import re
 from pathlib import Path
 
@@ -45,7 +45,7 @@ class TestMarcaAviso(SitioMetaCase):
         aviso = html[inicio:html.index('</section>', inicio)]
         self.assertIn('anuncios de nuestros', aviso)
         self.assertIn('productos', aviso)
-        self.assertNotIn('muebles', aviso)
+        self.assertNotIn('articulos', aviso)
 
     def test_el_nombre_del_modulo_no_es_el_de_la_plantilla_de_origen(self):
         modulo = self.env['ir.module.module'].search([('name', '=', MODULO.name)])

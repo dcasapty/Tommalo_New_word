@@ -48,12 +48,12 @@ class TestReglas(BaseCase):
         casos = [
             ('/web/login', {}, SIN_INDICE), ('/web/signup', {}, SIN_INDICE), ('/web/reset_password', {}, SIN_INDICE),
             ('/es/web/login', {}, SIN_INDICE), ('/web/login/totp', {}, SIN_INDICE),
-            ('/shop', {'search': 'sofa'}, BUSQUEDA), ('/shop/page/2', {'search': 'sofa'}, BUSQUEDA),
-            ('/shop/category/salas-3', {'search': 'sofa'}, BUSQUEDA), ('/en/shop', {'search': 'sofa'}, BUSQUEDA),
-            ('/website/search', {'search': 'sofa'}, BUSQUEDA), ('/website/search', {}, BUSQUEDA),
+            ('/shop', {'search': 'jabon'}, BUSQUEDA), ('/shop/page/2', {'search': 'jabon'}, BUSQUEDA),
+            ('/shop/category/belleza-3', {'search': 'jabon'}, BUSQUEDA), ('/en/shop', {'search': 'jabon'}, BUSQUEDA),
+            ('/website/search', {'search': 'jabon'}, BUSQUEDA), ('/website/search', {}, BUSQUEDA),
             # Lo que sí se indexa.
             ('/', {}, None), ('/shop', {}, None), ('/shop', {'search': '  '}, None),
-            ('/shop/category/salas-3', {}, None), ('/shop/sofa-gris-12', {'search': 'sofa'}, None),
+            ('/shop/category/belleza-3', {}, None), ('/shop/jabon-gris-12', {'search': 'jabon'}, None),
             ('/shop/cart', {'search': 'x'}, None), ('/web/loginx', {}, None), ('/socios', {}, None),
         ]
         for ruta, parametros, esperado in casos:
@@ -61,13 +61,13 @@ class TestReglas(BaseCase):
                 self.assertEqual(robots_de(ruta, parametros), esperado)
 
     def test_una_tilde_no_es_otra_busqueda(self):
-        self.assertEqual(sin_tildes('Sofá CAMÁ'), 'sofa cama')
-        self.assertTrue(solo_cambia_una_tilde('sofa', 'sofá'))
-        self.assertTrue(solo_cambia_una_tilde('Colchon', 'colchón'))
-        self.assertFalse(solo_cambia_una_tilde('sofas', 'sofá'), 'otra palabra: el aviso se queda')
-        self.assertFalse(solo_cambia_una_tilde('mesa', 'meza'))
-        self.assertFalse(solo_cambia_una_tilde('', 'sofá'))
-        self.assertFalse(solo_cambia_una_tilde('sofa', False))
+        self.assertEqual(sin_tildes('Jabón CREMÁ'), 'jabon crema')
+        self.assertTrue(solo_cambia_una_tilde('jabon', 'jabón'))
+        self.assertTrue(solo_cambia_una_tilde('Locion', 'loción'))
+        self.assertFalse(solo_cambia_una_tilde('jabones', 'jabón'), 'otra palabra: el aviso se queda')
+        self.assertFalse(solo_cambia_una_tilde('lampara', 'meza'))
+        self.assertFalse(solo_cambia_una_tilde('', 'jabón'))
+        self.assertFalse(solo_cambia_una_tilde('jabon', False))
 
 
 @tagged('post_install', '-at_install')
@@ -79,9 +79,9 @@ class TestLoQueGoogleNoMuestra(HttpCase):
         param = self.env['ir.config_parameter'].sudo()
         param.set_param('auth_signup.invitation_scope', 'b2c')   # que /web/signup exista (en producción puede no)
         param.set_param('auth_signup.reset_password', 'True')
-        self.cama = self.env['product.template'].create({
-            'name': 'Cama de prueba de Google', 'list_price': 120.0, 'is_published': True,
-            'public_categ_ids': [(6, 0, self.env.ref('website_dcasa.public_category_recamaras').ids)]})
+        self.crema = self.env['product.template'].create({
+            'name': 'Crema de prueba de Google', 'list_price': 120.0, 'is_published': True,
+            'public_categ_ids': [(6, 0, self.env.ref('website_dcasa.public_category_salud').ids)]})
 
     def test_paginas_para_entrar_noindex(self):
         for ruta in ('/web/login', '/web/signup', '/web/reset_password'):
@@ -92,16 +92,16 @@ class TestLoQueGoogleNoMuestra(HttpCase):
                 self.assertEqual(_metas_robots(respuesta.text), [SIN_INDICE], 'un solo <meta name="robots">')
 
     def test_resultados_de_busqueda_noindex_follow(self):
-        recamaras = self.env.ref('website_dcasa.public_category_recamaras')
-        categoria = f"/shop/category/{self.env['ir.http']._slug(recamaras)}"
-        for ruta in ('/shop?search=cama', f'{categoria}?search=cama'):
+        salud = self.env.ref('website_dcasa.public_category_salud')
+        categoria = f"/shop/category/{self.env['ir.http']._slug(salud)}"
+        for ruta in ('/shop?search=crema', f'{categoria}?search=crema'):
             with self.subTest(ruta=ruta):
                 respuesta = self.url_open(ruta)
                 self.assertEqual(respuesta.headers.get('X-Robots-Tag'), BUSQUEDA)
                 self.assertEqual(_metas_robots(respuesta.text), [BUSQUEDA])
 
     def test_el_catalogo_y_las_fichas_si_se_indexan(self):
-        for ruta in ('/', '/shop', self.cama.website_url, '/visitanos'):
+        for ruta in ('/', '/shop', self.crema.website_url, '/visitanos'):
             with self.subTest(ruta=ruta):
                 respuesta = self.url_open(ruta)
                 self.assertNotIn('X-Robots-Tag', respuesta.headers)
@@ -110,7 +110,7 @@ class TestLoQueGoogleNoMuestra(HttpCase):
     def test_nada_de_eso_en_el_mapa_del_sitio(self):
         self.env['ir.attachment'].sudo().search([('type', '=', 'binary'), ('url', '=like', '/sitemap-%.xml')]).unlink()
         mapa = self.url_open('/sitemap.xml').text
-        self.assertIn(self.cama.website_url, mapa, 'el mapa se armó')
+        self.assertIn(self.crema.website_url, mapa, 'el mapa se armó')
         for prohibido in ('/web/login', '/web/signup', '/web/reset_password', '/website/search', 'search=',
                           '/catalogo', '/tienda'):
             self.assertNotIn(prohibido, mapa)
@@ -131,10 +131,10 @@ class TestBuscarComoElCatalogo(HttpCase):
     def setUp(self):
         super().setUp()
         self.website = self.env.ref('website.default_website')
-        self.recamaras = self.env.ref('website_dcasa.public_category_recamaras')
-        self.sofa = self.env['product.template'].create({
+        self.salud = self.env.ref('website_dcasa.public_category_salud')
+        self.jabon = self.env['product.template'].create({
             'name': 'ZZSOFÁ DE PRUEBA DEL BUSCADOR', 'list_price': 189.99, 'is_published': True,
-            'public_categ_ids': [(6, 0, self.recamaras.ids)]})
+            'public_categ_ids': [(6, 0, self.salud.ids)]})
 
     def _modal(self, html):
         return re.search(r'id="o_search_modal".*?</form>', html, re.S).group(0)
@@ -157,10 +157,10 @@ class TestBuscarComoElCatalogo(HttpCase):
         self.assertLess(botones.index('o_dcasa_lupa_movil'), botones.index('o_wsale_my_cart'), 'junto al carrito')
 
     def test_la_busqueda_general_lleva_al_catalogo(self):
-        for ruta, destino in (('/website/search?search=sofa', '/shop?search=sofa'),
-                              ('/website/search?search=colch%C3%B3n+queen', '/shop?search=colch%C3%B3n+queen'),
+        for ruta, destino in (('/website/search?search=jabon', '/shop?search=jabon'),
+                              ('/website/search?search=colch%C3%B3n+grande', '/shop?search=colch%C3%B3n+grande'),
                               ('/website/search', '/shop'),
-                              ('/website/search/products?search=mesa', '/shop?search=mesa')):
+                              ('/website/search/products?search=lampara', '/shop?search=lampara')):
             with self.subTest(ruta=ruta):
                 respuesta = self.url_open(ruta, allow_redirects=False)
                 self.assertEqual(respuesta.status_code, 302)
@@ -170,7 +170,7 @@ class TestBuscarComoElCatalogo(HttpCase):
 
     def test_catalogo_y_tienda_llevan_al_catalogo(self):
         for ruta, destino in (('/catalogo', '/shop'), ('/tienda', '/shop'),
-                              ('/catalogo?search=cama&utm_source=ig', '/shop?search=cama&utm_source=ig')):
+                              ('/catalogo?search=crema&utm_source=ig', '/shop?search=crema&utm_source=ig')):
             with self.subTest(ruta=ruta):
                 respuesta = self.url_open(ruta, allow_redirects=False)
                 self.assertEqual(respuesta.status_code, 301)
@@ -179,7 +179,7 @@ class TestBuscarComoElCatalogo(HttpCase):
 
     def test_resultados_como_el_catalogo(self):
         html = self.url_open('/shop?search=ZZSOFÁ').text
-        self.assertIn(self.sofa.website_url, html)
+        self.assertIn(self.jabon.website_url, html)
         self.assertIn('o_wsale_products_grid_table', html, 'la rejilla del catálogo, con fotos grandes')
         self.assertIn('o_dcasa_mas_itbms', html, 'precio con «+ ITBMS»')
 
@@ -192,7 +192,7 @@ class TestBuscarComoElCatalogo(HttpCase):
         self.assertEqual(conteo, 1)
         self.assertFalse(parecido)
         html = self.url_open('/shop?search=zzsofa').text
-        self.assertIn(self.sofa.website_url, html)
+        self.assertIn(self.jabon.website_url, html)
         self.assertNotIn('o_dcasa_parecido', html)
         self.assertNotIn('No se encontraron resultados', html)
 
@@ -200,9 +200,9 @@ class TestBuscarComoElCatalogo(HttpCase):
         html = self.url_open('/shop?search=zzqqxxlampara').text
         bloque = re.search(r'class="o_dcasa_sin_resultados".*?</div>\s*</div>', html, re.S).group(0)
         self.assertIn('No encontramos “zzqqxxlampara”', bloque)
-        self.assertIn(self.website._dcasa_categoria_url('recamaras'), bloque, 'la categoría con productos')
+        self.assertIn(self.website._dcasa_categoria_url('salud'), bloque, 'la categoría con productos')
         self.assertIn('o mira por categoría', bloque)
-        self.assertNotIn('por espacio', bloque, 'sin el «compra por espacio» de los muebles')
+        self.assertNotIn('por espacio', bloque, 'sin el «compra por espacio» de los articulos')
         self.assertIn('https://api.whatsapp.com/send?phone=', bloque)
         self.assertIn('busco%3A%20zzqqxxlampara', bloque, 'WhatsApp con lo que buscó ya escrito')
         self.assertIn('Escríbenos por WhatsApp', bloque)
@@ -228,8 +228,8 @@ class TestBuscarComoElCatalogo(HttpCase):
 
     def test_la_foto_se_ve_en_grande(self):
         self.assertTrue(self.env.ref('website_sale.product_picture_magnify_click').active)
-        self.sofa.image_1920 = _foto()
-        html = self.url_open(self.sofa.website_url).text
+        self.jabon.image_1920 = _foto()
+        html = self.url_open(self.jabon.website_url).text
         self.assertRegex(html, r'class="[^"]*o_wsale_product_page[^"]*ecom-zoomable')
         self.assertIn('data-ecom-zoom-click="1"', html)
         boton = re.search(r'<button[^>]*o_dcasa_ver_grande[^>]*>', html).group(0)
@@ -255,9 +255,9 @@ class TestBuscarComoElCatalogo(HttpCase):
         editor. El sitio de botones extra estaba en una parte que Odoo no reparte y el t-call se quedaba con ellas:
         error 500 en todas las páginas con la cabecera (atrapado por dcasa_tienda_borde, test_logueado…)."""
         self.authenticate('admin', 'admin')
-        self.sofa.image_1920 = _foto()
-        for ruta in ('/', '/shop', '/shop?search=ZZSOFÁ', '/shop?search=zzqqxx', self.sofa.website_url, '/shop/cart',
-                     self.website._dcasa_categoria_url('recamaras')):
+        self.jabon.image_1920 = _foto()
+        for ruta in ('/', '/shop', '/shop?search=ZZSOFÁ', '/shop?search=zzqqxx', self.jabon.website_url, '/shop/cart',
+                     self.website._dcasa_categoria_url('salud')):
             with self.subTest(ruta=ruta):
                 respuesta = self.url_open(ruta)
                 self.assertEqual(respuesta.status_code, 200)
@@ -267,6 +267,6 @@ class TestBuscarComoElCatalogo(HttpCase):
         tienda = self.url_open('/shop').text
         barra = re.search(r'<form[^>]*o_wsale_products_searchbar_form.*?</form>', tienda, re.S).group(0)
         self.assertIn('placeholder="Escribe lo que buscas"', barra)
-        categoria = self.url_open(self.website._dcasa_categoria_url('recamaras')).text
+        categoria = self.url_open(self.website._dcasa_categoria_url('salud')).text
         barra = re.search(r'<form[^>]*o_wsale_products_searchbar_form.*?</form>', categoria, re.S).group(0)
         self.assertNotIn('placeholder="Escribe lo que buscas"', barra, 'en una categoría, el «Buscar en …» de Odoo')

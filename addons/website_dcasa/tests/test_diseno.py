@@ -1,14 +1,14 @@
 # ruff: noqa: E501  (JavaScript del navegador embebido en texto)
-"""La marca de Tommalo en el sitio (docs/MARCA_TOMMALO.md, pedido del dueño del 2026-11-19: «el branding de la
-web de Tommalo tal cual»). Lo que se fija aquí:
+"""La marca provisional neutra de Tommalo en el sitio (PENDIENTE: colores de Tommalo; blanco, grises y un acento
+oscuro). Lo que se fija aquí:
 
-* La pastilla de vidrio crema de tommalo.example (la marca «Tommalo» escrita, el menú, el carrito, la búsqueda y la
-  cuenta) es la misma en todas las páginas, también en la tienda, la ficha, el carrito, las legales, la cuenta y la
-  campaña. Sin barra de anuncios encima.
-* El pie es el de su web: crema, sin fotos ni velos, con la marca, el lema, los enlaces, el contacto y los legales.
-* En Chrome: el crema de fondo, el navy de la letra, Montserrat en todo, los titulares como frase, el botón principal
-  naranja con letra navy y en pastilla, y las reglas que no se rompen: el naranja y el verde son relleno (nunca texto
-  ni borde) y no queda nada del azul, el amarillo ni el navy de D'CASA.
+* La pastilla de vidrio (la marca «Tommalo» escrita, el menú, el carrito, la búsqueda y la cuenta) es la misma en todas
+  las páginas, también en la tienda, la ficha, el carrito, las legales, la cuenta y la campaña. Sin barra de anuncios
+  encima.
+* El pie: sin fotos ni velos, con la marca, el lema, los enlaces, el contacto y los legales; sin datos inventados.
+* En Chrome: el fondo claro, la letra oscura, Montserrat en todo, los titulares como frase, el botón principal con
+  letra oscura y en pastilla, y las reglas que no se rompen: el acento y el gris suave son relleno (nunca texto ni
+  borde) y no queda nada de los colores de las tiendas de origen.
 """
 import re
 
@@ -132,7 +132,7 @@ class TestDisenoUniforme(HttpCase):
         param.set_param(PARAM_INICIO, '')
         param.set_param(PARAM_FIN, '')
         self.producto = self.env['product.template'].create({
-            'name': 'Pañal de prueba de diseño', 'list_price': 45.0, 'is_published': True,
+            'name': 'Crema de prueba de diseño', 'list_price': 45.0, 'is_published': True,
             'dcasa_black_weekend': True,
         })
         self.paginas = [
@@ -154,9 +154,9 @@ class TestDisenoUniforme(HttpCase):
                 self.assertNotIn('logo-200.webp', cabecera)
                 self.assertNotIn('/web/image/website/1/logo', cabecera)
                 menu = re.search(r'id="top_menu".*?</ul>', cabecera, re.S).group(0)
-                for enlace, texto in (('/shop', 'Productos'), ('/beneficios', 'Beneficios'), ('/historia', 'Historia'),
-                                      ('/tips', 'Tips'), ('/como-comprar', 'Cómo comprar'), ('/faq', 'FAQ')):
-                    self.assertRegex(menu, rf'href="{re.escape(enlace)}"[^>]*>\s*<span>{texto}</span>')
+                self.assertRegex(menu, r'href="/shop"[^>]*>\s*<span>Productos</span>')
+                for quitada in ('/beneficios', '/historia', '/tips', '/como-comprar', '/faq'):
+                    self.assertNotIn(f'href="{quitada}"', menu)
                 # Los íconos de lucide (bolsa, lupa y persona), no los de FontAwesome, todos con la misma clase.
                 self.assertNotIn('fa-shopping-cart', cabecera)
                 self.assertNotIn('oi-search', cabecera)
@@ -182,20 +182,22 @@ class TestDisenoUniforme(HttpCase):
             with self.subTest(ruta=ruta):
                 self.assertNotIn('o_header_overlay', _clases_wrapwrap(self.url_open(ruta).text))
 
-    def test_pie_como_el_de_tommalo(self):
+    def test_pie_neutro_de_tommalo(self):
         for ruta in ('/', '/shop', '/socios', '/privacidad'):
             with self.subTest(ruta=ruta):
                 html = self.url_open(ruta).text
                 pie = re.search(r'<footer.*?</footer>', html, re.S).group(0)
                 self.assertIn('o_dcasa_footer', pie)
-                self.assertIn('contacto@tommalo.example', pie)
-                self.assertIn('Esenciales de bebé hipoalergénicos y biodegradables', pie, 'el lema de su web')
-                self.assertIn('Venta 100% online con entrega a domicilio en Ciudad de Panamá.', pie)
-                self.assertIn('href="https://www.instagram.com/tommalo"', pie)
+                self.assertIn('Tienda en línea de belleza, hogar y salud.', pie, 'el lema')
+                self.assertIn('Venta 100% en línea con entrega a domicilio en Panamá.', pie)
+                self.assertNotIn('instagram.com', pie, 'sin redes escritas todavía (PENDIENTE)')
+                self.assertNotIn('mailto:', pie, 'sin correo escrito todavía (PENDIENTE)')
                 self.assertIn('href="/whatsapp"', pie)
                 self.assertIn('href="/privacidad"', pie)
                 self.assertIn('href="/terminos"', pie)
-                self.assertIn('Tommalo Panamá</span>. Todos los derechos reservados.', pie)
+                self.assertIn('Tommalo</span>. Todos los derechos reservados.', pie)
+                for quitada in ('/beneficios', '/historia', '/tips', '/como-comprar', '/faq'):
+                    self.assertNotIn(f'href="{quitada}"', pie)
                 self.assertNotIn('dcasapty', pie)
                 for prohibido in ('<img', '<picture', 'background-image', 'opacity', 'filter:',
                                   'o_dcasa_hero', 'o_we_bg_filter', 'o_bg_img'):
@@ -204,10 +206,8 @@ class TestDisenoUniforme(HttpCase):
     def test_fotos_principales_a_tiempo(self):
         """Rendimiento (ronda 6): la foto LCP de cada página se pide pronto y al ancho justo."""
         portada = self.url_open('/').text
-        precarga = re.search(r'<link[^>]*rel="preload"[^>]*as="image"[^>]*>', portada)
-        self.assertTrue(precarga, 'la foto del hero se pide desde la cabecera')
-        self.assertIn('hero-bebe-800.webp 800w', precarga.group(0))
-        self.assertIn('fetchpriority="high"', precarga.group(0))
+        self.assertNotRegex(portada, r'rel="preload"[^>]*as="image"', 'el hero de solo texto no tiene foto que precargar')
+        self.assertNotIn('hero-bebe', portada)
         self.assertNotIn('fontawesome-webfont.woff2?v=4.7.0" as="font"', portada)
         self.assertNotRegex(self.url_open('/shop').text, r'rel="preload"[^>]*as="image"')
         ficha = self.url_open(self.producto.website_url).text

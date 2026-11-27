@@ -24,7 +24,7 @@ class TestApartadosDeLaTienda(TransactionCase):
         cls.cliente = cls.env['res.partner'].create({'name': 'Cliente de la tienda', 'phone': '+507 6000-0000',
                                                      'email': 'cliente.tienda@example.com'})
         cls.producto = cls.env['product.product'].create({
-            'name': 'Cama de prueba (apartados)', 'type': 'consu', 'is_storable': True, 'list_price': 100.0,
+            'name': 'Crema de prueba (apartados)', 'type': 'consu', 'is_storable': True, 'list_price': 100.0,
             'taxes_id': [Command.clear()]})
         almacen = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1)
         cls.ubicacion = almacen.lot_stock_id

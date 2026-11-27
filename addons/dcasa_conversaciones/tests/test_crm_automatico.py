@@ -52,7 +52,7 @@ class CrmCase(CotizarCase):
     def orden_enviada(self, lead, confirmar=False):
         orden = self.env['sale.order'].create({
             'partner_id': lead.partner_id.id, 'opportunity_id': lead.id,
-            'order_line': [Command.create({'product_id': self.lámpara.product_variant_id.id, 'product_uom_qty': 1})]})
+            'order_line': [Command.create({'product_id': self.lampara.product_variant_id.id, 'product_uom_qty': 1})]})
         orden.action_quotation_sent()
         if confirmar:
             orden.action_confirm()
@@ -256,7 +256,7 @@ class TestCotizacionDeLaVendedora(CatalogoCase):
     def test_una_cotizacion_sin_ligar_se_liga_al_enviarla(self):
         orden = self.env['sale.order'].with_user(self.vendedora).create({
             'partner_id': self.partner.id, 'user_id': self.vendedora.id,
-            'order_line': [Command.create({'product_id': self.lámpara.product_variant_id.id, 'product_uom_qty': 1})]})
+            'order_line': [Command.create({'product_id': self.lampara.product_variant_id.id, 'product_uom_qty': 1})]})
         self.assertFalse(orden.opportunity_id)
         self.enviar(orden)
         self.assertTrue(orden.opportunity_id)

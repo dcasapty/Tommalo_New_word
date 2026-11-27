@@ -22,9 +22,9 @@ Formato de ``data/catalogo.json``::
 
 Las claves que empiezan por ``origen_`` dicen de dónde salió cada dato (no se cargan).
 
-Las fotos (``data/fotos/``, hoy no hay ninguna) son las del catálogo del negocio, en JPEG o PNG; ``poner_fotos`` las pone solo donde
-no hay ninguna y publica lo que recibe su foto principal. Lo que no tiene foto no se publica en la tienda (la misma
-regla de siempre); se publica desde Odoo cuando ya la tiene.
+Las fotos (``data/fotos/``, hoy no hay ninguna) son las del catálogo del negocio, en JPEG o PNG;
+``poner_fotos`` las pone solo donde no hay ninguna y publica lo que recibe su foto principal. Lo que no tiene
+foto no se publica en la tienda (la misma regla de siempre); se publica desde Odoo cuando ya la tiene.
 """
 import base64
 import json
@@ -114,7 +114,8 @@ def atributo_tamano(env):
 
 
 def atributo_con_valores(env, nombre, valores):
-    """Atributo que crea variantes (p. ej. «Presentación») con sus valores en ese orden: ``(atributo, {valor: registro})``.
+    """Atributo que crea variantes (p. ej. «Presentación») con sus valores en ese orden:
+    ``(atributo, {valor: registro})``.
 
     El atributo y los valores que ya existen se usan tal cual (sin importar mayúsculas); los que faltan se crean con
     el orden de la lista (así la tienda muestra los valores en su orden y no el orden en que se crearon).
@@ -140,8 +141,8 @@ def valores_producto_nuevo(env, nombre, precio, impuesto, clave_categoria=None, 
 
     Inventariable, sin ``allow_out_of_stock_order`` (lo agotado no se pide en la web),
     ``list_price`` = el precio que llega, con el ITBMS de venta que se suma, categoría interna y de la tienda según la
-    clave de ``reglas.CATEGORIAS`` y, si trae un tamaño de ``reglas.TAMANOS``, la línea de atributo «Tamaño» (para el filtro de
-    la tienda y los combos). La publicación la decide quien llama.
+    clave de ``reglas.CATEGORIAS`` y, si trae un tamaño de ``reglas.TAMANOS``, la línea de atributo «Tamaño» (para el
+    filtro de la tienda y los combos). La publicación la decide quien llama.
     """
     vals = {
         'name': nombre,
@@ -302,9 +303,9 @@ def poner_fotos(env, catalogo=None):
     """Las fotos del catálogo en los productos que no tienen, y se publica lo que recibe su foto principal.
 
     Solo se llena lo vacío: una foto que ya está (la puso una persona) no se cambia, y a ese producto no se le toca la
-    publicación. Las fotos de más de una variante se agregan solo si la variante no tiene ninguna. Un producto del archivo
-    que ya no está en Odoo (lo borraron) se salta. Se puede repetir sin duplicar nada. Devuelve cuántos productos se
-    publicaron.
+    publicación. Las fotos de más de una variante se agregan solo si la variante no tiene ninguna. Un producto del
+    archivo que ya no está en Odoo (lo borraron) se salta. Se puede repetir sin duplicar nada. Devuelve cuántos
+    productos se publicaron.
     """
     catalogo = leer_catalogo() if catalogo is None else catalogo
     Imagen = env['product.image']
@@ -336,7 +337,8 @@ def poner_fotos(env, catalogo=None):
 
 def poner_precios_par(env, catalogo=None):
     """El «Precio por par» (la promoción «2 por…», ``models/precio_par.py``) de las variantes que lo traen en
-    ``data/catalogo.json`` (``precio_par``), solo donde está vacío: el que ya puso Gerencia no se pisa. Hoy el catálogo está vacío y no carga nada. Se puede repetir.
+    ``data/catalogo.json`` (``precio_par``), solo donde está vacío: el que ya puso Gerencia no se pisa.
+    Hoy el catálogo está vacío y no carga nada. Se puede repetir.
 
     Devuelve ``{código: resultado}``: ``cargado``, ``ya_tenia``, ``no_encontrado``, ``repetido`` o ``no_vale`` (la
     variante cambió y la cifra ya no es una promoción válida: menor que dos sueltas y partible en dos al centavo; no
@@ -372,8 +374,9 @@ def poner_precios_par(env, catalogo=None):
 
 
 def no_vender_agotados(env):
-    """Lo agotado no se pide en la web (decisión de producto). El ajuste de Odoo «Continuar vendiendo sin existencias» queda apagado para los productos nuevos y se apaga en
-    los que ya están. Se puede repetir. Devuelve cuántos productos cambiaron."""
+    """Lo agotado no se pide en la web (decisión de producto). El ajuste de Odoo «Continuar vendiendo sin
+    existencias» queda apagado para los productos nuevos y se apaga en los que ya están. Se puede repetir.
+    Devuelve cuántos productos cambiaron."""
     env['ir.default'].sudo().set('product.template', 'allow_out_of_stock_order', False)
     productos = env['product.template'].sudo().with_context(active_test=False).search([
         ('allow_out_of_stock_order', '=', True)])

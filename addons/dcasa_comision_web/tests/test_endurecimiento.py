@@ -105,7 +105,7 @@ class TestVigilanciaDelPuntoCiego(ComisionReloj):
     def test_el_equipo_que_cambia_el_cliente_o_las_lineas_de_un_carrito_de_visitante_queda_anotado(self):
         publico = self.env.ref('base.public_user')
         for cambio in ({'partner_id': self.otro_cliente().id},
-                       {'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1})]}):
+                       {'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1})]}):
             with self.subTest(cambio=list(cambio)):
                 orden = self.orden(creado_por=publico, confirmar=False)
                 self.assertFalse(orden.dcasa_tocada_por_id)
@@ -119,16 +119,16 @@ class TestVigilanciaDelPuntoCiego(ComisionReloj):
             with self.subTest(usuario=usuario.login):
                 orden.with_user(usuario).sudo().write({'partner_id': orden.partner_id.id,
                                                        'order_line': [Command.create({
-                                                           'product_id': self.mueble.id, 'product_uom_qty': 1})]})
+                                                           'product_id': self.articulo.id, 'product_uom_qty': 1})]})
         self.assertFalse(orden.dcasa_tocada_por_id)
 
     def test_teclear_el_precio_de_una_linea_de_un_pedido_digital_lo_senala_aunque_lo_haga_quien_abrio_el_carrito(self):
         """La tienda pone los precios sola: un precio tecleado en una línea de producto es un pedido armado a mano."""
         publico = self.env.ref('base.public_user')
         for linea, esperado in (
-                ({'product_id': self.mueble.id, 'product_uom_qty': 1}, False),                      # lo normal
+                ({'product_id': self.articulo.id, 'product_uom_qty': 1}, False),                      # lo normal
                 ({'product_id': self.premio.id, 'product_uom_qty': 1, 'price_unit': -50.0}, False),   # un premio
-                ({'product_id': self.mueble.id, 'product_uom_qty': 1, 'price_unit': 800.0}, True)):    # precio a mano
+                ({'product_id': self.articulo.id, 'product_uom_qty': 1, 'price_unit': 800.0}, True)):    # precio a mano
             with self.subTest(linea=linea):
                 orden = self.orden(creado_por=publico, confirmar=False)
                 orden.with_user(publico).sudo().write({'order_line': [Command.create(linea)]})
@@ -510,7 +510,7 @@ class TestAntesDeDescuentosConDevoluciones(ComisionReloj):
 
     def vender(self, **version):
         self.version(10.0, **version)
-        factura = self.facturar(self.orden(lineas=[(self.mueble, 1000.0, 1, {'discount': 10.0})]))
+        factura = self.facturar(self.orden(lineas=[(self.articulo, 1000.0, 1, {'discount': 10.0})]))
         self.pagar(factura)
         return factura
 
@@ -529,7 +529,7 @@ class TestAntesDeDescuentosConDevoluciones(ComisionReloj):
     def test_la_base_con_cada_interruptor_a_mano(self):
         """Venta de 1,000 con descuento de línea 10 % (900), premio de 100, envío 50, ITBMS 7 %; nota de 200 sin ITBMS.
         Cuentas hechas a mano, en centavos: productos 90,000; descuento de línea 10,000; premio 10,000; envío 5,000."""
-        lineas = [(self.mueble, 1000.0, 1, {'discount': 10.0}), (self.premio, -100.0, 1, {}),
+        lineas = [(self.articulo, 1000.0, 1, {'discount': 10.0}), (self.premio, -100.0, 1, {}),
                   (self.envio, 50.0, 1, {'is_delivery': True})]
         itbms = self.itbms.amount / 100
         esperados = [
@@ -661,7 +661,7 @@ class TestMenoresDeLaSegundaRevision(ComisionReloj):
         return nota
 
     def test_devolver_solo_el_envio_resta_solo_si_el_envio_cuenta(self):
-        lineas = [(self.mueble, 1000.0, 1, {}), (self.envio, 50.0, 1, {'is_delivery': True})]
+        lineas = [(self.articulo, 1000.0, 1, {}), (self.envio, 50.0, 1, {'is_delivery': True})]
         self.version(10.0)
         sin = self.venta_web(lineas=lineas)
         self.nota_con_producto(sin, self.envio, 50.0)
@@ -673,14 +673,14 @@ class TestMenoresDeLaSegundaRevision(ComisionReloj):
         self.assertEqual(self.venta(con).base_centavos, 100000, 'cuenta el envío (1,050) y se devolvieron los 50')
 
     def test_devolver_un_mueble_sigue_restando_aunque_vaya_con_el_envio_en_la_misma_nota(self):
-        lineas = [(self.mueble, 1000.0, 1, {}), (self.envio, 50.0, 1, {'is_delivery': True})]
+        lineas = [(self.articulo, 1000.0, 1, {}), (self.envio, 50.0, 1, {'is_delivery': True})]
         self.version(10.0)
         factura = self.venta_web(lineas=lineas)
         nota = self.env['account.move'].create({
             'move_type': 'out_refund', 'partner_id': factura.partner_id.id, 'invoice_date': '2030-03-04',
             'reversed_entry_id': factura.id,
             'invoice_line_ids': [
-                Command.create({'product_id': self.mueble.id, 'name': 'Mueble', 'quantity': 1, 'price_unit': 400.0,
+                Command.create({'product_id': self.articulo.id, 'name': 'Articulo', 'quantity': 1, 'price_unit': 400.0,
                                 'tax_ids': [Command.set(self.itbms.ids)]}),
                 Command.create({'product_id': self.envio.id, 'name': 'Envio', 'quantity': 1, 'price_unit': 50.0})]})
         nota.action_post()
@@ -689,7 +689,7 @@ class TestMenoresDeLaSegundaRevision(ComisionReloj):
         self.assertEqual(venta.base_centavos, 60000)
 
     def test_antes_de_descuentos_y_con_itbms_usa_el_impuesto_del_precio_de_lista(self):
-        lineas = [(self.mueble, 1000.0, 1, {'discount': 10.0})]
+        lineas = [(self.articulo, 1000.0, 1, {'discount': 10.0})]
         self.version(10.0, base_descuentos='antes', base_itbms='con')
         factura = self.venta_web(lineas=lineas)
         self.assertEqual(self.venta(factura).base_centavos, 100000 + 7000, 'lista 1,000 y su ITBMS (70), no el de 900')
@@ -699,7 +699,7 @@ class TestMenoresDeLaSegundaRevision(ComisionReloj):
             with self.subTest(base_descuentos=opcion):
                 self.avanzar(f'{dia} 15:00:00')
                 self.version(10.0, base_descuentos=opcion)
-                orden = self.orden(lineas=[(self.mueble, 1000.0, 1, {})])
+                orden = self.orden(lineas=[(self.articulo, 1000.0, 1, {})])
                 asistente = self.env['sale.advance.payment.inv'].with_context(
                     active_model='sale.order', active_ids=orden.ids).create({
                         'advance_payment_method': 'fixed', 'fixed_amount': 300.0})

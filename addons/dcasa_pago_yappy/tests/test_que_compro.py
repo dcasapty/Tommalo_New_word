@@ -21,19 +21,19 @@ class BaseCompra(ComunYappy, TransactionCase):
         Atributo = cls.env['product.attribute']
         color = Atributo.create({'name': 'Color', 'value_ids': [Command.create({'name': 'Gris humo'}),
                                                                  Command.create({'name': 'Azul noche'})]})
-        medida = Atributo.create({'name': 'Medida', 'value_ids': [Command.create({'name': 'Queen'}),
-                                                                   Command.create({'name': 'King'})]})
-        cls.sofa = cls.env['product.template'].create({
-            'name': 'Sofá Roma de prueba', 'type': 'consu', 'is_storable': True, 'list_price': 250.0,
+        medida = Atributo.create({'name': 'Medida', 'value_ids': [Command.create({'name': 'Grande'}),
+                                                                   Command.create({'name': 'Mini'})]})
+        cls.crema = cls.env['product.template'].create({
+            'name': 'Crema Roma de prueba', 'type': 'consu', 'is_storable': True, 'list_price': 250.0,
             'taxes_id': [Command.set(cls.env.company.account_sale_tax_id.ids)],
             'attribute_line_ids': [
                 Command.create({'attribute_id': color.id, 'value_ids': [Command.set(color.value_ids.ids)]}),
                 Command.create({'attribute_id': medida.id, 'value_ids': [Command.set(medida.value_ids.ids)]})]})
-        cls.variantes = cls.sofa.product_variant_ids
+        cls.variantes = cls.crema.product_variant_ids
         almacen = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1)
         for variante in cls.variantes:
             cls.env['stock.quant']._update_available_quantity(variante, almacen.lot_stock_id, 20.0)
-        cls.entrega = cls.env['delivery.carrier'].search([('name', '=', 'Retiro en tienda (La Chorrera)')], limit=1)
+        cls.entrega = cls.env['delivery.carrier'].search([('name', '=', 'Retiro en tienda (Ciudad de Prueba)')], limit=1)
 
     def valores(self, variante, atributo):
         return variante.product_template_attribute_value_ids.filtered(lambda v: v.attribute_id.name == atributo).name
@@ -43,8 +43,8 @@ class BaseCompra(ComunYappy, TransactionCase):
             lambda v: self.valores(v, 'Color') == color and self.valores(v, 'Medida') == medida)
 
     def pedido_grande(self):
-        gris = self.variante('Gris humo', 'Queen')
-        azul = self.variante('Azul noche', 'King')
+        gris = self.variante('Gris humo', 'Grande')
+        azul = self.variante('Azul noche', 'Mini')
         pedido = self.env['sale.order'].create({
             'partner_id': self.cliente.id, 'website_id': self.website.id,
             'order_line': [
@@ -88,11 +88,11 @@ class TestPedidoPagadoConVariantes(BaseCompra):
         self.assertEqual(tx.dcasa_lineas_ids, pedido.order_line.filtered(lambda ln: not ln.display_type))
         lectura = tx.dcasa_lineas_ids.read(
             ['product_id', 'name', 'product_uom_qty', 'price_unit', 'discount', 'price_total'])
-        gris = next(fila for fila in lectura if fila['product_id'][0] == self.variante('Gris humo', 'Queen').id)
+        gris = next(fila for fila in lectura if fila['product_id'][0] == self.variante('Gris humo', 'Grande').id)
         self.assertEqual(gris['product_uom_qty'], 2.0)
         self.assertEqual(gris['discount'], 10.0)
         self.assertIn('Gris humo', gris['name'] + gris['product_id'][1], 'el color se ve en la línea')
-        self.assertIn('Queen', gris['name'] + gris['product_id'][1], 'la medida se ve en la línea')
+        self.assertIn('Grande', gris['name'] + gris['product_id'][1], 'la medida se ve en la línea')
 
     def test_quien_cobra_y_quien_vende_lo_ven_sin_buscar(self):
         pedido = self.pedido_grande()
@@ -130,7 +130,7 @@ class TestPedidoPagadoConVariantes(BaseCompra):
         if self.entrega:
             self.assertIn('Retiro en tienda', pedido.dcasa_entrega_texto)
         self.assertIn('Calle de prueba 1', pedido.dcasa_entrega_texto)
-        self.assertIn('La Chorrera', pedido.dcasa_entrega_texto)
+        self.assertIn('Ciudad de Prueba', pedido.dcasa_entrega_texto)
 
     def test_el_origen_dice_si_llego_por_andres(self):
         pedido = self.pedido()
@@ -155,8 +155,8 @@ class TestPedidoPagadoConVariantes(BaseCompra):
         self.assertFalse(nota.partner_ids, 'no se manda a nadie')
         self.assertFalse(self.env['mail.mail'].search_count([('mail_message_id', '=', nota.id)]))
         cuerpo = self.texto(nota.body)
-        for esperado in ('Sofá Roma de prueba', 'Gris humo', 'Queen', 'Azul noche', 'King', '2 ×', '−10 %',
-                         '$250.00 c/u', 'Sofá de prueba (Yappy)'.upper(), '3 ×', 'Total del pedido',
+        for esperado in ('Crema Roma de prueba', 'Gris humo', 'Grande', 'Azul noche', 'Mini', '2 ×', '−10 %',
+                         '$250.00 c/u', 'Crema de prueba (Yappy)'.upper(), '3 ×', 'Total del pedido',
                          f'${pedido.amount_total:.2f}', 'Ana Prueba Yappy', '+507 6000-0101',
                          'Calle de prueba 1', 'Origen: Página web', orden, 'CONF-777', 'solo informativa'):
             self.assertIn(esperado.lower(), cuerpo.lower(), esperado)
@@ -171,7 +171,7 @@ class TestPedidoPagadoConVariantes(BaseCompra):
     def test_los_textos_de_las_personas_nunca_se_vuelven_html_en_la_nota(self):
         self.cliente.name = '<img src=x onerror=alert(1)> Ana'
         self.cliente.street = '<script>alert(2)</script> Calle'
-        self.producto.name = '<b>Sofá</b> peligroso'
+        self.producto.name = '<b>Crema</b> peligroso'
         pedido = self.pedido()
         with YappyFalso() as yappy:
             tx, _orden, _d = self.abrir(yappy, pedido)
@@ -180,17 +180,17 @@ class TestPedidoPagadoConVariantes(BaseCompra):
         html = str(nota.body)
         self.assertNotIn('<img', html)
         self.assertNotIn('<script', html)
-        self.assertNotIn('<b>Sofá</b>', html)
+        self.assertNotIn('<b>Crema</b>', html)
         self.assertIn('&lt;img', html)
 
     def test_las_lineas_del_resumen_traen_variante_precio_y_descuento(self):
         pedido = self.pedido_grande()
         filas = resumen.lineas(pedido)
         sofa_gris = next(f for f in filas if 'Gris humo' in f['variante'])
-        self.assertEqual(sofa_gris['variante'], 'Color: Gris humo · Medida: Queen')
+        self.assertEqual(sofa_gris['variante'], 'Color: Gris humo · Medida: Grande')
         self.assertEqual((sofa_gris['cantidad'], sofa_gris['descuento'], sofa_gris['precio']), (2.0, 10.0, 250.0))
         frase = resumen.frase_de_linea(pedido, sofa_gris)
-        self.assertIn('2 × SOFÁ ROMA DE PRUEBA (Color: Gris humo · Medida: Queen)'.lower(), frase.lower())
+        self.assertIn('2 × CREMA ROMA DE PRUEBA (Color: Gris humo · Medida: Grande)'.lower(), frase.lower())
         self.assertIn('−10 %', frase)
         if self.entrega:
             self.assertTrue(any(f['es_envio'] for f in filas), 'el envío viene marcado como envío')
@@ -240,7 +240,7 @@ class TestPedidoQueNoSePago(BaseCompra):
             [('res_model', '=', 'sale.order'), ('res_id', '=', pedido.id)])
         self.assertTrue(actividad)
         nota = self.texto(actividad[0].note)
-        for esperado in ('Sofá Roma de prueba', 'Gris humo', '2 ×', 'Queen', orden):
+        for esperado in ('Crema Roma de prueba', 'Gris humo', '2 ×', 'Grande', orden):
             self.assertIn(esperado.lower(), nota.lower(), esperado)
 
     def test_el_filtro_de_yappy_sin_completar_encuentra_el_pedido_y_el_pagado_no_sale(self):
@@ -282,21 +282,21 @@ class TestCombosYLasVistas(BaseCompra):
     def test_un_combo_se_ve_con_sus_piezas_y_el_pedido_se_paga_con_todo_intacto(self):
         Combo = self.env['product.combo']
         impuestos = [Command.set(self.env.company.account_sale_tax_id.ids)]
-        cama = self.env['product.product'].create({
-            'name': 'Cama Zeta de prueba', 'type': 'consu', 'list_price': 90.0, 'taxes_id': impuestos})
-        colchon = self.env['product.product'].create({
-            'name': 'Colchón Imperial de prueba', 'type': 'consu', 'list_price': 60.0, 'taxes_id': impuestos})
-        grupo_cama = Combo.create({'name': 'Cama', 'combo_item_ids': [Command.create({'product_id': cama.id})]})
-        grupo_colchon = Combo.create({
-            'name': 'Colchón', 'combo_item_ids': [Command.create({'product_id': colchon.id})]})
+        crema = self.env['product.product'].create({
+            'name': 'Crema Zeta de prueba', 'type': 'consu', 'list_price': 90.0, 'taxes_id': impuestos})
+        jabon = self.env['product.product'].create({
+            'name': 'Jabón Imperial de prueba', 'type': 'consu', 'list_price': 60.0, 'taxes_id': impuestos})
+        grupo_crema = Combo.create({'name': 'Crema', 'combo_item_ids': [Command.create({'product_id': crema.id})]})
+        grupo_jabon = Combo.create({
+            'name': 'Jabón', 'combo_item_ids': [Command.create({'product_id': jabon.id})]})
         combo = self.env['product.product'].create({
             'name': 'Combo dormitorio de prueba', 'type': 'combo', 'list_price': 130.0,
             'taxes_id': [Command.set(self.env.company.account_sale_tax_id.ids)],
-            'combo_ids': [Command.set((grupo_cama | grupo_colchon).ids)]})
+            'combo_ids': [Command.set((grupo_crema | grupo_jabon).ids)]})
         pedido = self.env['sale.order'].create({'partner_id': self.cliente.id, 'website_id': self.website.id})
         Linea = self.env['sale.order.line']
         base = Linea.create({'order_id': pedido.id, 'product_id': combo.id, 'product_uom_qty': 1})
-        for grupo, producto in ((grupo_cama, cama), (grupo_colchon, colchon)):
+        for grupo, producto in ((grupo_crema, crema), (grupo_jabon, jabon)):
             Linea.create({'order_id': pedido.id, 'product_id': producto.id, 'product_uom_qty': 1,
                           'linked_line_id': base.id, 'combo_item_id': grupo.combo_item_ids.id})
         filas = resumen.lineas(pedido)

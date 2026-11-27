@@ -115,7 +115,7 @@ class TestRvCombosCampana(CombosCommon):
     def test_rv_textos_promo_y_expo_en_femenino(self):
         from odoo.addons.website_dcasa.models.black_weekend import articulo_y_nombre
         self.assertEqual(articulo_y_nombre('Promo Navideña')[0], 'la', '«Ver toda la Promo Navideña»')
-        self.assertEqual(articulo_y_nombre('Expo Muebles')[0], 'la', '«Ver toda la Expo Muebles»')
+        self.assertEqual(articulo_y_nombre('Expo Verano')[0], 'la', '«Ver toda la Expo Verano»')
 
     # --- Lo que aguantó ----------------------------------------------------------------
 

@@ -11,7 +11,7 @@ class TestNombresEnLosCorreos(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        producto = cls.env['product.product'].create({'name': 'CAMA DE METAL CON BAÚL', 'list_price': 100})
+        producto = cls.env['product.product'].create({'name': 'CREMA DE METAL CON BAÚL', 'list_price': 100})
         cliente = cls.env['res.partner'].create({'name': 'CLIENTE DE PRUEBA', 'email': 'cliente.correo@example.com'})
         # Un pedido de la tienda: el correo de confirmación lista los productos solo si viene del sitio.
         cls.orden = cls.env['sale.order'].create({
@@ -32,6 +32,6 @@ class TestNombresEnLosCorreos(TransactionCase):
     def test_la_confirmacion_del_pedido_nombra_en_formato_titulo(self):
         plantilla = self.env.ref('sale.mail_template_sale_confirmation')
         cuerpo = str(plantilla._render_field('body_html', self.orden.ids)[self.orden.id])
-        self.assertIn('Cama de Metal con Baúl', cuerpo)
-        self.assertNotIn('CAMA DE METAL CON BAÚL', cuerpo)
-        self.assertIn('CAMA DE METAL CON BAÚL', self.orden.order_line.name, 'lo guardado no cambia')
+        self.assertIn('Crema de Metal con Baúl', cuerpo)
+        self.assertNotIn('CREMA DE METAL CON BAÚL', cuerpo)
+        self.assertIn('CREMA DE METAL CON BAÚL', self.orden.order_line.name, 'lo guardado no cambia')

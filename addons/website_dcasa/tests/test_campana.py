@@ -38,15 +38,15 @@ class _Base:
         cls.env.ref('base.group_user').write({
             'implied_ids': [Command.link(cls.env.ref('product.group_product_pricelist').id)]})
         cls.env['dcasa.campana']._dcasa_tarifa_del_sitio()
-        cls.recamaras = cls.env.ref('website_dcasa.public_category_recamaras')
-        valores = {'name': 'CAMA CAMPAÑA DE PRUEBA', 'list_price': 200.0, 'is_published': True,
-                   'public_categ_ids': [Command.set(cls.recamaras.ids)], 'website_sequence': -2000}
+        cls.salud = cls.env.ref('website_dcasa.public_category_salud')
+        valores = {'name': 'CREMA CAMPAÑA DE PRUEBA', 'list_price': 200.0, 'is_published': True,
+                   'public_categ_ids': [Command.set(cls.salud.ids)], 'website_sequence': -2000}
         # El texto del combo es un campo de dcasa_catalogo: con website_dcasa solo (scripts/test.sh website_dcasa) no
         # existe, y la creación fallaba antes de probar nada de la campaña.
         cls.con_combo = 'dcasa_combo' in cls.env['product.template']._fields
         if cls.con_combo:
-            valores['dcasa_combo'] = 'Combo con colchón First Class $469.99'
-        cls.cama = cls.env['product.template'].create(valores)
+            valores['dcasa_combo'] = 'Combo con colchón de Prueba $469.99'
+        cls.crema = cls.env['product.template'].create(valores)
 
     def _reglas(self, plantilla=None):
         dominio = [('dcasa_campana', '=', True)]
@@ -69,16 +69,16 @@ class TestCampanaPrecios(_Base, TransactionCase):
 
     def _en_campana(self, precio=150.0, inicio=date(2026, 11, 27), fin=date(2026, 11, 30)):
         self.campana.write({'fecha_inicio': inicio, 'fecha_fin': fin})
-        self.cama.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': precio})
+        self.crema.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': precio})
 
     def test_regla_con_las_fechas_en_hora_de_panama(self):
         self._en_campana()
-        regla = self._reglas(self.cama).filtered(lambda r: r.pricelist_id == self.tarifa)
+        regla = self._reglas(self.crema).filtered(lambda r: r.pricelist_id == self.tarifa)
         self.assertEqual(len(regla), 1)
         self.assertEqual((regla.compute_price, regla.base, regla.price_surcharge), ('formula', 'list_price', -50.0))
         self.assertEqual(regla.date_start, datetime(2026, 11, 27, 5, 0, 0))   # 00:00 en Panamá
         self.assertEqual(regla.date_end, datetime(2026, 12, 1, 4, 59, 59))    # 23:59:59 del 30 en Panamá
-        variante = self.cama.product_variant_id
+        variante = self.crema.product_variant_id
         self.assertEqual(self._precio(variante, datetime(2026, 11, 27, 4, 59, 59)), 200.0, 'antes: el normal')
         self.assertEqual(self._precio(variante, datetime(2026, 11, 27, 5, 0, 0)), 150.0, 'empieza a las 00:00')
         self.assertEqual(self._precio(variante, datetime(2026, 12, 1, 4, 59, 59)), 150.0, 'último segundo')
@@ -90,52 +90,52 @@ class TestCampanaPrecios(_Base, TransactionCase):
         self.campana.fecha_inicio = date(2026, 11, 27)
         self.assertFalse(self._reglas(), 'un precio rebajado sin fin no sale solo')
         self.campana.fecha_fin = date(2026, 11, 30)
-        self.assertTrue(self._reglas(self.cama))
+        self.assertTrue(self._reglas(self.crema))
         self.campana.write({'fecha_inicio': False, 'fecha_fin': False})
         self.assertFalse(self._reglas(), 'quitar las fechas borra las reglas')
 
     def test_cada_variante_baja_lo_mismo(self):
         medida = self.env['product.attribute'].create({'name': 'Medida prueba', 'create_variant': 'always'})
-        full, king = self.env['product.attribute.value'].create([
-            {'name': 'Full', 'attribute_id': medida.id}, {'name': 'King', 'attribute_id': medida.id}])
-        self.cama.write({'attribute_line_ids': [Command.create({
-            'attribute_id': medida.id, 'value_ids': [Command.set([full.id, king.id])]})]})
-        self.cama.attribute_line_ids.product_template_value_ids.filtered(
-            lambda v: v.product_attribute_value_id == king).price_extra = 60.0
+        full, mini = self.env['product.attribute.value'].create([
+            {'name': 'Full', 'attribute_id': medida.id}, {'name': 'Mini', 'attribute_id': medida.id}])
+        self.crema.write({'attribute_line_ids': [Command.create({
+            'attribute_id': medida.id, 'value_ids': [Command.set([full.id, mini.id])]})]})
+        self.crema.attribute_line_ids.product_template_value_ids.filtered(
+            lambda v: v.product_attribute_value_id == mini).price_extra = 60.0
         self._en_campana(precio=180.0)
         momento = datetime(2026, 11, 28, 15, 0)
         precios = {v.product_template_attribute_value_ids.name: self._precio(v, momento)
-                   for v in self.cama.product_variant_ids}
-        self.assertEqual(precios, {'Full': 180.0, 'King': 240.0}, 'la King conserva sus 60 de diferencia')
+                   for v in self.crema.product_variant_ids}
+        self.assertEqual(precios, {'Full': 180.0, 'Mini': 240.0}, 'la Mini conserva sus 60 de diferencia')
 
     def test_el_precio_de_campana_tiene_que_ser_menor(self):
         for precio in (200.0, 250.0, -5.0):
             with self.subTest(precio=precio), self.assertRaises(ValidationError):
-                self.cama.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': precio})
+                self.crema.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': precio})
 
     def test_desmarcar_o_borrar_el_precio_quita_la_regla(self):
         self._en_campana()
-        self.cama.dcasa_campana_precio = False
-        self.assertFalse(self._reglas(self.cama))
-        self.cama.dcasa_campana_precio = 150.0
-        self.assertTrue(self._reglas(self.cama))
-        self.cama.dcasa_black_weekend = False
-        self.assertFalse(self._reglas(self.cama), 'fuera de la campaña, sin precio de campaña')
+        self.crema.dcasa_campana_precio = False
+        self.assertFalse(self._reglas(self.crema))
+        self.crema.dcasa_campana_precio = 150.0
+        self.assertTrue(self._reglas(self.crema))
+        self.crema.dcasa_black_weekend = False
+        self.assertFalse(self._reglas(self.crema), 'fuera de la campaña, sin precio de campaña')
 
     def test_el_precio_normal_cambia_y_la_rebaja_se_ajusta(self):
         self._en_campana()
-        self.cama.list_price = 220.0
-        self.assertEqual(self._reglas(self.cama)[:1].price_surcharge, -70.0)
+        self.crema.list_price = 220.0
+        self.assertEqual(self._reglas(self.crema)[:1].price_surcharge, -70.0)
         # Si el normal baja por debajo del de campaña (p. ej. el Excel del catálogo), no se bloquea: la regla se va.
-        self.cama.list_price = 140.0
-        self.assertFalse(self._reglas(self.cama))
+        self.crema.list_price = 140.0
+        self.assertFalse(self._reglas(self.crema))
 
     def test_solo_toca_las_reglas_que_cambian(self):
         self._en_campana()
-        regla = self._reglas(self.cama)
-        self.cama.write({'name': 'CAMA CAMPAÑA RENOMBRADA'})
+        regla = self._reglas(self.crema)
+        self.crema.write({'name': 'CREMA CAMPAÑA RENOMBRADA'})
         self.env['product.template']._dcasa_campana_sincronizar()
-        self.assertEqual(self._reglas(self.cama), regla, 'la misma regla, no una nueva')
+        self.assertEqual(self._reglas(self.crema), regla, 'la misma regla, no una nueva')
 
     def test_la_regla_no_se_edita_a_mano(self):
         self._en_campana()
@@ -144,23 +144,23 @@ class TestCampanaPrecios(_Base, TransactionCase):
             'group_ids': [Command.set([self.env.ref('base.group_user').id, self.env.ref('dcasa_base.group_gerencia').id,
                                        self.env.ref('sales_team.group_sale_manager').id])]})
         with self.assertRaises(UserError):
-            self._reglas(self.cama)[:1].with_user(gerente).write({'price_surcharge': -150.0})
+            self._reglas(self.crema)[:1].with_user(gerente).write({'price_surcharge': -150.0})
 
     def test_descuento_en_porcentaje_a_varios(self):
-        otra = self.env['product.template'].create({'name': 'OTRA CAMA', 'list_price': 199.99})
+        otra = self.env['product.template'].create({'name': 'OTRA CREMA', 'list_price': 199.99})
         asistente = self.env['dcasa.campana.descuento'].with_context(
-            active_ids=(self.cama | otra).ids).create({'porcentaje': 15})
+            active_ids=(self.crema | otra).ids).create({'porcentaje': 15})
         asistente.action_aplicar()
-        self.assertEqual((self.cama.dcasa_campana_precio, otra.dcasa_campana_precio), (170.0, 169.99))
-        self.assertTrue(self.cama.dcasa_black_weekend and otra.dcasa_black_weekend)
+        self.assertEqual((self.crema.dcasa_campana_precio, otra.dcasa_campana_precio), (170.0, 169.99))
+        self.assertTrue(self.crema.dcasa_black_weekend and otra.dcasa_black_weekend)
         with self.assertRaises(ValidationError):
             self.env['dcasa.campana.descuento'].create({'porcentaje': 100})
 
     def test_empezar_de_cero(self):
         self._en_campana()
         self.campana.action_empezar_de_cero()
-        self.assertFalse(self.cama.dcasa_black_weekend)
-        self.assertFalse(self.cama.dcasa_campana_precio)
+        self.assertFalse(self.crema.dcasa_black_weekend)
+        self.assertFalse(self.crema.dcasa_campana_precio)
         self.assertFalse(self._reglas())
         self.assertIn('Empezar de cero', self.campana.message_ids[:1].body)
 
@@ -184,9 +184,9 @@ class TestCampanaPrecios(_Base, TransactionCase):
     def test_precio_vigente_para_juan_y_andres(self):
         self._en_campana()
         vigente = self.website._dcasa_campana_precio_vigente
-        self.assertIsNone(vigente(self.cama, ahora=datetime(2026, 11, 26, 12, 0)))
-        self.assertEqual(vigente(self.cama, ahora=datetime(2026, 11, 28, 12, 0)), 150.0)
-        self.assertIsNone(vigente(self.cama, ahora=datetime(2026, 12, 2, 12, 0)))
+        self.assertIsNone(vigente(self.crema, ahora=datetime(2026, 11, 26, 12, 0)))
+        self.assertEqual(vigente(self.crema, ahora=datetime(2026, 11, 28, 12, 0)), 150.0)
+        self.assertIsNone(vigente(self.crema, ahora=datetime(2026, 12, 2, 12, 0)))
 
     def test_con_las_tarifas_apagadas_no_hay_precio_de_campana(self):
         self.env.ref('base.group_user').write({
@@ -199,11 +199,11 @@ class TestCampanaPrecios(_Base, TransactionCase):
 
     def test_las_reglas_se_quedan_un_mes_para_las_cotizaciones_de_la_campana(self):
         self._en_campana()
-        self.assertTrue(self._reglas(self.cama), 'programada: ya existe (con sus fechas no cuenta antes)')
+        self.assertTrue(self._reglas(self.crema), 'programada: ya existe (con sus fechas no cuenta antes)')
         with freeze_time('2026-12-15 12:00:00'):
             self.env['dcasa.campana']._dcasa_campana_carritos_al_dia()
-            self.assertTrue(self._reglas(self.cama), 'una cotización del 28 sigue con su precio autorizado')
-            self.assertIsNone(self.website._dcasa_campana_precio_vigente(self.cama), 'pero ya no rige')
+            self.assertTrue(self._reglas(self.crema), 'una cotización del 28 sigue con su precio autorizado')
+            self.assertIsNone(self.website._dcasa_campana_precio_vigente(self.crema), 'pero ya no rige')
         with freeze_time('2026-12-31 06:00:00'):
             self.env['dcasa.campana']._dcasa_campana_carritos_al_dia()
             self.assertFalse(self._reglas(), 'un mes después del fin el cron la quita')
@@ -215,7 +215,7 @@ class TestCampanaPrecios(_Base, TransactionCase):
         cliente = self.env['res.partner'].create({'name': 'Cliente fecha'})
         orden = self.env['sale.order'].create({
             'partner_id': cliente.id, 'user_id': vendedora.id,
-            'order_line': [Command.create({'product_id': self.cama.product_variant_id.id})]})
+            'order_line': [Command.create({'product_id': self.crema.product_variant_id.id})]})
         with self.assertRaises(AccessError):
             orden.with_user(vendedora).write({'date_order': datetime(2026, 11, 28, 15, 0)})
         with self.assertRaises(AccessError):
@@ -227,11 +227,11 @@ class TestCampanaPrecios(_Base, TransactionCase):
         self.assertEqual(nueva.date_order.date(), date(2026, 11, 20), 'la fecha de hoy, no la que mandó')
 
     def test_un_combo_no_lleva_precio_de_campana(self):
-        variante = self.cama.product_variant_id
+        variante = self.crema.product_variant_id
         combo = self.env['product.combo'].create({
             'name': 'Combo campaña', 'combo_item_ids': [Command.create({'product_id': variante.id})]})
         producto = self.env['product.template'].create({
-            'name': 'COMBO CAMA', 'type': 'combo', 'list_price': 300.0, 'combo_ids': [Command.set(combo.ids)]})
+            'name': 'COMBO CREMA', 'type': 'combo', 'list_price': 300.0, 'combo_ids': [Command.set(combo.ids)]})
         with self.assertRaises(ValidationError):
             producto.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 250.0})
 
@@ -239,35 +239,35 @@ class TestCampanaPrecios(_Base, TransactionCase):
         vendedora = self.env['res.users'].create({
             'name': 'Vendedora campaña', 'login': 'vendedora_campana',
             'group_ids': [Command.set([self.env.ref('dcasa_base.group_vendedora').id])]})
-        cama = self.cama.with_user(vendedora)
+        crema = self.crema.with_user(vendedora)
         for valores in ({'dcasa_campana_precio': 1.0}, {'dcasa_black_weekend': True}, {'dcasa_bw_orden': 5}):
             with self.subTest(valores=valores), self.assertRaises(AccessError):
-                cama.write(valores)
+                crema.write(valores)
         with self.assertRaises(AccessError):
             self.env['product.template'].with_user(vendedora).create(
                 {'name': 'Nueva', 'list_price': 50.0, 'dcasa_black_weekend': True, 'dcasa_campana_precio': 1.0})
         with self.assertRaises(AccessError):
             self.campana.with_user(vendedora).action_empezar_de_cero()
-        cama.write({'name': 'CAMA RENOMBRADA POR LA VENDEDORA'})   # lo demás del producto, sí
+        crema.write({'name': 'CREMA RENOMBRADA POR LA VENDEDORA'})   # lo demás del producto, sí
 
     def test_ninguna_medida_queda_en_cero_o_negativa(self):
         medida = self.env['product.attribute'].create({'name': 'Medida barata', 'create_variant': 'always'})
-        twin, king = self.env['product.attribute.value'].create([
-            {'name': 'Twin', 'attribute_id': medida.id}, {'name': 'King', 'attribute_id': medida.id}])
-        self.cama.write({'list_price': 300.0, 'attribute_line_ids': [Command.create({
-            'attribute_id': medida.id, 'value_ids': [Command.set([twin.id, king.id])]})]})
-        self.cama.attribute_line_ids.product_template_value_ids.filtered(
+        twin, mini = self.env['product.attribute.value'].create([
+            {'name': 'Twin', 'attribute_id': medida.id}, {'name': 'Mini', 'attribute_id': medida.id}])
+        self.crema.write({'list_price': 300.0, 'attribute_line_ids': [Command.create({
+            'attribute_id': medida.id, 'value_ids': [Command.set([twin.id, mini.id])]})]})
+        self.crema.attribute_line_ids.product_template_value_ids.filtered(
             lambda v: v.product_attribute_value_id == twin).price_extra = -150.0
         with self.assertRaises(ValidationError):
-            self.cama.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 120.0})   # la Twin a −30
-        self.cama.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 200.0})       # la Twin a 50: bien
+            self.crema.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 120.0})   # la Twin a −30
+        self.crema.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 200.0})       # la Twin a 50: bien
 
     def test_un_precio_propio_de_la_tarifa_no_se_pisa(self):
         self.env['product.pricelist.item'].create({
-            'pricelist_id': self.tarifa.id, 'applied_on': '1_product', 'product_tmpl_id': self.cama.id,
+            'pricelist_id': self.tarifa.id, 'applied_on': '1_product', 'product_tmpl_id': self.crema.id,
             'compute_price': 'fixed', 'fixed_price': 120.0})
         self._en_campana()
-        self.assertFalse(self._reglas(self.cama).filtered(lambda r: r.pricelist_id == self.tarifa))
+        self.assertFalse(self._reglas(self.crema).filtered(lambda r: r.pricelist_id == self.tarifa))
 
     def test_la_regla_no_se_borra_a_mano(self):
         self._en_campana()
@@ -275,7 +275,7 @@ class TestCampanaPrecios(_Base, TransactionCase):
             'name': 'Gerente borra', 'login': 'gerente_borra_regla',
             'group_ids': [Command.set([self.env.ref('dcasa_base.group_gerencia').id])]})
         with self.assertRaises(UserError):
-            self._reglas(self.cama)[:1].with_user(gerente).unlink()
+            self._reglas(self.crema)[:1].with_user(gerente).unlink()
 
     def test_la_bandera_de_los_combos_saca_la_campana_y_el_interruptor_la_devuelve(self):
         """«Los combos son inamovibles» (la dueña, 2026-11-16): una pieza de un combo armado (dcasa_catalogo) se calcula
@@ -285,7 +285,7 @@ class TestCampanaPrecios(_Base, TransactionCase):
             'pricelist_id': self.tarifa.id, 'applied_on': '1_product', 'product_tmpl_id': otra.id,
             'compute_price': 'fixed', 'fixed_price': 90.0})
         self._en_campana()
-        variante = self.cama.product_variant_id
+        variante = self.crema.product_variant_id
         momento = datetime(2026, 11, 28, 15, 0)
         combo = self.tarifa.with_context(**{COMBO_SIN_CAMPANA: INTERNO})
         self.assertEqual(self._precio(variante, momento), 150.0)
@@ -296,13 +296,13 @@ class TestCampanaPrecios(_Base, TransactionCase):
         de_afuera = self.tarifa.with_context(**{COMBO_SIN_CAMPANA: True})
         self.assertEqual(round(de_afuera._get_product_price(variante, 1.0, date=momento), 2), 150.0)
         self.assertFalse(self.campana.dcasa_rebaja_combos, 'apagado de fábrica')
-        self.assertEqual(self._reglas(self.cama).dcasa_campana_id, self.campana)
-        regla = self._reglas(self.cama)
+        self.assertEqual(self._reglas(self.crema).dcasa_campana_id, self.campana)
+        regla = self._reglas(self.crema)
         Regla = type(self.env['product.pricelist.item'])
         with patch.object(Regla, 'write', side_effect=AssertionError('el interruptor no reescribe reglas')), \
                 patch.object(Regla, 'create', side_effect=AssertionError('ni crea reglas')):
             self.campana.dcasa_rebaja_combos = True
-        self.assertEqual(self._reglas(self.cama), regla, 'la misma regla')
+        self.assertEqual(self._reglas(self.crema), regla, 'la misma regla')
         self.assertEqual(round(combo._get_product_price(variante, 1.0, date=momento), 2), 150.0,
                          'encendido: el combo también toma la campaña')
         self.campana.dcasa_rebaja_combos = False
@@ -337,7 +337,7 @@ class TestCampanaPrecios(_Base, TransactionCase):
         web cada línea se calcula con la fecha en que se agregó."""
         self._en_campana()
         cliente = self.env['res.partner'].create({'name': 'Cliente I-B'})
-        variante = self.cama.product_variant_id
+        variante = self.crema.product_variant_id
         with freeze_time('2026-11-28 15:00:00'):
             orden = self.env['sale.order'].create({
                 'partner_id': cliente.id, 'pricelist_id': self.tarifa.id,
@@ -369,7 +369,7 @@ class TestCampanaPrecios(_Base, TransactionCase):
         orden = self.env['sale.order'].with_user(vendedora).create({
             'partner_id': cliente.id, 'user_id': vendedora.id, 'pricelist_id': self.tarifa.id})
         linea = self.env['sale.order.line'].with_user(vendedora).create({
-            'order_id': orden.id, 'product_id': self.cama.product_variant_id.id,
+            'order_id': orden.id, 'product_id': self.crema.product_variant_id.id,
             'dcasa_fecha_precio': datetime(2026, 11, 28, 15, 0)})
         self.assertEqual(linea.dcasa_fecha_precio, datetime(2026, 11, 20, 12, 0), 'la de hoy, no la que mandó')
         self.assertEqual(linea.price_unit, 200.0)
@@ -381,7 +381,7 @@ class TestCampanaPrecios(_Base, TransactionCase):
         casos = {
             'Black Friday': ('Ver todo el Black Friday', 'me interesa del Black Friday: '),
             'Navidad': ('Ver toda la Navidad', 'me interesa de la Navidad: '),
-            'Semana del Mueble': ('Ver toda la Semana del Mueble', 'me interesa de la Semana del Mueble: '),
+            'Semana del Articulo': ('Ver toda la Semana del Articulo', 'me interesa de la Semana del Articulo: '),
             'Fiestas Patrias': ('Ver todas las Fiestas Patrias', 'me interesa de las Fiestas Patrias: '),
             'Día de las Madres': ('Ver todo el Día de las Madres', 'me interesa del Día de las Madres: '),
             'La Gran Venta': ('Ver toda la Gran Venta', 'me interesa de la Gran Venta: '),
@@ -390,12 +390,12 @@ class TestCampanaPrecios(_Base, TransactionCase):
             with self.subTest(nombre):
                 self.campana.name = nombre
                 self.assertEqual(self.website._dcasa_campana_ver_todo(), ver_todo)
-                self.assertIn(interesa, unquote(self.website._dcasa_bw_whatsapp(self.cama, 'DC-1')))
+                self.assertIn(interesa, unquote(self.website._dcasa_bw_whatsapp(self.crema, 'DC-1')))
         self.assertEqual(articulo_y_nombre('Cyber Monday'), ('el', 'Cyber Monday'))
         self.assertEqual(articulo_y_nombre('Promociones de enero'), ('las', 'Promociones de enero'))
         self.assertEqual(articulo_y_nombre('Mes de la Patria'), ('el', 'Mes de la Patria'))
         self.assertEqual(articulo_y_nombre('Promo Navideña'), ('la', 'Promo Navideña'))
-        self.assertEqual(articulo_y_nombre('Expo Muebles'), ('la', 'Expo Muebles'))
+        self.assertEqual(articulo_y_nombre('Expo Articulos'), ('la', 'Expo Articulos'))
         self.assertEqual(articulo_y_nombre('Promos de enero'), ('las', 'Promos de enero'))
 
     def test_la_tarifa_de_respaldo_se_retira_cuando_el_sitio_tiene_una_propia(self):
@@ -405,13 +405,13 @@ class TestCampanaPrecios(_Base, TransactionCase):
         if not respaldo:
             self.skipTest('En esta base el sitio ya tenía su tarifa: no hubo respaldo')
         self._en_campana()
-        self.assertTrue(self._reglas(self.cama).filtered(lambda r: r.pricelist_id == respaldo))
+        self.assertTrue(self._reglas(self.crema).filtered(lambda r: r.pricelist_id == respaldo))
         cupon = Tarifa.create({'name': 'Cupón (prueba)', 'code': 'PRUEBA10', 'selectable': False})
         self.assertTrue(respaldo.selectable, 'una tarifa de cupón no es la del visitante: el respaldo se queda')
         propia = Tarifa.create({'name': 'Solo la web (prueba)', 'website_id': self.website.id})
         self.assertFalse(respaldo.selectable)
         self.assertEqual(Tarifa.search(dominio), propia | cupon)
-        self.assertEqual(self._reglas(self.cama).pricelist_id, propia, 'la campaña pasa a la tarifa del sitio')
+        self.assertEqual(self._reglas(self.crema).pricelist_id, propia, 'la campaña pasa a la tarifa del sitio')
 
     def test_limites_utc(self):
         self.assertEqual(limites_utc(date(2026, 11, 27), date(2026, 11, 27)),
@@ -444,7 +444,7 @@ class TestCampanaCarritos(_Base, TransactionCase):
     def _pedido(self, **valores):
         return self.env['sale.order'].create({
             'partner_id': self.cliente.id, 'website_id': self.website.id, 'pricelist_id': self.tarifa.id,
-            'order_line': [Command.create({'product_id': self.cama.product_variant_id.id, 'product_uom_qty': 1})],
+            'order_line': [Command.create({'product_id': self.crema.product_variant_id.id, 'product_uom_qty': 1})],
             **valores})
 
     def test_el_carrito_viejo_toma_el_precio_de_campana(self):
@@ -458,7 +458,7 @@ class TestCampanaCarritos(_Base, TransactionCase):
         # Empieza la campaña hoy (los carritos de la tienda se calculan con la hora actual).
         hoy = fields.Date.context_today(self.campana)
         self.campana.write({'fecha_inicio': hoy - timedelta(days=1), 'fecha_fin': hoy + timedelta(days=1)})
-        self.cama.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 150.0})
+        self.crema.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 150.0})
         self.assertGreaterEqual(self.env['dcasa.campana']._dcasa_campana_carritos_al_dia(), 1)
         self.assertEqual(carrito.order_line.price_unit, 150.0)
         if 'dcasa_apartado_vence' in apartado._fields:
@@ -466,7 +466,7 @@ class TestCampanaCarritos(_Base, TransactionCase):
         # Nada cambió: no vuelve a tocar nada.
         self.assertEqual(self.env['dcasa.campana']._dcasa_campana_carritos_al_dia(), 0)
         # Termina (Gerencia quita el precio): vuelve al normal.
-        self.cama.dcasa_campana_precio = False
+        self.crema.dcasa_campana_precio = False
         self.env['dcasa.campana']._dcasa_campana_carritos_al_dia()
         self.assertEqual(carrito.order_line.price_unit, 200.0)
 
@@ -482,7 +482,7 @@ class TestCampanaCarritos(_Base, TransactionCase):
             carrito._dcasa_escribir_marca(dcasa_nacio_en_web=True, dcasa_creada_por_id=publico.id)
         hoy = fields.Date.context_today(self.campana)
         self.campana.write({'fecha_inicio': hoy - timedelta(days=1), 'fecha_fin': hoy + timedelta(days=1)})
-        self.cama.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 150.0})
+        self.crema.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 150.0})
         self.assertFalse(self.env.user.share, 'el cron corre como un usuario interno (OdooBot)')
         self.assertGreaterEqual(self.env['dcasa.campana']._dcasa_campana_carritos_al_dia(), 1)
         self.assertEqual(por_cron.order_line.price_unit, 150.0)
@@ -497,7 +497,7 @@ class TestCampanaCarritos(_Base, TransactionCase):
         carrito = self._pedido()
         hoy = fields.Date.context_today(self.campana)
         self.campana.write({'fecha_inicio': hoy - timedelta(days=1), 'fecha_fin': hoy + timedelta(days=1)})
-        self.cama.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 150.0})
+        self.crema.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 150.0})
         param.search([('key', '=', PARAM_FIRMA_CARRITOS)]).unlink()
         al_dia = self.env['dcasa.campana']._dcasa_campana_carritos_al_dia()
         self.assertEqual(al_dia, 0, 'sin firma anterior: solo anota')
@@ -508,7 +508,7 @@ class TestCampanaCarritos(_Base, TransactionCase):
         carrito = self._pedido()
         hoy = fields.Date.context_today(self.campana)
         self.campana.write({'fecha_inicio': hoy - timedelta(days=1), 'fecha_fin': hoy + timedelta(days=1)})
-        self.cama.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 150.0})
+        self.crema.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': 150.0})
         self.assertEqual(carrito.order_line.price_unit, 200.0, 'Odoo no recalcula sola la línea que ya estaba')
         carrito._dcasa_campana_al_dia()   # lo que hace _check_cart antes de pagar
         self.assertEqual(carrito.order_line.price_unit, 150.0)
@@ -525,20 +525,20 @@ class TestCampanaSitio(_Base, HttpCase):
 
     def _activa(self, precio=150.0):
         self.campana.write({'fecha_inicio': self.hoy - timedelta(days=1), 'fecha_fin': self.hoy + timedelta(days=2)})
-        self.cama.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': precio})
+        self.crema.write({'dcasa_black_weekend': True, 'dcasa_campana_precio': precio})
 
     def test_activa_portada_menu_y_pagina(self):
         self._activa()
         portada = self.url_open('/').text
         self.assertIn('Black Friday', portada)
-        self.assertIn('CAMA CAMPAÑA DE PRUEBA'.title()[:10], portada.title())
+        self.assertIn('CREMA CAMPAÑA DE PRUEBA'.title()[:10], portada.title())
         self.assertIn('o_dcasa_precio_antes', portada, 'el precio normal tachado')
         self.assertRegex(portada, r'150[.,]00')
         self.assertIn('href="/promociones"', portada)
         self.assertIn('o_dcasa_menu_promo', portada, '«Promociones» en el menú')
         # Los combos son intocables (la dueña, 2026-11-16): su línea sigue, con su precio de siempre.
         if self.con_combo:
-            self.assertIn('Combo con colchón First Class', portada, 'con precio de campaña, el combo sigue')
+            self.assertIn('Combo con colchón de Prueba', portada, 'con precio de campaña, el combo sigue')
             self.assertRegex(portada, r'469[.,]99')
         pagina = self.url_open('/promociones')
         self.assertEqual(pagina.status_code, 200)
@@ -551,7 +551,7 @@ class TestCampanaSitio(_Base, HttpCase):
         self._activa(precio=False)
         portada = self.url_open('/').text
         if self.con_combo:
-            self.assertIn('Combo con colchón First Class', portada)
+            self.assertIn('Combo con colchón de Prueba', portada)
         self.assertRegex(portada, r'200[.,]00')
         self.assertNotIn('o_dcasa_precio_antes', portada, 'sin precio de campaña no hay precio tachado')
 

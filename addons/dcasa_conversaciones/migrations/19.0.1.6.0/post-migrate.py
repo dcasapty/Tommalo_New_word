@@ -1,12 +1,12 @@
-"""El asistente saluda como Tommalo Panamá, con el saludo de su CRM.
+"""El asistente saluda como Tommalo, con el saludo de su CRM.
 
 El nombre público y la bienvenida viven en el registro de Ajustes de Juan: cambiar el valor por defecto no toca una base
 que ya existe. Solo se reemplazan si todavía dicen lo de D'CASA: lo que alguien ya editó en Ajustes no se pisa.
 """
 NOMBRE_ANTERIOR = "el equipo de D'CASA"
-NOMBRE_NUEVO = 'Tommalo Panamá'
+NOMBRE_NUEVO = 'Tommalo'
 BIENVENIDA_ANTERIOR = "Hola, soy Juan de D'CASA."
-BIENVENIDA_NUEVA = 'Buenas, un gusto atenderle. Somos Tommalo Panamá 👼🏻'
+BIENVENIDA_NUEVA = 'Buenas, un gusto atenderle. Somos Tommalo.'
 
 
 def migrate(cr, version):

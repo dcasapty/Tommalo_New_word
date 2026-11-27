@@ -9,7 +9,7 @@ entiende sin la palabra, una paleta más profesional). Lo que se fija aquí:
   tarjetas a la vista, las flechas mueven el carril, el carrito es redondo de 48 px (una barra ancha en el teléfono), la
   tarjeta es la de tommalo.example (TarjetaDeArticulo.tsx: crema con filo fino y radio de 16 px, la foto entera en un
   plato cuadrado) y nada ensancha la página.
-* (Las categorías «Compra por espacio» y el carril «Para dormir mejor» eran de muebles: se quitaron con la marca de Baby
+* (Las categorías «Compra por espacio» y el carril «Para dormir mejor» eran de articulos: se quitaron con la marca de Baby
   Caleb, 2026-11-19.)
 """
 import contextlib
@@ -21,7 +21,7 @@ from odoo.tests import HttpCase, tagged
 from odoo.tests import common as comun
 from odoo.tests.common import ChromeBrowser
 
-NOMBRES = [f'ZZPORTADA V3 MUEBLE {i}' for i in range(1, 8)]
+NOMBRES = [f'ZZPORTADA V3 ARTICULO {i}' for i in range(1, 8)]
 
 MEDIR = """(async () => {
     const esperar = (ms) => new Promise((ok) => setTimeout(ok, ms));
@@ -82,20 +82,20 @@ class TestPortadaV3(HttpCase):
         cls.website = cls.env.ref('website.default_website')
         Plantilla = cls.env['product.template']
         base = {'type': 'consu', 'is_storable': False, 'sale_ok': True, 'is_published': True, 'list_price': 149.99}
-        # Siete muebles y un sofá con colores salen primero en «Lo más buscado» (son los 8 del carril): el carril tiene
+        # Siete articulos y un jabón con colores salen primero en «Lo más buscado» (son los 8 del carril): el carril tiene
         # más de lo que cabe a la vista y la primera tarjeta se agrega de un clic.
-        cls.muebles = Plantilla.browse()
+        cls.articulos = Plantilla.browse()
         for i, nombre in enumerate(NOMBRES):
-            cls.muebles |= Plantilla.create({**base, 'name': nombre, 'website_sequence': -5000 + i})
+            cls.articulos |= Plantilla.create({**base, 'name': nombre, 'website_sequence': -5000 + i})
         color = cls.env['product.attribute'].create({
             'name': 'Zzcolor portada v3', 'create_variant': 'always',
             'value_ids': [Command.create({'name': 'Zzgris'}), Command.create({'name': 'Zzbeige'})]})
         cls.con_colores = Plantilla.create({
-            **base, 'name': 'ZZPORTADA V3 SOFÁ CON COLORES', 'website_sequence': -4990,
+            **base, 'name': 'ZZPORTADA V3 JABÓN CON COLORES', 'website_sequence': -4990,
             'attribute_line_ids': [Command.create({'attribute_id': color.id, 'value_ids': [Command.set(color.value_ids.ids)]})]})
-        # Con algo publicado en Recámaras, la portada igual NO trae «Para dormir mejor» (era de muebles).
-        Plantilla.create({**base, 'name': 'ZZPORTADA V3 CAMA', 'website_sequence': -4980,
-                          'public_categ_ids': [Command.set(cls.env.ref('website_dcasa.public_category_recamaras').ids)]})
+        # Con algo publicado en Salud, la portada igual NO trae «Para dormir mejor» (era de articulos).
+        Plantilla.create({**base, 'name': 'ZZPORTADA V3 CREMA', 'website_sequence': -4980,
+                          'public_categ_ids': [Command.set(cls.env.ref('website_dcasa.public_category_salud').ids)]})
 
     def _portada(self):
         return lhtml.fromstring(self.url_open('/').text)
@@ -113,22 +113,22 @@ class TestPortadaV3(HttpCase):
         def cantidad(clave):
             return next(t for t in self.website._dcasa_categorias() if t['clave'] == clave)['cantidad']
 
-        antes = cantidad('oficina')
-        oficina = self.env.ref('website_dcasa.public_category_oficina')
+        antes = cantidad('otro')
+        otro = self.env.ref('website_dcasa.public_category_otro')
         self.env['product.template'].create({
             'name': 'ZZPORTADA V3 ESCRITORIO', 'is_published': True, 'sale_ok': True, 'list_price': 99.0,
-            'public_categ_ids': [(6, 0, oficina.ids)]})
+            'public_categ_ids': [(6, 0, otro.ids)]})
         self.env['product.template'].create({
             'name': 'ZZPORTADA V3 ESCRITORIO SIN PUBLICAR', 'is_published': False, 'sale_ok': True, 'list_price': 99.0,
-            'public_categ_ids': [(6, 0, oficina.ids)]})
-        self.assertEqual(cantidad('oficina'), antes + 1, 'cuenta lo publicado, y solo lo publicado')
+            'public_categ_ids': [(6, 0, otro.ids)]})
+        self.assertEqual(cantidad('otro'), antes + 1, 'cuenta lo publicado, y solo lo publicado')
         self.assertFalse(self._portada().xpath('//span[@class="o_dcasa_cat_nota"]'), 'la portada no las enseña')
 
     def test_la_tarjeta_lleva_el_carrito_como_icono_con_su_nombre(self):
         arbol = self._portada()
-        mueble = self.muebles[0]
-        tarjeta = self._tarjeta(arbol, mueble)
-        nombre = mueble._dcasa_nombre_cliente()
+        articulo = self.articulos[0]
+        tarjeta = self._tarjeta(arbol, articulo)
+        nombre = articulo._dcasa_nombre_cliente()
         boton = tarjeta.xpath('.//form[@action="/dcasa/carrito/agregar"]//button[contains(@class, "o_dcasa_pcard_add")]')
         self.assertTrue(boton, 'la tarjeta trae el formulario de un clic')
         boton = boton[0]
@@ -155,7 +155,7 @@ class TestPortadaV3(HttpCase):
 
     def test_los_carriles_traen_flechas_y_avance_escondidos_hasta_medir(self):
         carriles = self._portada().xpath('//section[contains(@class, "o_dcasa_rail")]')
-        self.assertEqual(len(carriles), 1, 'solo «Lo más buscado»: «Para dormir mejor» era de muebles')
+        self.assertEqual(len(carriles), 1, 'solo «Lo más buscado»: «Para dormir mejor» era de articulos')
         flechas = carriles[0].xpath('.//div[contains(@class, "o_dcasa_carril_flechas")]')[0]
         self.assertIsNotNone(flechas.get('hidden'), 'sin JavaScript las flechas no se ven')
         atras, adelante = flechas.xpath('.//button[contains(@class, "o_dcasa_carril_flecha")]')

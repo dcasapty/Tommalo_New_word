@@ -15,7 +15,7 @@
                 <t t-call="website_dcasa.cabecera_pagina">
                     <t t-set="cabecera_kicker" t-value="kicker or 'Mi cuenta Tommalo'"/>
                     <t t-set="cabecera_titulo" t-value="titulo"/>
-                    <!-- Sin foto: la de antes era un sofá (marca de Tommalo). La cabecera la pinta website_dcasa. -->
+                    <!-- Sin foto: La cabecera la pinta website_dcasa. -->
                 </t>
                 <div t-attf-class="o_dcasa_container o_dcasa_mc_cuerpo #{'o_dcasa_mc_con_nav' if ficha else ''}">
                     <nav t-if="ficha" class="o_dcasa_mc_nav" aria-label="Secciones de tu cuenta">
@@ -88,7 +88,7 @@
         <a t-att-href="compra['url']" t-attf-class="o_dcasa_mc_compra o_dcasa_mc_compra_#{compra['tono']}">
             <t t-call="dcasa_mi_cuenta.foto"/>
             <span class="o_dcasa_mc_compra_texto">
-                <span class="o_dcasa_mc_compra_nombre"><t t-out="compra['mueble']"/><small t-if="compra['mas']"> <t t-out="compra['mas']"/></small></span>
+                <span class="o_dcasa_mc_compra_nombre"><t t-out="compra['principal']"/><small t-if="compra['mas']"> <t t-out="compra['mas']"/></small></span>
                 <span class="o_dcasa_mc_compra_meta"><t t-out="compra['nombre']"/> · <t t-out="compra['fecha']"/></span>
                 <span t-attf-class="o_dcasa_mc_etiqueta o_dcasa_mc_etiqueta_#{compra['tono']}" t-out="compra['etiqueta']"/>
                 <span class="o_dcasa_mc_compra_total">Total <strong t-out="compra['total_fmt']"/></span>
@@ -283,7 +283,7 @@
                 <div class="o_dcasa_mc_estado_cabeza">
                     <t t-call="dcasa_mi_cuenta.foto"/>
                     <div>
-                        <h2 id="mc_estado" class="o_dcasa_mc_h2 mb-1"><t t-out="compra['mueble']"/><small t-if="compra['mas']"> <t t-out="compra['mas']"/></small></h2>
+                        <h2 id="mc_estado" class="o_dcasa_mc_h2 mb-1"><t t-out="compra['principal']"/><small t-if="compra['mas']"> <t t-out="compra['mas']"/></small></h2>
                         <p class="o_dcasa_mc_compra_meta mb-2"><t t-out="compra['nombre']"/> · <t t-out="compra['fecha']"/></p>
                         <span t-attf-class="o_dcasa_mc_etiqueta o_dcasa_mc_etiqueta_#{compra['tono']}" t-out="compra['etiqueta']"/>
                     </div>

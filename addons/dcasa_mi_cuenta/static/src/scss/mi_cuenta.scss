@@ -17,7 +17,7 @@ $mc-accent-fg: #262626;             // lo que va encima del de acento (5.56)
 $mc-accent-strong: #595959;         // texto en de acento (4.90 · 4.60)
 $mc-accent-edge: #8A8A8A;           // bordes e íconos de acento (3.20 · 3.01)
 $mc-sage: #BDBDBD;                  // relleno suave: nunca texto ni borde
-$mc-sage-strong: #53735C;           // texto suave (4.92 · 4.62)
+$mc-sage-strong: #595959;           // texto suave (6.8 · 7.0)
 $mc-verde: #1E7B34;                 // estado «bien»: 4.93 sobre bg · 4.64 sobre surface
 $mc-rojo: #B42318;                  // estado «error»: 6.08 sobre bg · 5.71 sobre surface
 $mc-fuente: 'Montserrat', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -1096,8 +1096,8 @@ $mc-escritorio: 992px;
 // Tus opiniones (lote 2 de la web): elegir de 1 a 5 estrellas con el dedo (48 px) o el teclado (radios de verdad).
 // Las estrellas en el ámbar de las de Google, como en la ficha.
 // ---------------------------------------------------------------------------
-$mc-estrella: #F5B300;
-$mc-estrella-vacia: #D5D0C4;
+$mc-estrella: #595959;
+$mc-estrella-vacia: #BDBDBD;
 
 .o_dcasa_mc_opinar {
     background: $mc-surface;

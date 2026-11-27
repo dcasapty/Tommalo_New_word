@@ -172,7 +172,7 @@ class TestArmarComboEnElNavegador(HttpCase):
         self.assertEqual((colchon.price_unit, colchon.dcasa_combo_cama_id.product_id), (260.0, self.cama))
 
     def test_la_pagina_del_cliente_dice_combo_y_el_descuento_en_su_renglon(self):
-        """Como el papel (decisión de la dueña, 2026-10-23): el colchón a su precio normal y debajo «Descuento combo
+        """Como el papel (regla de negocio): el colchón a su precio normal y debajo «Descuento combo
         cama + colchón −$40.00»."""
         orden = self.env['sale.order'].create({
             'partner_id': self.cliente.id,

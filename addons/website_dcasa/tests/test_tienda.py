@@ -1,5 +1,8 @@
+from unittest.mock import patch
+
 from lxml import etree
 
+from odoo.addons.website_dcasa.models import website as modulo_website
 from odoo.exceptions import ValidationError
 from odoo.tests import HttpCase, TransactionCase, tagged
 
@@ -28,12 +31,12 @@ class TestTiendaConfigurada(TransactionCase):
                          {'Transferencia bancaria', 'Yappy', 'Pago en la tienda'})
 
     def test_no_hay_pago_contra_entrega(self):
-        """Decisión de la dueña (2026-10-17): el mueble se entrega pagado completo; se paga en la tienda."""
+        """No hay pago contra entrega: «Pago en la tienda» aparta el pedido para pagarlo en la tienda."""
         cod = self.env.ref('delivery.payment_provider_cod')
         mensaje = str(cod.with_context(lang='es_419').pending_msg)
         self.assertEqual(cod.with_context(lang='es_419').name, 'Pago en la tienda')
         self.assertNotIn('al recibir', mensaje)
-        self.assertIn('pagado completo', mensaje)
+        self.assertIn('antes de que venza el apartado', mensaje)
 
     def test_sin_tienda_fisica_no_hay_pago_ni_retiro_en_la_tienda(self):
         """Tommalo vende solo en línea: el pago no
@@ -70,51 +73,45 @@ class TestTiendaConfigurada(TransactionCase):
             self.assertNotIn('Thank you for your order.', arco)
 
     def test_copias_viejas_de_la_portada_se_corrigen(self):
+        """``_dcasa_corregir_textos`` reemplaza, en las copias por sitio de la portada, los textos de
+        ``TEXTOS_CORREGIDOS`` (vacío en Tommalo): aquí se prueba el mecanismo con textos de PRUEBA."""
+        pares = [('Texto viejo de prueba uno para corregir en la portada.', 'Texto nuevo de prueba uno.'),
+                 ('Otro texto viejo de prueba dos para corregir.', 'Otro texto nuevo de prueba dos.')]
+        self.assertEqual(modulo_website.TEXTOS_CORREGIDOS, [], 'de fábrica no corrige nada')
         vista = self.env['ir.ui.view'].create({
-            'name': 'Copia vieja FAQ', 'type': 'qweb', 'key': 'website_dcasa.prueba_faq_vieja',
+            'name': 'Copia vieja de prueba', 'type': 'qweb', 'key': 'website_dcasa.prueba_portada_vieja_uno',
             'website_id': self.website.id,
-            'arch_db': '<t t-name="website_dcasa.prueba_faq_vieja"><div>'
-                       '<p>Sí, llegamos a todo el país. Cuéntanos tu zona por WhatsApp y te decimos costo y fecha '
-                       'de entrega.</p><p>Transferencia bancaria, Yappy, o pagas al recibir o en la tienda. '
-                       'Escríbenos y te explicamos la que mejor te sirve.</p></div></t>',
+            'arch_db': '<t t-name="website_dcasa.prueba_portada_vieja_uno"><div><p>%s</p><p>%s</p></div></t>'
+                       % (pares[0][0], pares[1][0]),
         })
-        self.assertEqual(self.env['website']._dcasa_corregir_textos(), 1)
-        arch = vista.with_context(lang='es_419').arch_db
-        self.assertNotIn('todo el país', arch)
-        self.assertNotIn('al recibir', arch)
-        self.assertIn('La Chorrera, Arraiján, Capira, Panamá y Colón', arch)
-        self.assertEqual(self.env['website']._dcasa_corregir_textos(), 0, 'Se puede volver a correr')
+        with patch.object(modulo_website, 'TEXTOS_CORREGIDOS', pares):
+            self.assertEqual(self.env['website']._dcasa_corregir_textos(), 1)
+            arch = vista.with_context(lang='es_419').arch_db
+            self.assertNotIn('viejo de prueba', arch)
+            self.assertIn('Texto nuevo de prueba uno.', arch)
+            self.assertIn('Otro texto nuevo de prueba dos.', arch)
+            self.assertEqual(self.env['website']._dcasa_corregir_textos(), 0, 'Se puede volver a correr')
+
+    def test_sin_textos_a_corregir_no_hace_nada(self):
+        self.assertEqual(self.env['website']._dcasa_corregir_textos(), 0)
 
     def test_no_promete_entregas_a_todo_panama(self):
-        """Al interior todavía no se entrega (decisión de la dueña, 2026-10-17): ni la barra de arriba, ni la portada,
-        ni el pie, ni las copias viejas de la portada prometen «todo Panamá». Tommalo (2026-11-18): la barra de
-        arriba y la portada dicen su cobertura, Ciudad de Panamá (content.json › nap › address). Con la marca de Baby
-        Caleb (2026-11-19) ya no hay barra de arriba: lo dicen el pie (en todas las páginas) y la cobertura de la
-        portada (S18Coverage.tsx, website_dcasa.seccion_visitanos)."""
-        cobertura = {'website.layout': 'Venta 100% online con entrega a domicilio en Ciudad de Panamá.',
+        """Ni la portada ni el pie prometen «todo Panamá» ni zonas de otro negocio: dicen su cobertura (venta en línea,
+        entrega a domicilio en Panamá) y las zonas reales son PENDIENTE (lo decide Tommalo). Lo dicen el pie (en todas las
+        páginas) y la cobertura de la portada (website_dcasa.seccion_visitanos)."""
+        cobertura = {'website.layout': 'Venta 100% en línea con entrega a domicilio en Panamá.',
                      'website.homepage': 'Lo más buscado',
-                     'website_dcasa.seccion_visitanos': 'Venta 100% online con entrega a domicilio — Ciudad de Panamá'}
+                     'website_dcasa.seccion_visitanos': 'Venta 100% en línea con entrega a domicilio en Panamá'}
         for xmlid, frase in cobertura.items():
             arco = etree.tostring(self.env.ref(xmlid).with_context(lang='es_419')._get_combined_arch(),
                                   encoding='unicode')
             with self.subTest(vista=xmlid):
                 self.assertNotIn('todo Panamá', arco)
                 self.assertIn(frase, arco)
-                self.assertNotIn('Panamá Oeste', arco, 'las zonas de la tienda de origen no salen')
-        # Las copias viejas de la portada (solo en bases de la tienda de origen: la migración 19.0.1.14.0) se corrigen
-        # con el texto de ese entonces (TEXTOS_CORREGIDOS).
-        zonas = 'Entregas en Panamá Oeste, Panamá y Colón'
-        vista = self.env['ir.ui.view'].create({
-            'name': 'Copia vieja portada', 'type': 'qweb', 'key': 'website_dcasa.prueba_portada_vieja',
-            'website_id': self.website.id,
-            'arch_db': '<t t-name="website_dcasa.prueba_portada_vieja"><div><strong>Entrega a todo Panamá</strong>'
-                       '<summary>¿Hacen entregas a todo Panamá?</summary></div></t>',
-        })
-        self.env['website']._dcasa_corregir_textos()
-        arch = vista.with_context(lang='es_419').arch_db
-        self.assertNotIn('todo Panamá', arch)
-        self.assertIn(f'<strong>{zonas}</strong>', arch)
-        self.assertIn('¿A dónde hacen entregas?', arch)
+                self.assertNotIn('Panamá Oeste', arco, 'las zonas de las tiendas de origen no salen')
+        arco = etree.tostring(self.env.ref('website_dcasa.seccion_visitanos').with_context(lang='es_419')
+                              ._get_combined_arch(), encoding='unicode')
+        self.assertIn('PENDIENTE (lo decide Tommalo)', arco, 'las zonas de entrega, a la vista como PENDIENTE')
 
     def test_el_checkout_pregunta_de_tu_por_la_cuenta(self):
         arco = etree.tostring(self.env.ref('website_sale.address').with_context(lang='es_419')._get_combined_arch(),
@@ -151,7 +148,7 @@ class TestTiendaConfigurada(TransactionCase):
 class TestCheckoutEnLaWeb(HttpCase):
 
     def test_ficha_con_whatsapp_primero(self):
-        producto = self.env['product.template'].create({'name': 'Mesa prueba', 'list_price': 50, 'is_published': True})
+        producto = self.env['product.template'].create({'name': 'Lampara prueba', 'list_price': 50, 'is_published': True})
         html = self.url_open(producto.website_url).text
         self.assertLess(html.index('o_dcasa_wa_producto'), html.index('id="add_to_cart"'))
         self.assertIn('lang="es', html)

@@ -120,11 +120,11 @@ class TestRv2CombosCampana(CombosCommon):
     # --- 3. Comprar junto nunca sale más caro que comprar por separado ---------------
 
     def test_si_la_campana_deja_el_colchon_mas_barato_suelto_no_hay_combo(self):
-        """El ejemplo de la dueña (2026-11-16): colchón de $300 normal, $260 en combo, y en Black Friday a $150.
+        """Ejemplo de negocio: colchón de $300 normal, $260 en combo, y en Black Friday a $150.
         Suelto se paga $150, así que en combo NO se puede cobrar $260. Ese colchón deja de contar como combo: va a
         $150 y la cama que iba con él también toma su precio de campaña ($350)."""
         # El precio de campaña se pone en la plantilla y cada medida baja lo mismo: 100 en la queen deja la king
-        # en 150 (300 − 150), justo el ejemplo de la dueña.
+        # en 150 (300 − 150), justo el ejemplo.
         self.colchon_king.product_tmpl_id.with_user(self.gerencia).write(
             {'dcasa_black_weekend': True, 'dcasa_campana_precio': 100.0})
         orden = self.orden(productos=[self.cama_king, self.colchon_king])
@@ -139,7 +139,7 @@ class TestRv2CombosCampana(CombosCommon):
         self.assertEqual(juntos, sueltos, 'comprar junto nunca sale más caro que comprar por separado')
 
     def test_la_cama_en_oferta_y_el_colchon_no_el_combo_no_puede_salir_mas_caro(self):
-        """El segundo ejemplo de la dueña (2026-11-16): cama de $400 que en Black Friday va a $350, y colchón de $300
+        """Segundo ejemplo de negocio: cama de $400 que en Black Friday va a $350, y colchón de $300
         que en combo vale $260 (el colchón NO está en oferta).
 
         Sueltos: 350 + 300 = $650. En combo saldría 400 + 260 = $660: diez dólares MÁS por comprar junto. Como el

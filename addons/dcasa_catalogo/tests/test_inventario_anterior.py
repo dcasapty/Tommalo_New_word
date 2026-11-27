@@ -6,6 +6,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from odoo.addons.dcasa_catalogo import inventario_anterior as I
+from odoo.addons.dcasa_catalogo import reglas
 from odoo.addons.dcasa_catalogo.catalogo import atributo_tamano
 from odoo.addons.dcasa_catalogo.inventario_anterior import (
     cargar_inventario_anterior,
@@ -24,6 +25,8 @@ from odoo.tools.misc import file_open
 
 FIXTURE = Path(__file__).with_name('inventario_fixture.csv')
 FOTOS_PRUEBA = {'INV-PRUEBA-FOTO': 'INV-PRUEBA-FOTO.jpg'}
+# Reglas de categoría de prueba (las de verdad, reglas.CATEGORIAS, están vacías).
+REGLAS_DE_PRUEBA = [(r'crema', 'belleza'), (r'l[aá]mpara', 'hogar'), (r'vitamina', 'salud')]
 
 
 def foto(color='white'):
@@ -39,14 +42,14 @@ class TestReglasInventario(TransactionCase):
     def test_clases_de_fila(self):
         self.assertEqual(clase_de_fila_inventario('Descuento'), 'omitir')
         self.assertEqual(clase_de_fila_inventario('Propinas'), 'omitir')
-        self.assertEqual(clase_de_fila_inventario('X COLCHON IMPERIAL TWIN 2/3 PARA COMBO'), 'omitir')
-        self.assertEqual(clase_de_fila_inventario('COMBO CAMA BUTTERFLY UP TWIN + COLCHO IMPERIAL'), 'combo')
-        self.assertEqual(clase_de_fila_inventario('COMBO CAMA QUEEN IVORY 8017-1002-Q + COLCHÓN DULCES SUEÑOS'),
+        self.assertEqual(clase_de_fila_inventario('X COLCHON DE PRUEBA TWIN 2/3 PARA COMBO'), 'omitir')
+        self.assertEqual(clase_de_fila_inventario('COMBO CAMA DE PRUEBA TWIN + COLCHO DE PRUEBA'), 'combo')
+        self.assertEqual(clase_de_fila_inventario('COMBO CAMA QUEEN ZZ-8017-Q + COLCHÓN DE PRUEBA'),
                          'combo')
-        self.assertEqual(clase_de_fila_inventario('COMBO CAMAROTE TRIPLE 3 TWIN W160969418 + 3 COLCHONES IMPERIAL'),
+        self.assertEqual(clase_de_fila_inventario('COMBO CAMAROTE TRIPLE 3 TWIN ZZ-W16 + 3 COLCHONES DE PRUEBA'),
                          'combo')
-        self.assertEqual(clase_de_fila_inventario('COLCHON FLEX FULL RELAX'), 'producto')
-        self.assertEqual(clase_de_fila_inventario('PAÑAL NATEEN + TOALLITAS DE REGALO'), 'producto',
+        self.assertEqual(clase_de_fila_inventario('COLCHON DE PRUEBA FULL'), 'producto')
+        self.assertEqual(clase_de_fila_inventario('CREMA DE PRUEBA + LÁMPARA DE REGALO'), 'producto',
                          'El «+» solo no es combo')
 
     def test_filas_y_categorias(self):
@@ -56,33 +59,37 @@ class TestReglasInventario(TransactionCase):
         self.assertEqual(combo['llave'], combo['nombre'], 'Sin código, la llave es el nombre exacto')
         self.assertIsNone(combo['a_la_mano'])
         self.assertEqual(combo['costo'], 0.0)
-        self.assertEqual(categoria_de_inventario(filas[1]), 'panales', 'Pañal → pañales')
-        self.assertEqual(categoria_de_inventario(filas[2]), 'toallitas', 'Toallitas → toallitas húmedas')
-        self.assertEqual(categoria_de_inventario(filas[7]), 'fulares')
-        self.assertEqual(categoria_de_inventario({'nombre': 'COMBO FULAR MOON + PAÑALES DE REGALO', 'clase': 'combo'}),
-                         'fulares', 'Un combo se clasifica por lo que va antes del «+»')
-        self.assertIsNone(categoria_de_inventario(combo), 'Una cama no es de ninguna categoría de Tommalo')
+        # reglas.CATEGORIAS está vacío (Tommalo usa la categoría de su proveedor): sin regla no hay categoría.
+        self.assertIsNone(categoria_de_inventario(filas[1]))
+        with patch.object(reglas, 'CATEGORIAS', REGLAS_DE_PRUEBA):
+            self.assertEqual(categoria_de_inventario(filas[1]), 'belleza', 'Crema → belleza')
+            self.assertEqual(categoria_de_inventario(filas[2]), 'hogar', 'Lámpara → hogar')
+            self.assertEqual(categoria_de_inventario(filas[7]), 'salud')
+            self.assertEqual(categoria_de_inventario({'nombre': 'COMBO VITAMINAS DE PRUEBA + CREMA DE REGALO',
+                                                      'clase': 'combo'}),
+                             'salud', 'Un combo se clasifica por lo que va antes del «+»')
+            self.assertIsNone(categoria_de_inventario(combo), 'Una cama no es de ninguna categoría de Tommalo')
         self.assertEqual(filas[2]['a_la_mano'], -3.0)
         self.assertEqual(filas[0]['precio'], 70.99)
 
     def test_foto_por_codigo(self):
-        fotos = foto_por_codigo({'ALJ021439', 'CZX100308', 'NADA'},
-                                ['ALJ021439_2.png', 'ALJ021439_1.png', 'CZX100308.jpg', 'CZX1003081.jpg', 'x.txt'])
-        self.assertEqual(fotos, {'ALJ021439': 'ALJ021439_1.png', 'CZX100308': 'CZX100308.jpg'})
+        fotos = foto_por_codigo({'ZZ021439', 'ZZ100308', 'NADA'},
+                                ['ZZ021439_2.png', 'ZZ021439_1.png', 'ZZ100308.jpg', 'ZZ1003081.jpg', 'x.txt'])
+        self.assertEqual(fotos, {'ZZ021439': 'ZZ021439_1.png', 'ZZ100308': 'ZZ100308.jpg'})
 
     def test_plan(self):
         filas = filas_inventario(FIXTURE.read_text(encoding='utf-8'))
         plan = planificar_inventario(filas, {'INV-PRUEBA-EXISTE'}, FOTOS_PRUEBA)
         self.assertEqual([f['llave'] for f in plan['actualizar']], ['INV-PRUEBA-EXISTE'])
         self.assertEqual([f['llave'] for f in plan['crear']],
-                         ['INV-PRUEBA-FOTO', 'INV-PRUEBA-SINFOTO', 'COMBO CAMA DE PRUEBA KING + COLCHÓN IMPERIAL',
-                          'FULAR DE PRUEBA SIN CODIGO'])
+                         ['INV-PRUEBA-FOTO', 'INV-PRUEBA-SINFOTO', 'COMBO CAMA DE PRUEBA KING + COLCHÓN DE PRUEBA',
+                          'VITAMINAS DE PRUEBA SIN CODIGO'])
         self.assertEqual(len(plan['omitidos']), 3)
         self.assertEqual([f['fila'] for f in plan['repetidos']], [9])
         self.assertEqual([f['llave'] for f in plan['negativos']], ['INV-PRUEBA-SINFOTO'])
         self.assertEqual([f['llave'] for f in plan['con_foto']], ['INV-PRUEBA-FOTO'])
         self.assertEqual([f['llave'] for f in plan['sin_foto']],
-                         ['INV-PRUEBA-SINFOTO', 'FULAR DE PRUEBA SIN CODIGO'])
+                         ['INV-PRUEBA-SINFOTO', 'VITAMINAS DE PRUEBA SIN CODIGO'])
         self.assertEqual(len(plan['combos']), 1)
         self.assertEqual(len(plan['dudas']), 1)
 
@@ -98,12 +105,18 @@ class TestCargaInventario(TransactionCase):
         cls.ubicacion = cls.env['stock.warehouse'].search([('company_id', '=', cls.company.id)], limit=1).lot_stock_id
         cls.filas = filas_inventario(FIXTURE.read_text(encoding='utf-8'))
         cls.existente = cls.env['product.product'].create({
-            'name': 'Pañal de prueba con su nombre', 'default_code': 'INV-PRUEBA-EXISTE', 'type': 'consu',
+            'name': 'Crema de prueba con su nombre', 'default_code': 'INV-PRUEBA-EXISTE', 'type': 'consu',
             'is_storable': True, 'list_price': 60.0, 'image_1920': foto('blue'),
         })
         cls.nombre_antes = cls.existente.name
         cls.foto_antes = cls.existente.product_tmpl_id.image_1920
         cls.movimientos = cls.env['stock.move'].search_count([])
+
+    def setUp(self):
+        super().setUp()
+        patcher = patch.object(reglas, 'CATEGORIAS', REGLAS_DE_PRUEBA)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def cargar(self):
         # La foto de prueba no viaja con el módulo (static/img/productos ya no existe): se genera aquí.
@@ -122,14 +135,14 @@ class TestCargaInventario(TransactionCase):
         resumen = self.cargar()
         self.assertEqual(resumen['actualizados'], ['INV-PRUEBA-EXISTE'])
         self.assertEqual(resumen['creados'], ['INV-PRUEBA-FOTO', 'INV-PRUEBA-SINFOTO',
-                                              'COMBO CAMA DE PRUEBA KING + COLCHÓN IMPERIAL',
-                                              'FULAR DE PRUEBA SIN CODIGO'])
-        self.assertEqual(resumen['omitidos'], ['Descuento', 'TIPS', 'X COLCHON IMPERIAL TWIN 2/3 PARA COMBO'])
+                                              'COMBO CAMA DE PRUEBA KING + COLCHÓN DE PRUEBA',
+                                              'VITAMINAS DE PRUEBA SIN CODIGO'])
+        self.assertEqual(resumen['omitidos'], ['Descuento', 'TIPS', 'X COLCHON DE PRUEBA TWIN 2/3 PARA COMBO'])
         self.assertEqual(resumen['repetidos'], ['INV-PRUEBA-FOTO'])
         self.assertEqual(resumen['negativos'], ['INV-PRUEBA-SINFOTO'])
-        self.assertEqual(resumen['combos'], ['COMBO CAMA DE PRUEBA KING + COLCHÓN IMPERIAL'])
+        self.assertEqual(resumen['combos'], ['COMBO CAMA DE PRUEBA KING + COLCHÓN DE PRUEBA'])
         self.assertEqual(resumen['con_foto'], ['INV-PRUEBA-FOTO'])
-        self.assertEqual(resumen['sin_foto'], ['INV-PRUEBA-SINFOTO', 'FULAR DE PRUEBA SIN CODIGO'])
+        self.assertEqual(resumen['sin_foto'], ['INV-PRUEBA-SINFOTO', 'VITAMINAS DE PRUEBA SIN CODIGO'])
 
         # Mismo código = mismo producto: existencias, precio y costo; nombre y foto intactos.
         existente = self.existente
@@ -148,8 +161,8 @@ class TestCargaInventario(TransactionCase):
         self.assertFalse(plantilla.taxes_id.price_include, 'Precio de lista sin ITBMS, como el resto del catálogo')
         self.assertAlmostEqual(plantilla.list_price, 199.99, places=2)
         self.assertAlmostEqual(con_foto.standard_price, 100.50, places=2)
-        self.assertEqual(plantilla.categ_id, self.env.ref('dcasa_catalogo.product_category_panales'))
-        self.assertEqual(plantilla.public_categ_ids, self.env.ref('dcasa_catalogo.public_category_panales'))
+        self.assertEqual(plantilla.categ_id, self.env.ref('dcasa_catalogo.product_category_belleza'))
+        self.assertEqual(plantilla.public_categ_ids, self.env.ref('website_dcasa.public_category_belleza'))
         self.assertTrue(plantilla.is_storable)
         self.assertEqual(self.existencias(con_foto), 7, 'La fila repetida (99) no se aplica')
         self.assertTrue(self.env.ref(f'dcasa_catalogo.{xmlid_inventario("INV-PRUEBA-FOTO")}'))
@@ -159,41 +172,41 @@ class TestCargaInventario(TransactionCase):
         self.assertFalse(sin_foto.product_tmpl_id.is_published)
         self.assertFalse(sin_foto.product_tmpl_id.image_1920)
         self.assertEqual(sin_foto.product_tmpl_id.categ_id,
-                         self.env.ref('dcasa_catalogo.product_category_toallitas'))
+                         self.env.ref('dcasa_catalogo.product_category_hogar'))
         self.assertEqual(self.existencias(sin_foto), 0)
 
         # Combo: producto sin publicar, sin existencias.
-        combo = self.env.ref(f'dcasa_catalogo.{xmlid_inventario("COMBO CAMA DE PRUEBA KING + COLCHÓN IMPERIAL")}')
+        combo = self.env.ref(f'dcasa_catalogo.{xmlid_inventario("COMBO CAMA DE PRUEBA KING + COLCHÓN DE PRUEBA")}')
         self.assertFalse(combo.is_published)
         self.assertAlmostEqual(combo.list_price, 319.99, places=2)
         self.assertEqual(self.existencias(combo.product_variant_id), 0)
         self.assertFalse(self.env['stock.move'].search_count([('product_id', '=', combo.product_variant_id.id)]))
 
         # Sin código: la llave es el nombre exacto.
-        fular = self.env['product.template'].search([('name', '=', 'FULAR DE PRUEBA SIN CODIGO')])
-        self.assertEqual(len(fular), 1)
-        self.assertFalse(fular.default_code)
-        self.assertEqual(self.existencias(fular.product_variant_id), 4)
+        vitaminas = self.env['product.template'].search([('name', '=', 'VITAMINAS DE PRUEBA SIN CODIGO')])
+        self.assertEqual(len(vitaminas), 1)
+        self.assertFalse(vitaminas.default_code)
+        self.assertEqual(self.existencias(vitaminas.product_variant_id), 4)
 
         # No se importan.
-        for nombre in ('Descuento', 'Propinas', 'X COLCHON IMPERIAL TWIN 2/3 PARA COMBO'):
+        for nombre in ('Descuento', 'Propinas', 'X COLCHON DE PRUEBA TWIN 2/3 PARA COMBO'):
             self.assertFalse(self.env['product.template'].search_count([('name', '=', nombre)]), nombre)
         self.assertFalse(self.env['product.product'].search_count([('default_code', '=', 'TIPS')]))
 
     def test_segunda_corrida_no_cambia_nada(self):
         self.cargar()
-        fular = self.env['product.template'].search([('name', '=', 'FULAR DE PRUEBA SIN CODIGO')])
+        vitaminas = self.env['product.template'].search([('name', '=', 'VITAMINAS DE PRUEBA SIN CODIGO')])
         movimientos = self.env['stock.move'].search_count([])
         self.assertGreater(movimientos, self.movimientos)
-        fular.name = 'Fular que el dueño renombró'  # se sigue encontrando por su xmlid, no se duplica
+        vitaminas.name = 'Vitaminas que el dueño renombró'  # se sigue encontrando por su xmlid, no se duplica
         otra_vez = self.cargar()
         self.assertEqual(otra_vez['creados'], [])
         self.assertEqual(otra_vez['actualizados'], [])
         self.assertEqual(len(otra_vez['sin_cambios']), 5)
         self.assertEqual(self.env['stock.move'].search_count([]), movimientos)
-        self.assertEqual(self.env['product.template'].search_count([('name', 'ilike', 'FULAR DE PRUEBA SIN CODIGO')]),
-                         0)
-        self.assertEqual(self.existencias(fular.product_variant_id), 4)
+        self.assertEqual(self.env['product.template'].search_count([
+            ('name', 'ilike', 'VITAMINAS DE PRUEBA SIN CODIGO')]), 0)
+        self.assertEqual(self.existencias(vitaminas.product_variant_id), 4)
 
     def test_el_csv_manda_sobre_un_precio_cambiado_en_odoo(self):
         """El inventario anterior es la fuente de esta carga: al repetirla, el precio vuelve al del CSV."""
@@ -211,7 +224,7 @@ class TestCargaInventario(TransactionCase):
             self.assertNotIn('costo', archivo.readline().strip().split(','))
         self.existente.standard_price = 123.45
         filas = filas_inventario('pagina,fila,nombre,codigo,precio_venta,a_la_mano,pronosticado,dudas\n'
-                                 '1,1,PAÑAL DE PRUEBA,INV-PRUEBA-EXISTE,60.00,2,2,\n')
+                                 '1,1,CREMA DE PRUEBA,INV-PRUEBA-EXISTE,60.00,2,2,\n')
         self.assertIsNone(filas[0]['costo'])
         cargar_inventario_anterior(self.env, filas)
         self.assertAlmostEqual(self.existente.standard_price, 123.45, places=2)
@@ -238,7 +251,7 @@ class TestCargaInventario(TransactionCase):
 
 @tagged('post_install', '-at_install')
 class TestInventarioDelModulo(TransactionCase):
-    """El CSV que trae el módulo es solo el encabezado: el inventario anterior de D'CASA no es de este negocio."""
+    """El CSV que trae el módulo es solo el encabezado: el inventario anterior de otro negocio no aplica aquí."""
 
     def test_solo_el_encabezado_y_nada_cargado_al_instalar(self):
         self.assertEqual(leer_inventario_anterior(), [])

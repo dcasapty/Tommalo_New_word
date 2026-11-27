@@ -25,9 +25,9 @@ Carga el catálogo del negocio en Odoo: el mismo producto para el inventario, la
   y suma por stock, precio y categoría para elegir qué empujar en una campaña; Productos abre en lista.
 * Código público (DC-K7M4PX) a la vista en la ficha del producto, columna opcional en la lista y buscable en
   Productos y en las cotizaciones (el campo y el sorteo viven en dcasa_base).
-* Combos que se arman en la venta (una pieza base + una pieza que la acompaña): botón «Armar combo» en la cotización; cada pieza puede tener su
-  «Precio en combo» por medida, que pone Gerencia en Ventas › Productos › Precios en combo. Reglas en el servidor
-  (models/combo_armable.py). Ver docs/OPERACION.md.
+* Combos que se arman en la venta (una pieza base + una pieza que la acompaña): botón «Armar combo» en la
+  cotización; cada pieza puede tener su «Precio en combo» por medida, que pone Gerencia en Ventas › Productos ›
+  Precios en combo. Reglas en el servidor (models/combo_armable.py). Ver docs/OPERACION.md.
 * Promoción por pares («2 por $35.00»): «Precio por par» de cada
   variante (solo Gerencia; también puede venir en data/catalogo.json). Cada par va a ese precio y una suelta a su
   precio normal, igual en la web, el chat, Juan y el panel (models/precio_par.py). Ver docs/CATALOGO.md.

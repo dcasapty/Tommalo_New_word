@@ -14,7 +14,7 @@ class TestAjustesPorDefecto(JuanCase):
 
     def test_decisiones_de_la_duena(self):
         a = self.ajustes
-        self.assertEqual(a.nombre_publico, 'Tommalo Panamá')
+        self.assertEqual(a.nombre_publico, 'Tommalo')
         self.assertTrue(a.bot_activo_global)
         # Horario laboral: el de Tommalo (2026-11-18), lunes a sábado de 9:00 a 18:00, hora de Panamá.
         horario = a.horario()
@@ -58,7 +58,7 @@ class TestAjustesPorDefecto(JuanCase):
 
     def test_textos_en_la_voz_de_la_marca(self):
         bienvenida = self.ajustes.mensaje_bienvenida
-        self.assertEqual(bienvenida, 'Buenas, un gusto atenderle. Somos Tommalo Panamá 👼🏻')
+        self.assertEqual(bienvenida, 'Buenas, un gusto atenderle. Somos Tommalo.')
         self.assertNotIn('asistente', bienvenida.lower())       # decisión de la dueña: no se anuncia como asistente
         self.assertNotIn('remate', bienvenida.lower())
         self.assertNotIn('!!', bienvenida)
@@ -86,7 +86,7 @@ class TestAjustesPorDefecto(JuanCase):
         self.assertEqual(self.ajustes.mensaje_bienvenida, 'Hola, soy Juan. ¿Qué buscas?')
 
     def test_la_migracion_de_tommalo_solo_cambia_lo_de_d_casa(self):
-        """19.0.1.6.0: el nombre y el saludo pasan a Tommalo Panamá solo si todavía dicen lo de Tommalo."""
+        """19.0.1.6.0: el nombre y el saludo pasan a Tommalo solo si todavía dicen lo de Tommalo."""
         import importlib.util
 
         from odoo.tools.misc import file_path
@@ -99,7 +99,7 @@ class TestAjustesPorDefecto(JuanCase):
         mig.migrate(self.env.cr, '19.0.1.5.0')
         self.ajustes.invalidate_recordset()
         self.assertEqual((self.ajustes.nombre_publico, self.ajustes.mensaje_bienvenida),
-                         ('Tommalo Panamá', 'Buenas, un gusto atenderle. Somos Tommalo Panamá 👼🏻'))
+                         ('Tommalo', 'Buenas, un gusto atenderle. Somos Tommalo.'))
         self.ajustes.write({'nombre_publico': 'Otro nombre', 'mensaje_bienvenida': 'Otro saludo'})
         self.env.flush_all()
         mig.migrate(self.env.cr, '19.0.1.5.0')

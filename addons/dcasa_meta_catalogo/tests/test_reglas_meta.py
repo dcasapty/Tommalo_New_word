@@ -18,13 +18,13 @@ class TestReglasMeta(BaseCase):
         self.assertEqual(R.etiqueta_ascii('Habitación'), 'habitacion')
         self.assertEqual(R.etiqueta_ascii('Niños'), 'ninos')
         self.assertEqual(R.etiqueta_ascii('Habitación de Niños'), 'habitacion_de_ninos')
-        self.assertEqual(R.etiqueta_ascii('  Sala & Comedor!! '), 'sala_comedor')
+        self.assertEqual(R.etiqueta_ascii('  Belleza & Hogar!! '), 'belleza_hogar')
         self.assertEqual(R.etiqueta_ascii('Black Friday 2026'), 'black_friday_2026')
         self.assertEqual(R.etiqueta_ascii(''), '')
         self.assertEqual(R.etiqueta_ascii(None), '')
         largo = R.etiqueta_ascii('á' * 50 + ' ' + 'b' * 200)
         self.assertLessEqual(len(largo), 100)
-        for texto in ('Ñandú', 'Recámaras', 'Sofás y sillones', '¿Qué?', 'ÀÉÎÕÜ ç'):
+        for texto in ('Ñandú', 'Cremas', 'Jabones y lámparas', '¿Qué?', 'ÀÉÎÕÜ ç'):
             with self.subTest(texto):
                 self.assertRegex(R.etiqueta_ascii(texto), ETIQUETA)
 
@@ -76,12 +76,12 @@ class TestReglasMeta(BaseCase):
         self.assertEqual(R.formato_precio(10, 'JPY', 0), '10 JPY', 'los decimales de la moneda')
 
     def test_texto_plano_quita_html_enlaces_y_mayusculas(self):
-        self.assertEqual(R.texto_plano('<p>Cama <b>king</b></p><p>Con cajones</p>'), 'Cama king Con cajones')
+        self.assertEqual(R.texto_plano('<p>Crema <b>mini</b></p><p>Con cajones</p>'), 'Crema mini Con cajones')
         self.assertEqual(R.texto_plano('<div>Hola<script>alert(1)</script></div>'), 'Hola')
         self.assertEqual(R.texto_plano('Mira https://otra.tienda/x?y=1 y www.ejemplo.com hoy'), 'Mira y hoy')
         self.assertEqual(R.texto_plano('<p>Ver <a href="https://x.com">aquí</a></p>'), 'Ver aquí')
-        self.assertEqual(R.texto_plano('CAMA KING. CON CAJONES'), 'Cama king. Con cajones')
-        self.assertEqual(R.texto_plano('Cama KING con cajones'), 'Cama KING con cajones', 'solo si todo es mayúscula')
+        self.assertEqual(R.texto_plano('CREMA MINI. CON CAJONES'), 'Crema mini. Con cajones')
+        self.assertEqual(R.texto_plano('Crema MINI con cajones'), 'Crema MINI con cajones', 'solo si todo es mayúscula')
         self.assertEqual(R.texto_plano('  uno \n\n  dos\t tres '), 'uno dos tres')
         self.assertEqual(R.texto_plano(''), '')
         self.assertEqual(R.texto_plano(False), '')
@@ -90,12 +90,12 @@ class TestReglasMeta(BaseCase):
         self.assertTrue(largo.endswith('palabra'), 'cortado en una palabra')
 
     def test_titulo_corto_en_una_palabra(self):
-        titulo = R.titulo('Cama ' + 'muy ' * 60 + 'larga')
+        titulo = R.titulo('Crema ' + 'muy ' * 60 + 'larga')
         self.assertLessEqual(len(titulo), 150)
         self.assertFalse(titulo.endswith(' '))
         self.assertTrue(titulo.endswith('muy'))
-        self.assertEqual(R.titulo('  Mesa \n de  noche '), 'Mesa de noche')
-        self.assertEqual(R.titulo('CAMA TAPIZADA QUEEN – BLANCO'), 'Cama Tapizada Queen – Blanco')
-        self.assertEqual(R.titulo("COLCHÓN D'CASA KING [DR-1024]"), "Colchón D'CASA King [DR-1024]")
-        self.assertEqual(R.titulo("D'CASA", para_cliente=False), "D'CASA")
-        self.assertEqual(R.titulo('Cama SOFÁ (King)'), 'Cama SOFÁ (King)', 'con minúsculas se deja como está')
+        self.assertEqual(R.titulo('  Lampara \n de  noche '), 'Lampara de noche')
+        self.assertEqual(R.titulo('CREMA TAPIZADA GRANDE – BLANCO'), 'Crema Tapizada Grande – Blanco')
+        self.assertEqual(R.titulo("JABÓN TOMMALO GRANDE [DR-1024]"), "Jabón Tommalo Grande [DR-1024]")
+        self.assertEqual(R.titulo("TOMMALO", para_cliente=False), "TOMMALO")
+        self.assertEqual(R.titulo('Crema CREMA (Mini)'), 'Crema CREMA (Mini)', 'con minúsculas se deja como está')

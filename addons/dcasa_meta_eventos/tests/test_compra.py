@@ -48,7 +48,7 @@ class TestCompraPagada(MetaCase):
     def test_tienda_con_consentimiento_lleva_correo_y_celular_cifrados(self):
         self.encender()
         self.aceptar()
-        factura = self.factura(lineas=[(self.mueble, 2, 300.0), (self.flete, 1, 20.0)])
+        factura = self.factura(lineas=[(self.articulo, 2, 300.0), (self.flete, 1, 20.0)])
         self.pagar(factura)
         fila = self.fila(factura)
         self.assertEqual((fila.estado, fila.origen, fila.action_source), ('pendiente', 'tienda', 'physical_store'))
@@ -66,8 +66,8 @@ class TestCompraPagada(MetaCase):
         for campo in ('fn', 'ln', 'client_ip_address', 'client_user_agent', 'fbp'):
             self.assertNotIn(campo, datos_usuario)
         compra = evento['custom_data']
-        self.assertEqual(compra['content_ids'], [str(self.mueble.id)], 'El flete (servicio) no cuenta')
-        self.assertEqual(compra['contents'], [{'id': str(self.mueble.id), 'quantity': 2, 'item_price': 300.0}])
+        self.assertEqual(compra['content_ids'], [str(self.articulo.id)], 'El flete (servicio) no cuenta')
+        self.assertEqual(compra['contents'], [{'id': str(self.articulo.id), 'quantity': 2, 'item_price': 300.0}])
         self.assertEqual(compra['content_type'], 'product')
         self.assertEqual(compra['value'], factura.amount_untaxed)
         self.assertEqual(compra['currency'], factura.currency_id.name)
@@ -142,7 +142,7 @@ class TestCompraPagada(MetaCase):
         nota = self.factura(tipo='out_refund')
         self.pagar(nota)
         self.assertFalse(self.Evento.search([('move_id', '=', nota.id)]))
-        gratis = self.factura(lineas=[(self.mueble, 1, 0.0)])
+        gratis = self.factura(lineas=[(self.articulo, 1, 0.0)])
         self.assertIn(gratis.payment_state, ('paid', 'in_payment', 'not_paid'))
         gratis._invoice_paid_hook()
         self.assertFalse(self.fila(gratis))
@@ -208,7 +208,7 @@ class TestCompraWeb(MetaCase):
         self.assertEqual(datos_usuario['client_user_agent'], 'Mozilla/5.0 (prueba)')
         self.assertEqual(datos_usuario['client_ip_address'], '203.0.113.7')
         self.assertEqual(evento['event_source_url'], 'https://tienda.example/shop/confirmation')
-        self.assertEqual(evento['custom_data']['content_ids'], [str(self.mueble.id)])
+        self.assertEqual(evento['custom_data']['content_ids'], [str(self.articulo.id)])
         # Al encolar se borran los datos del navegador del pedido.
         self.assertFalse(pedido.sudo().dcasa_meta_ua)
         self.assertFalse(pedido.sudo().dcasa_meta_fbp)

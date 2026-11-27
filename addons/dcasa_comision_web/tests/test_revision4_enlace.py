@@ -25,7 +25,7 @@ class TestVentaFabricadaConUnDefault(VendedoraCommon):
                     'move_type': 'out_invoice', 'partner_id': self.cliente.id, 'invoice_date': DIA})
                 self.env['account.move.line'].with_user(usuario).with_context(
                     default_sale_line_ids=[[6, 0, online.order_line.ids]]).create({
-                        'move_id': factura.id, 'name': 'Mueble de mostrador', 'quantity': 1, 'price_unit': 5000.0,
+                        'move_id': factura.id, 'name': 'Articulo de mostrador', 'quantity': 1, 'price_unit': 5000.0,
                         'display_type': 'product', 'tax_ids': [Command.set(self.itbms.ids)]})
                 factura.action_post()
                 self.pagar(factura)
@@ -43,7 +43,7 @@ class TestVentaFabricadaConUnDefault(VendedoraCommon):
                                                  'tax_ids': [Command.set(self.itbms.ids)]})]})
         self.env['sale.order.line'].with_user(self.u_gerencia).with_context(
             default_invoice_lines=[[6, 0, factura.invoice_line_ids.ids]]).create({
-                'order_id': online.id, 'product_id': self.mueble.id, 'product_uom_qty': 1, 'price_unit': 1000.0})
+                'order_id': online.id, 'product_id': self.articulo.id, 'product_uom_qty': 1, 'price_unit': 1000.0})
         self.assertFalse(factura.invoice_line_ids.sale_line_ids)
         factura.action_post()
         self.pagar(factura)
@@ -68,7 +68,7 @@ class TestRobarLaVentaAntesDeFacturar(VendedoraCommon):
         for nombre, usuario in (('caja', self.u_caja), ('gerencia', self.u_gerencia), ('nomina', self.u_nomina)):
             with self.subTest(rol=nombre):
                 online = self.orden(creado_por=self.env.ref('base.public_user'), confirmar=True)
-                mostrador = self.orden(web=False, vendedora=self.u_vendedora, lineas=[(self.mueble, 1.0, 1, {})])
+                mostrador = self.orden(web=False, vendedora=self.u_vendedora, lineas=[(self.articulo, 1.0, 1, {})])
                 self.assertFalse(online.dcasa_tocada_por_id)
                 online.order_line.with_user(usuario).write({'order_id': mostrador.id})
                 self.assertEqual(online.dcasa_tocada_por_id, usuario,
@@ -79,9 +79,9 @@ class TestRobarLaVentaAntesDeFacturar(VendedoraCommon):
         """Lo que ve Gerencia: el pedido online al que le quitaron la línea y que alguien cobra con otra cosa."""
         self.version(10.0)
         online = self.orden(creado_por=self.env.ref('base.public_user'), confirmar=False,
-                            lineas=[(self.mueble, 1000.0, 1, {}), (self.mueble, 500.0, 1, {})])
+                            lineas=[(self.articulo, 1000.0, 1, {}), (self.articulo, 500.0, 1, {})])
         quitada = online.order_line[:1]
-        otro = self.orden(web=False, vendedora=self.u_vendedora, lineas=[(self.mueble, 1.0, 1, {})])
+        otro = self.orden(web=False, vendedora=self.u_vendedora, lineas=[(self.articulo, 1.0, 1, {})])
         quitada.with_user(self.u_gerencia).write({'order_id': otro.id})
         online.action_confirm()
         factura = self.facturar(online)

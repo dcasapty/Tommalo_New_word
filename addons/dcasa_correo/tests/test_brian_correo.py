@@ -19,7 +19,7 @@ class TestBrianCorreo(CorreoCase):
         cls.cajera = new_test_user(
             cls.env, login='correo_cajera', name='Cajera Brian', email='cajera.brian@example.com',
             groups='base.group_user,dcasa_base.group_caja')
-        cls.cama = cls.env['product.product'].create({'name': 'CAMA BRIAN', 'type': 'consu', 'list_price': 300.0})
+        cls.crema = cls.env['product.product'].create({'name': 'CREMA BRIAN', 'type': 'consu', 'list_price': 300.0})
 
     def brian(self, usuario, nombre, argumentos):
         return self.env['brian.herramientas'].with_user(usuario).ejecutar(nombre, argumentos)
@@ -61,7 +61,7 @@ class TestBrianCorreo(CorreoCase):
     def test_cotizacion_apagado_y_encendido(self):
         orden = self.env['sale.order'].with_user(self.cajera).create({
             'partner_id': self.ana.id, 'user_id': self.cajera.id,
-            'order_line': [Command.create({'product_id': self.cama.id, 'product_uom_qty': 1})]})
+            'order_line': [Command.create({'product_id': self.crema.id, 'product_uom_qty': 1})]})
         self.con_clave()
         resultado = self.brian(self.cajera, 'enviar_cotizacion_por_correo', {'venta': orden.name})
         self.assertIn('apagados', resultado['error'])

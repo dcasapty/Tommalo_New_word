@@ -23,7 +23,7 @@ class TestTextoDelConocimiento(BaseCase):
         self.assertEqual(C.tokens('¿Cuál es el horario de la tienda?'), ['horario', 'tienda'])
         self.assertEqual(C.tokens('Hola, quiero saber si tienen jabones'), ['jabon'])
         self.assertEqual(C.tokens('???'), [])
-        self.assertEqual(C.tokens('lámpara chica 2026'), ['lámpara', 'chica', '2026'])
+        self.assertEqual(C.tokens('lámpara chica 2026'), ['lampara', 'chica', '2026'])
 
     def test_puntua_titulo_y_etiquetas_mas_que_el_contenido(self):
         en_titulo = C.puntuar('horario', 'Horario y WhatsApp', '', 'x')
@@ -93,6 +93,9 @@ class TestBaseDeConocimiento(JuanCase):
                 self.assertNotIn(prohibida, texto, f'«{entrada.titulo}» menciona {prohibida}')
 
     def test_dondeestamos_se_arma_con_los_datos_vivos(self):
+        self.env.company.write({'phone': '+507 6000-0002', 'email': 'contacto@tommalo.example'})
+        if 'dcasa_whatsapp_number' in self.env['website']._fields:
+            self.env['website'].search([]).write({'dcasa_whatsapp_number': '+507 6000-0002'})
         entrada = self.tienda()
         self.assertFalse(entrada.contenido, 'No hay texto guardado que se pueda quedar viejo')
         texto = entrada.contenido_vigente
@@ -106,7 +109,7 @@ class TestBaseDeConocimiento(JuanCase):
         self.assertIn('10:00 a. m. a 7:00 p. m.', entrada.contenido_vigente)
         self.env.company.sudo().write({'street': 'Calle Zzprueba', 'city': 'Ciudad de Zzprueba'})
         entrada.invalidate_recordset()
-        self.assertIn('Tommalo Panamá está en Calle Zzprueba, Ciudad de Zzprueba.', entrada.contenido_vigente)
+        self.assertIn('Tommalo está en Calle Zzprueba, Ciudad de Zzprueba.', entrada.contenido_vigente)
 
     def test_socios_sale_de_puntos_json_y_nunca_se_guarda(self):
         entrada = self.socios()

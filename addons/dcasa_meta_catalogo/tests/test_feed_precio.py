@@ -28,8 +28,8 @@ class TestFeedPrecio(MetaComun, HttpCase):
     def setUpClass(cls):
         super().setUpClass()
         # Sin impuesto explícito: nace con el ITBMS de venta por defecto, que se suma al precio (test_itbms.py).
-        cls.mesa = cls._producto('Mesa precio prueba Meta', 39.99)
-        cls.cama, cls.queen, cls.king = cls._cama_con_tamanos('Cama precio prueba Meta', 300.0, 50.0)
+        cls.lampara = cls._producto('Lampara precio prueba Meta', 39.99)
+        cls.crema, cls.grande, cls.mini = cls._producto_con_tamanos('Crema precio prueba Meta', 300.0, 50.0)
 
     def _filas_por_ruta(self):
         respuesta = self.url_open(self.feed.url.removeprefix(BASE))
@@ -46,10 +46,10 @@ class TestFeedPrecio(MetaComun, HttpCase):
         return precio_de_la_ficha(respuesta.text)
 
     def test_mismo_precio_que_la_ficha_y_sin_itbms(self):
-        self.assertTrue(self.mesa.taxes_id, 'la mesa lleva ITBMS (se suma aparte)')
-        self.assertFalse(self.mesa.taxes_id.price_include)
+        self.assertTrue(self.lampara.taxes_id, 'la lampara lleva ITBMS (se suma aparte)')
+        self.assertFalse(self.lampara.taxes_id.price_include)
         filas = self._filas_por_ruta()
-        fila = filas[str(self.mesa.product_variant_id.id)]
+        fila = filas[str(self.lampara.product_variant_id.id)]
         self.assertEqual(fila['price'], '39.99 USD', 'sin ITBMS, como dice la web «$39.99 + ITBMS»')
         self.assertNotIn('42.79', fila['price'])
         paga, tachado = self._ficha(fila)
@@ -58,7 +58,7 @@ class TestFeedPrecio(MetaComun, HttpCase):
 
     def test_variante_con_precio_extra(self):
         filas = self._filas_por_ruta()
-        for variante, esperado in ((self.queen, '300.00'), (self.king, '350.00')):
+        for variante, esperado in ((self.grande, '300.00'), (self.mini, '350.00')):
             with self.subTest(variante.display_name):
                 fila = filas[str(variante.id)]
                 self.assertEqual(fila['price'], f'{esperado} USD')
@@ -68,7 +68,7 @@ class TestFeedPrecio(MetaComun, HttpCase):
 
     def _descuento(self, tarifa, porcentaje=10):
         self.env['product.pricelist.item'].create({
-            'pricelist_id': tarifa.id, 'applied_on': '1_product', 'product_tmpl_id': self.mesa.id,
+            'pricelist_id': tarifa.id, 'applied_on': '1_product', 'product_tmpl_id': self.lampara.id,
             'compute_price': 'percentage', 'percent_price': porcentaje,
             'date_start': fields.Datetime.now() - timedelta(days=1),
             'date_end': fields.Datetime.now() + timedelta(days=10),
@@ -79,15 +79,15 @@ class TestFeedPrecio(MetaComun, HttpCase):
         tienda = self.env['product.pricelist'].create({
             'name': 'Tarifa de la tienda en línea (prueba)', 'website_id': self.website.id, 'selectable': True})
         self._descuento(tienda)
-        fila = self._filas_por_ruta()[str(self.mesa.product_variant_id.id)]
+        fila = self._filas_por_ruta()[str(self.lampara.product_variant_id.id)]
         self.assertEqual(fila['price'], '39.99 USD', 'el precio normal')
         self.assertEqual(fila['sale_price'], '35.99 USD', '10 % menos')
         self.assertRegex(fila['sale_price_effective_date'], r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}[+-]\d{2}:\d{2}/'
                                                             r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}[+-]\d{2}:\d{2}$')
         paga, tachado = self._ficha(fila)
         self.assertEqual((paga, tachado), ('35.99', '39.99'), 'la ficha dibuja los mismos dos precios')
-        # Sin descuento, la cama no lleva sale_price.
-        self.assertEqual(self._filas_por_ruta()[str(self.king.id)]['sale_price'], '')
+        # Sin descuento, la crema no lleva sale_price.
+        self.assertEqual(self._filas_por_ruta()[str(self.mini.id)]['sale_price'], '')
 
     def test_la_tarifa_del_sitio_manda_sobre_la_general_de_respaldo(self):
         """Como en producción: la general quedó ofrecida al sitio de respaldo (website_dcasa,
@@ -107,7 +107,7 @@ class TestFeedPrecio(MetaComun, HttpCase):
         """Con otra tarifa (la que sea que Odoo le dé al visitante), el catálogo dice lo mismo que la ficha."""
         self.env.user.group_ids += self.env.ref('product.group_product_pricelist')
         self._descuento(self.env['product.pricelist'].create({'sequence': 1, **valores_tarifa}), 30)
-        fila = self._filas_por_ruta()[str(self.mesa.product_variant_id.id)]
+        fila = self._filas_por_ruta()[str(self.lampara.product_variant_id.id)]
         paga, tachado = self._ficha(fila)
         esperado = (f'{tachado} USD', f'{paga} USD') if tachado else (f'{paga} USD', '')
         self.assertEqual((fila['price'], fila['sale_price']), esperado)
@@ -122,8 +122,8 @@ class TestFeedPrecio(MetaComun, HttpCase):
 
     def test_combo_con_precio(self):
         piezas = self.env['product.combo'].create({
-            'name': 'Combo prueba Meta', 'combo_item_ids': [Command.create({'product_id': self.queen.id})]})
-        combo = self._producto('Combo cama prueba Meta', 499.0, type='combo', combo_ids=[Command.set(piezas.ids)])
+            'name': 'Combo prueba Meta', 'combo_item_ids': [Command.create({'product_id': self.grande.id})]})
+        combo = self._producto('Combo crema prueba Meta', 499.0, type='combo', combo_ids=[Command.set(piezas.ids)])
         fila = self._filas_por_ruta()[str(combo.product_variant_id.id)]
         self.assertEqual(fila['price'], '499.00 USD')
         self.assertEqual(fila['custom_label_2'], 'disponible', 'un combo no controla inventario')

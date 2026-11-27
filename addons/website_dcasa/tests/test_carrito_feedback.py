@@ -11,7 +11,7 @@ from odoo.tests import tagged
 
 from .chrome_movil import ChromeMovilCase
 
-NOMBRE = 'Silla del test del carrito'
+NOMBRE = 'Taza del test del carrito'
 
 # Tres toques seguidos al primer «Agregar al carrito» de la grilla; espera a que el botón se libere.
 TRES_TOQUES = """
@@ -83,7 +83,7 @@ ENLACES = """
         const sitio = location.origin;
         const casos = {
             otraPagina: [{ href: '/socios' }, {}],
-            otraPaginaAbsoluta: [{ href: sitio + '/shop?search=cama' }, {}],
+            otraPaginaAbsoluta: [{ href: sitio + '/shop?search=crema' }, {}],
             ancla: [{ href: '#arriba' }, {}],
             mismaPagina: [{ href: location.pathname + location.search }, {}],
             pestanaNueva: [{ href: '/shop', target: '_blank' }, {}],
@@ -119,7 +119,7 @@ class TestCarritoFeedback(ChromeMovilCase):
         param.set_param(PARAM_ACTIVO, '1')       # la tarjeta de Black Weekend de la portada lleva el formulario
         param.set_param(PARAM_INICIO, '')
         param.set_param(PARAM_FIN, '')
-        categoria = cls.env.ref('website_dcasa.public_category_recamaras')
+        categoria = cls.env.ref('website_dcasa.public_category_salud')
         # Sin control de existencias: siempre se puede agregar (la prueba no depende del inventario).
         cls.producto = cls.env['product.template'].create({
             'name': NOMBRE, 'list_price': 49.99, 'is_published': True, 'type': 'consu', 'is_storable': False,

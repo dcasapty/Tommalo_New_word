@@ -48,7 +48,7 @@ class TestAvisosAlMismoTiempo(BaseCase):
                 'name': 'Ana Concurrencia Yappy', 'email': 'ana.concurrencia@example.com',
                 'phone': '+507 6000-0101'}).id
             self.producto_id = env['product.product'].create({
-                'name': 'Sofá de concurrencia (Yappy)', 'type': 'consu', 'list_price': 100.0}).id
+                'name': 'Crema de concurrencia (Yappy)', 'type': 'consu', 'list_price': 100.0}).id
             pedido = env['sale.order'].create({
                 'partner_id': self.cliente_id, 'website_id': env.ref('website.default_website').id,
                 'order_line': [Command.create({'product_id': self.producto_id, 'product_uom_qty': 1})]})
@@ -219,7 +219,7 @@ class TestTopePorPedidoAlMismoTiempo(BaseCase):
             self.cliente_id = env['res.partner'].create({
                 'name': 'Ana Tope Yappy', 'email': 'ana.tope@example.com', 'phone': '+507 6000-0101'}).id
             self.producto_id = env['product.product'].create({
-                'name': 'Sofá del tope (Yappy)', 'type': 'consu', 'list_price': 100.0}).id
+                'name': 'Crema del tope (Yappy)', 'type': 'consu', 'list_price': 100.0}).id
             pedido = env['sale.order'].create({
                 'partner_id': self.cliente_id, 'website_id': env.ref('website.default_website').id,
                 'order_line': [Command.create({'product_id': self.producto_id, 'product_uom_qty': 1})]})

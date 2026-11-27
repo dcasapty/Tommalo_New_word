@@ -68,12 +68,12 @@ class TestMovilSinDesborde(ChromeMovilCase):
         param.set_param(PARAM_ACTIVO, '1')       # la banda Black Weekend de la portada es la que desbordaba
         param.set_param(PARAM_INICIO, '')
         param.set_param(PARAM_FIN, '')
-        recamaras = cls.env.ref('website_dcasa.public_category_recamaras')
+        salud = cls.env.ref('website_dcasa.public_category_salud')
         cls.productos = cls.env['product.template']
         for n in range(1, 5):
             cls.productos |= cls.env['product.template'].create({
-                'name': f'Cama del test móvil {n}', 'list_price': 99.99 + n, 'is_published': True,
-                'public_categ_ids': [(6, 0, recamaras.ids)], 'dcasa_black_weekend': True})
+                'name': f'Crema del test móvil {n}', 'list_price': 99.99 + n, 'is_published': True,
+                'public_categ_ids': [(6, 0, salud.ids)], 'dcasa_black_weekend': True})
         cls.paginas = {'portada': '/', 'tienda': '/shop', 'black-weekend': '/black-weekend',
                        'ficha': cls.productos[0].website_url}
 

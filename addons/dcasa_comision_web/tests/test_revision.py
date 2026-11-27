@@ -24,7 +24,7 @@ class TestRevisionOrigen(ComisionReloj):
 
     def _pedido_como(self, usuario, contexto=None, **extra):
         valores = {'partner_id': self.cliente.id, 'company_id': self.company.id, 'website_id': self.website.id,
-                   'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1,
+                   'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1,
                                                   'price_unit': 1000.0})], **extra}
         return self.env['sale.order'].with_user(usuario).with_context(**(contexto or {})).create(valores)
 
@@ -39,7 +39,7 @@ class TestRevisionOrigen(ComisionReloj):
         orden = self.env['sale.order'].with_user(self.u_vendedora).with_context(
             default_website_id=self.website.id).create({
                 'partner_id': self.cliente.id,
-                'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1,
+                'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1,
                                                'price_unit': 1000.0})]})
         self.assertFalse(orden.dcasa_nacio_en_web)
 
@@ -78,7 +78,7 @@ class TestRevisionOrigen(ComisionReloj):
     def test_revision_09b_dcasa_venta_online_se_fabrica_al_crear(self):
         orden = self.env['sale.order'].with_user(self.u_vendedora).create({
             'partner_id': self.cliente.id, 'dcasa_venta_online': True,
-            'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1,
+            'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1,
                                            'price_unit': 1000.0})]})
         self.assertFalse(orden.dcasa_venta_online)
 
@@ -254,7 +254,7 @@ class TestRevisionDinero(VendedoraCommon):
         """HALLAZGO: con «Antes de los descuentos» la base es el precio de lista, pero lo devuelto se resta NETO (lo que
         se cobró): al devolver todo queda como base el descuento (10 % de 1,000 = 100) y se sigue pagando comisión."""
         self.version(10.0, base_descuentos='antes')
-        factura = self.facturar(self.orden(lineas=[(self.mueble, 1000.0, 1, {'discount': 10.0})]))
+        factura = self.facturar(self.orden(lineas=[(self.articulo, 1000.0, 1, {'discount': 10.0})]))
         self.pagar(factura)
         self.assertEqual(self.venta(factura).base_centavos, 100000, 'precio de lista')
         self.nota(factura, 900.0)                                  # se devuelve TODO: 900 sin ITBMS
@@ -263,7 +263,7 @@ class TestRevisionDinero(VendedoraCommon):
 
     def test_revision_23d_antes_de_descuentos_el_premio_tampoco_se_descuenta_de_lo_devuelto(self):
         self.version(10.0, base_descuentos='antes')
-        factura = self.facturar(self.orden(lineas=[(self.mueble, 1000.0, 1, {}), (self.premio, -100.0, 1, {})]))
+        factura = self.facturar(self.orden(lineas=[(self.articulo, 1000.0, 1, {}), (self.premio, -100.0, 1, {})]))
         self.pagar(factura)
         self.nota(factura, 900.0)                                  # devuelve todo lo que se cobró
         self.assertEqual(self.venta(factura).comision_centavos, 0, 'devuelto todo, no hay comisión')
@@ -420,7 +420,7 @@ class TestRevisionNoRomperLoExistente(VendedoraCommon):
         juan = self.vender(web=True, pago='2030-03-08', precio=300.0)     # Juan + vendedora: no es online
         self.assertFalse(juan.line_ids.sale_line_ids.order_id.dcasa_venta_online)
         apartado = self.facturar(self.orden(web=False, vendedora=self.u_vendedora,
-                                            lineas=[(self.mueble, 800.0, 1, {})]), '2030-03-05')
+                                            lineas=[(self.articulo, 800.0, 1, {})]), '2030-03-05')
         self.pagar(apartado, '2030-03-05', monto=100.0)                     # pagada a medias: no cuenta
 
         def foto():

@@ -33,7 +33,7 @@ class VendedoraCommon(ComisionReloj):
     def vender(self, web, pago='2030-03-05', precio=1000.0, **extra):
         """Un pedido de la vendedora, facturado y pagado el día ``pago``."""
         factura = self.facturar(self.orden(web=web, vendedora=self.u_vendedora,
-                                           lineas=[(self.mueble, precio, 1, {})], **extra), pago)
+                                           lineas=[(self.articulo, precio, 1, {})], **extra), pago)
         self.pagar(factura, pago)
         return factura
 
@@ -69,8 +69,8 @@ class TestBonoPorMeta(VendedoraCommon):
 
     def test_una_factura_que_junta_lo_online_con_la_tienda_cuenta_solo_lo_de_la_tienda(self):
         self.version(10.0)
-        web = self.orden(web=True, vendedora=self.u_vendedora, lineas=[(self.mueble, 1000.0, 1, {})])
-        tienda = self.orden(web=False, vendedora=self.u_vendedora, lineas=[(self.mueble, 500.0, 1, {})])
+        web = self.orden(web=True, vendedora=self.u_vendedora, lineas=[(self.articulo, 1000.0, 1, {})])
+        tienda = self.orden(web=False, vendedora=self.u_vendedora, lineas=[(self.articulo, 500.0, 1, {})])
         factura = (web | tienda)._create_invoices()
         factura.invoice_date = '2030-03-05'
         factura.action_post()
@@ -254,8 +254,8 @@ class TestProgramaDeVendedores(ComisionReloj):
         self.assertEqual(self.comision(despues).resultado, 'pagada', 'con código sigue pagando también online')
 
     def factura_mixta(self, **extra):
-        web = self.orden(web=True, lineas=[(self.mueble, 1000.0, 1, {})], **extra)
-        tienda = self.orden(web=False, lineas=[(self.mueble, 500.0, 1, {})], **extra)
+        web = self.orden(web=True, lineas=[(self.articulo, 1000.0, 1, {})], **extra)
+        tienda = self.orden(web=False, lineas=[(self.articulo, 500.0, 1, {})], **extra)
         factura = (web | tienda)._create_invoices()
         factura.invoice_date = '2030-03-04'
         factura.action_post()

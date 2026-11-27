@@ -22,11 +22,11 @@ class ResenasComun:
         cls.env = cls.env(context=dict(cls.env.context, tracking_disable=True))
         cls.website = cls.env.ref('website.default_website')
         Producto = cls.env['product.product']
-        cls.sofa = Producto.create({'name': 'SOFÁ OPINIONES PRUEBA', 'type': 'consu', 'list_price': 300.0,
+        cls.jabon = Producto.create({'name': 'JABÓN OPINIONES PRUEBA', 'type': 'consu', 'list_price': 300.0,
                                     'is_published': True, 'taxes_id': [Command.clear()]})
-        cls.mesa = Producto.create({'name': 'MESA OPINIONES PRUEBA', 'type': 'consu', 'list_price': 100.0,
+        cls.lampara = Producto.create({'name': 'LAMPARA OPINIONES PRUEBA', 'type': 'consu', 'list_price': 100.0,
                                     'is_published': True, 'taxes_id': [Command.clear()]})
-        cls.oculto = Producto.create({'name': 'MUEBLE NO PUBLICADO', 'type': 'consu', 'list_price': 50.0,
+        cls.oculto = Producto.create({'name': 'ARTICULO NO PUBLICADO', 'type': 'consu', 'list_price': 50.0,
                                       'is_published': False, 'taxes_id': [Command.clear()]})
         cls.flete = Producto.create({'name': 'FLETE OPINIONES', 'type': 'service', 'list_price': 10.0,
                                      'is_published': True, 'taxes_id': [Command.clear()]})
@@ -42,10 +42,10 @@ class ResenasComun:
         cls.gerente = new_test_user(cls.env, login='op_gerente', groups='base.group_user,dcasa_base.group_gerencia')
         cls.vendedora = new_test_user(cls.env, login='op_vendedora',
                                       groups='base.group_user,sales_team.group_sale_salesman')
-        # Lucía: el sofá, el mueble no publicado y el flete pagados por completo; la mesa, en abono (a medias).
-        cls.pagada = cls.factura(cls.lucia, [cls.sofa, cls.oculto, cls.flete])
+        # Lucía: el jabón, el articulo no publicado y el flete pagados por completo; la lampara, en abono (a medias).
+        cls.pagada = cls.factura(cls.lucia, [cls.jabon, cls.oculto, cls.flete])
         cls.pagar(cls.pagada)
-        cls.a_medias = cls.factura(cls.lucia, [cls.mesa])
+        cls.a_medias = cls.factura(cls.lucia, [cls.lampara])
         cls.pagar(cls.a_medias, 40.0)
 
     @classmethod
@@ -67,7 +67,7 @@ class ResenasComun:
 
     def opinar(self, cliente=None, producto=None, estrellas=5, texto='Llegó a tiempo y quedó muy bien.'):
         return self.env['dcasa.resena']._dcasa_crear_del_cliente(
-            cliente or self.lucia, (producto or self.sofa).product_tmpl_id.id, estrellas, texto, website=self.website)
+            cliente or self.lucia, (producto or self.jabon).product_tmpl_id.id, estrellas, texto, website=self.website)
 
 
 @tagged('post_install', '-at_install')
@@ -82,9 +82,9 @@ class TestResenasReglas(ResenasComun, TransactionCase):
         self.assertIn(self.pagada.payment_state, ('paid', 'in_payment'))
         self.assertEqual(self.a_medias.payment_state, 'partial')
         por = self.env['dcasa.resena']._dcasa_por_resenar(self.lucia, website=self.website)
-        self.assertEqual(list(por), [self.sofa.product_tmpl_id],
-                         'Ni la mesa (en abono), ni lo que no está en la tienda, ni el flete')
-        self.assertEqual(por[self.sofa.product_tmpl_id], self.pagada)
+        self.assertEqual(list(por), [self.jabon.product_tmpl_id],
+                         'Ni la lampara (en abono), ni lo que no está en la tienda, ni el flete')
+        self.assertEqual(por[self.jabon.product_tmpl_id], self.pagada)
         self.assertEqual(self.env['dcasa.resena']._dcasa_por_resenar(self.otro, website=self.website), {})
 
     def test_queda_por_revisar_y_una_sola_vez(self):
@@ -96,20 +96,20 @@ class TestResenasReglas(ResenasComun, TransactionCase):
         self.assertEqual(self.env['dcasa.resena']._dcasa_por_resenar(self.lucia, website=self.website), {})
 
     def test_quien_no_compro_o_no_pago_no_opina(self):
-        for cliente, producto in ((self.otro, self.sofa), (self.lucia, self.mesa), (self.lucia, self.oculto),
+        for cliente, producto in ((self.otro, self.jabon), (self.lucia, self.lampara), (self.lucia, self.oculto),
                                   (self.lucia, self.flete)):
             with self.subTest(cliente=cliente.name, producto=producto.name), self.assertRaises(UserError):
                 self.opinar(cliente, producto)
         with self.assertRaises(UserError):   # sin sesión
-            self.env['dcasa.resena']._dcasa_crear_del_cliente(self.env['res.partner'], self.sofa.product_tmpl_id.id, 5)
+            self.env['dcasa.resena']._dcasa_crear_del_cliente(self.env['res.partner'], self.jabon.product_tmpl_id.id, 5)
         self.assertFalse(self.env['dcasa.resena'].sudo().search([]).filtered(
-            lambda r: r.product_tmpl_id in (self.sofa | self.mesa | self.oculto | self.flete).product_tmpl_id))
+            lambda r: r.product_tmpl_id in (self.jabon | self.lampara | self.oculto | self.flete).product_tmpl_id))
 
     def test_un_contacto_de_la_empresa_opina_por_su_ficha(self):
         empresa = self.env['res.partner'].create({'name': 'Hotel Opiniones S.A.', 'is_company': True})
         contacto = self.env['res.partner'].create({'name': 'Marta Compras', 'parent_id': empresa.id})
-        self.pagar(self.factura(empresa, [self.mesa]))
-        resena = self.opinar(contacto, self.mesa)
+        self.pagar(self.factura(empresa, [self.lampara]))
+        resena = self.opinar(contacto, self.lampara)
         self.assertEqual(resena.partner_id, empresa)
 
     def test_estrellas_y_texto(self):
@@ -130,7 +130,7 @@ class TestResenasReglas(ResenasComun, TransactionCase):
 
     def test_nadie_la_escribe_ni_la_cambia_a_mano(self):
         resena = self.opinar(estrellas=2)
-        valores = {'partner_id': self.lucia.id, 'product_tmpl_id': self.mesa.product_tmpl_id.id, 'estrellas': 5}
+        valores = {'partner_id': self.lucia.id, 'product_tmpl_id': self.lampara.product_tmpl_id.id, 'estrellas': 5}
         for usuario in (self.env.ref('base.user_admin'), self.gerente):
             Resena = self.env['dcasa.resena'].with_user(usuario)
             with self.subTest(usuario=usuario.login):
@@ -160,13 +160,13 @@ class TestResenasReglas(ResenasComun, TransactionCase):
         self.assertEqual((resena.estado, resena.revisado_por_id), ('aprobada', self.gerente))
         self.assertTrue(resena.revisado_el)
         if 'dcasa.tienda.pendiente' in self.env:
-            self.assertIn(self.sofa.product_tmpl_id.id, self.env.cr.precommit.data.get(CLAVE_BORDE, {}),
+            self.assertIn(self.jabon.product_tmpl_id.id, self.env.cr.precommit.data.get(CLAVE_BORDE, {}),
                           'La ficha guardada en el borde se renueva')
         resena.with_user(self.env.ref('base.user_admin')).action_rechazar()
         self.assertEqual(resena.estado, 'rechazada')
 
     def test_lo_no_aprobado_no_se_ve(self):
-        plantilla = self.sofa.product_tmpl_id
+        plantilla = self.jabon.product_tmpl_id
         resena = self.opinar(estrellas=4)
         self.assertEqual(plantilla._dcasa_opiniones()['total'], 0, 'Por revisar: no se publica')
         self.assertIsNone(self.env['dcasa.resena']._dcasa_valoracion_google(plantilla))
@@ -202,7 +202,7 @@ class TestResenasEnLaFicha(ResenasComun, HttpCase):
 
     def test_sin_publicadas_no_hay_estrellas_ni_aggregate_rating(self):
         self.opinar()   # por revisar
-        html = self.url_open(self.sofa.website_url).text
+        html = self.url_open(self.jabon.website_url).text
         self.assertNotIn('dcasa-opiniones', html)
         self.assertNotIn('o_dcasa_ficha_valoracion', html)
         self.assertNotIn('aggregateRating', self._producto_en_google(html))
@@ -210,7 +210,7 @@ class TestResenasEnLaFicha(ResenasComun, HttpCase):
 
     def test_publicada_se_ve_con_nombre_corto_y_cuenta_para_google(self):
         self.opinar(estrellas=5).with_user(self.gerente).action_aprobar()
-        html = self.url_open(self.sofa.website_url).text
+        html = self.url_open(self.jabon.website_url).text
         self.assertIn('Opiniones de quienes lo compraron', html)
         self.assertIn('Llegó a tiempo y quedó muy bien.', html)
         self.assertIn('Lucía M.', html)
@@ -221,12 +221,12 @@ class TestResenasEnLaFicha(ResenasComun, HttpCase):
         self.assertEqual(self._producto_en_google(html)['aggregateRating'], {
             '@type': 'AggregateRating', 'ratingValue': 5.0, 'reviewCount': 1, 'bestRating': 5, 'worstRating': 1})
         # la de otro producto no se cuela
-        self.assertNotIn('Llegó a tiempo', self.url_open(self.mesa.website_url).text)
+        self.assertNotIn('Llegó a tiempo', self.url_open(self.lampara.website_url).text)
 
     def test_editor_del_sitio_abre_la_ficha_con_opiniones(self):
         """Con la marca del editor (data-oe-*) la ficha sigue armándose: lección del lote 1."""
         self.opinar().with_user(self.gerente).action_aprobar()
         self.authenticate('admin', 'admin')
-        respuesta = self.url_open(self.sofa.website_url)
+        respuesta = self.url_open(self.jabon.website_url)
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn('Opiniones de quienes lo compraron', respuesta.text)

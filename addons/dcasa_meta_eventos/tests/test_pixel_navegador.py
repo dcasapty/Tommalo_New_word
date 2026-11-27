@@ -51,7 +51,7 @@ class TestPixelNavegador(SitioMetaCase):
         cls.ICP.set_param(PARAM_ACTIVO, '1')       # la tarjeta de Black Weekend de la portada lleva el formulario
         cls.ICP.set_param(PARAM_INICIO, '')
         cls.ICP.set_param(PARAM_FIN, '')
-        categoria = cls.env.ref('website_dcasa.public_category_recamaras')
+        categoria = cls.env.ref('website_dcasa.public_category_salud')
         cls.lampara = cls.env['product.template'].create({
             'name': 'LAMPARA META NAVEGADOR', 'list_price': 49.99, 'is_published': True, 'type': 'consu',
             'is_storable': False, 'sale_ok': True, 'taxes_id': [Command.clear()],
@@ -113,7 +113,7 @@ class TestPixelNavegador(SitioMetaCase):
     def test_sin_aceptar_no_se_llama_nada_y_al_aceptar_pageview_y_viewcontent(self):
         variante = self.variante_mostrada()
         with self._chrome() as browser:
-            self._abrir(browser, self.sofa.website_url)
+            self._abrir(browser, self.crema.website_url)
             r = self._evaluar(browser, '(async () => {' + ESPERAR_LISTA + """
                 const antes = llamadas();
                 const scripts = [...document.scripts].filter((s) => (s.src || '').includes('facebook')).length;
@@ -146,7 +146,7 @@ class TestPixelNavegador(SitioMetaCase):
 
     def test_solo_las_necesarias_descarta_la_cola(self):
         with self._chrome() as browser:
-            self._abrir(browser, self.sofa.website_url)
+            self._abrir(browser, self.crema.website_url)
             r = self._evaluar(browser, '(async () => {' + ESPERAR_LISTA + """
                 document.querySelector('#cookies-consent-essential').click();
                 await esperar(300);
@@ -179,17 +179,17 @@ class TestPixelNavegador(SitioMetaCase):
             })()""")
             self.assertFalse(portada.get('sinFormulario'), 'La portada no trae el formulario «Agregar» con el id')
             # Tienda con búsqueda: Search y «Agregar al carrito» de Odoo (add_to_cart_event).
-            self._abrir(browser, '/shop?search=' + 'MESA META RENDER'.replace(' ', '+'))
+            self._abrir(browser, '/shop?search=' + 'LAMPARA META RENDER'.replace(' ', '+'))
             tienda = self._evaluar(browser, '(async () => {' + ESPERAR_LISTA + """
                 const boton = document.querySelector('#products_grid .o_wsale_product_btn .a-submit');
                 if (!boton) { return { sinBoton: true, llamadas: llamadas() }; }
                 boton.click();
                 for (let i = 0; i < 100; i++) {
-                    if (llamadas().some((c) => c[1] === 'AddToCart' && c[2].content_ids[0] === MESA)) { break; }
+                    if (llamadas().some((c) => c[1] === 'AddToCart' && c[2].content_ids[0] === LAMPARA)) { break; }
                     await esperar(100);
                 }
                 return { llamadas: llamadas() };
-            })()""".replace('MESA', json.dumps(str(self.mesa.id))))
+            })()""".replace('LAMPARA', json.dumps(str(self.lampara.id))))
         self.assertEqual(portada['id'], str(variante_bw.id))
         llamadas = tienda['llamadas']
         self.assertEqual(llamadas[0][:3], ['set', 'autoConfig', False])
@@ -200,11 +200,11 @@ class TestPixelNavegador(SitioMetaCase):
         self.assertRegex(agregados[0][3]['eventID'], RE_EVENT_ID.format('AddToCart'))
         self.assertEqual(len(self._eventos(llamadas, 'Contact')), 1, 'El clic en WhatsApp es un Contact')
         busqueda = self._eventos(llamadas, 'Search')
-        self.assertEqual(busqueda[0][2], {'search_string': 'MESA META RENDER'})
+        self.assertEqual(busqueda[0][2], {'search_string': 'LAMPARA META RENDER'})
         self.assertFalse(tienda.get('sinBoton'), 'La tienda no trae el botón «Agregar al carrito»')
         self.assertEqual(len(agregados), 2, f'AddToCart por los dos caminos: {agregados}')
-        self.assertEqual(agregados[1][2]['content_ids'], [str(self.mesa.id)])
-        self.assertEqual(agregados[1][2]['contents'][0]['id'], str(self.mesa.id))
+        self.assertEqual(agregados[1][2]['content_ids'], [str(self.lampara.id)])
+        self.assertEqual(agregados[1][2]['contents'][0]['id'], str(self.lampara.id))
         self._nunca_purchase(llamadas)
         self._sin_facebook()
 
@@ -217,7 +217,7 @@ class TestPixelNavegador(SitioMetaCase):
                     body: JSON.stringify({jsonrpc: '2.0', method: 'call', params: {
                         product_template_id: PLANTILLA, product_id: VARIANTE, quantity: 2}})});
                 return (await r.json()).result ? true : false;
-            })()'''.replace('PLANTILLA', str(self.mesa.product_tmpl_id.id)).replace('VARIANTE', str(self.mesa.id)))
+            })()'''.replace('PLANTILLA', str(self.lampara.product_tmpl_id.id)).replace('VARIANTE', str(self.lampara.id)))
             self._abrir(browser, '/shop/checkout')
             r = self._evaluar(browser, '(async () => {' + ESPERAR_LISTA + """
                 return { llamadas: llamadas(), pagina: location.pathname };
@@ -225,14 +225,14 @@ class TestPixelNavegador(SitioMetaCase):
         self.assertEqual(r['pagina'], '/shop/checkout')
         inicio = self._eventos(r['llamadas'], 'InitiateCheckout')
         self.assertEqual(len(inicio), 1)
-        self.assertEqual(inicio[0][2]['content_ids'], [str(self.mesa.id)])
+        self.assertEqual(inicio[0][2]['content_ids'], [str(self.lampara.id)])
         self.assertEqual(inicio[0][2]['num_items'], 2)
         self.assertEqual(inicio[0][2]['value'], 240.0)
         self._nunca_purchase(r['llamadas'])
 
     def test_sin_fbq_falso_el_pixel_solo_se_pide_despues_de_aceptar(self):
         with self._chrome(fbq_falso=False) as browser:
-            self._abrir(browser, self.sofa.website_url)
+            self._abrir(browser, self.crema.website_url)
             antes = self._evaluar(browser, '(async () => {' + ESPERAR_LISTA + """
                 return {
                     fbq: typeof window.fbq,

@@ -20,7 +20,7 @@ class TestDireccionDelVisitante(TransactionCase):
             'name': 'Clienta Fiel Tienda', 'phone': '+507 6777-0101', 'email': 'fiel@correo.com', 'vat': '8-777-101'})
 
     def _direccion(self, **extra):
-        return {'name': 'Quien compra', 'phone': '', 'email': '', 'street': 'Calle 1', 'city': 'La Chorrera',
+        return {'name': 'Quien compra', 'phone': '', 'email': '', 'street': 'Calle 1', 'city': 'Ciudad de Prueba',
                 'country_id': self.panama.id, 'lang': self.env.lang or 'es_419',
                 'company_id': self.website.company_id.id, **extra}
 

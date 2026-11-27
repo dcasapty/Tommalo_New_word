@@ -1,6 +1,6 @@
 """F5: en la tienda y en el portal el cliente lee los nombres en formato título; por dentro siguen en MAYÚSCULAS.
 
-Decisión de la dueña (2026-10-22): «Lo que ve el cliente: "Cama Queen Tapizada", y solo por dentro queden en
+Decisión de la dueña (2026-10-22): «Lo que ve el cliente: "Crema Grande Tapizada", y solo por dentro queden en
 MAYÚSCULAS». Se mira el texto VISIBLE de cada página (sin scripts ni estilos): ahí no puede quedar el nombre guardado.
 """
 import json
@@ -11,7 +11,7 @@ from lxml import html as lxml_html
 
 from odoo.tests import HttpCase, tagged
 
-GUARDADO, CLIENTE = 'CAMA DE METAL CON BAÚL', 'Cama de Metal con Baúl'
+GUARDADO, CLIENTE = 'CREMA DE METAL CON BAÚL', 'Crema de Metal con Baúl'
 
 
 def texto_visible(pagina):

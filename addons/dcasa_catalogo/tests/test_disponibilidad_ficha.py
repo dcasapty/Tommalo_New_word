@@ -1,6 +1,6 @@
 """Ficha de la tienda: «Disponible», «Quedan pocas» o «Agotado» con la regla de Juan (nunca el número).
 
-Pedido de la dueña (lote 1 de la web, 2026-11-13): la ficha no decía si había producto. La etiqueta sale de
+Pedido del negocio (lote 1 de la web, 2026-11-13): la ficha no decía si había producto. La etiqueta sale de
 ``product.template._dcasa_disponibilidad`` (models/product.py), la misma que usa Juan, y la regla vive en
 ``dcasa_base/disponibilidad.py``. Lo que deja comprar o no comprar no cambia.
 """
@@ -25,19 +25,19 @@ class TestDisponibilidadEnLaFicha(HttpCase):
         cls.sin_control = Plantilla.create({**base, 'name': 'ZZMESA SIN INVENTARIO', 'is_storable': False})
         tamano = cls.env['product.attribute'].create({
             'name': 'Zztamaño ficha', 'create_variant': 'always',
-            'value_ids': [Command.create({'name': 'Zzqueen'}), Command.create({'name': 'Zzking'})]})
-        cls.colchon = Plantilla.create({
-            **base, 'name': 'ZZCOLCHÓN CON TAMAÑOS DE PRUEBA',
+            'value_ids': [Command.create({'name': 'Zzgrande'}), Command.create({'name': 'Zzfamiliar'})]})
+        cls.frasco = Plantilla.create({
+            **base, 'name': 'ZZFRASCO CON TAMAÑOS DE PRUEBA',
             'attribute_line_ids': [Command.create({'attribute_id': tamano.id,
                                                    'value_ids': [Command.set(tamano.value_ids.ids)]})]})
-        cls.queen = cls.colchon.product_variant_ids.filtered(lambda v: 'Zzqueen' in v.display_name)
-        cls.king = cls.colchon.product_variant_ids.filtered(lambda v: 'Zzking' in v.display_name)
+        cls.grande = cls.frasco.product_variant_ids.filtered(lambda v: 'Zzgrande' in v.display_name)
+        cls.familiar = cls.frasco.product_variant_ids.filtered(lambda v: 'Zzfamiliar' in v.display_name)
 
         bodega = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1)
         cls.ubicacion = bodega.lot_stock_id
         cls.Quant = cls.env['stock.quant']
         for variante, cantidad in ((cls.muchas.product_variant_id, 12), (cls.pocas.product_variant_id, 3),
-                                   (cls.queen, 20), (cls.king, 2)):
+                                   (cls.grande, 20), (cls.familiar, 2)):
             cls.Quant._update_available_quantity(variante, cls.ubicacion, cantidad)
 
     def _etiqueta(self, plantilla):
@@ -70,13 +70,14 @@ class TestDisponibilidadEnLaFicha(HttpCase):
 
     def test_cada_medida_dice_la_suya(self):
         """La ficha dice la de la medida elegida y la repinta al cambiar (la información que pide el JavaScript)."""
-        self.assertEqual(self.colchon._dcasa_disponibilidad(), 'disponible', 'sin medida: todas juntas (22)')
-        self.assertEqual(self.colchon._dcasa_disponibilidad(self.queen), 'disponible')
-        self.assertEqual(self.colchon._dcasa_disponibilidad(self.king), 'pocas')
-        for variante, estado, texto in ((self.queen, 'disponible', 'Disponible'), (self.king, 'pocas', 'Quedan pocas')):
+        self.assertEqual(self.frasco._dcasa_disponibilidad(), 'disponible', 'sin medida: todas juntas (22)')
+        self.assertEqual(self.frasco._dcasa_disponibilidad(self.grande), 'disponible')
+        self.assertEqual(self.frasco._dcasa_disponibilidad(self.familiar), 'pocas')
+        for variante, estado, texto in ((self.grande, 'disponible', 'Disponible'),
+                                        (self.familiar, 'pocas', 'Quedan pocas')):
             with self.subTest(medida=variante.display_name):
                 info = self.make_jsonrpc_request('/website_sale/get_combination_info', {
-                    'product_template_id': self.colchon.id,
+                    'product_template_id': self.frasco.id,
                     'product_id': variante.id,
                     'combination': variante.product_template_attribute_value_ids.ids,
                     'add_qty': 1,

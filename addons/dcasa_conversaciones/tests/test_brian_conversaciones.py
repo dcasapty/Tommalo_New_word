@@ -61,13 +61,13 @@ class TestBrianConversaciones(CotizarCase):
     def test_cotizaciones_que_vencen_solo_las_que_se_cancelan_solas(self):
         web = self.env['sale.order'].create({
             'partner_id': self.conv.partner_id.id, 'website_id': self.env['website'].search([], limit=1).id,
-            'order_line': [(0, 0, {'product_id': self.lámpara.product_variant_id.id, 'product_uom_qty': 1})]})
+            'order_line': [(0, 0, {'product_id': self.lampara.product_variant_id.id, 'product_uom_qty': 1})]})
         de_vendedora = self.env['sale.order'].create({
             'partner_id': self.conv.partner_id.id, 'validity_date': hoy_en_panama() + timedelta(days=1),
-            'order_line': [(0, 0, {'product_id': self.lámpara.product_variant_id.id, 'product_uom_qty': 1})]})
+            'order_line': [(0, 0, {'product_id': self.lampara.product_variant_id.id, 'product_uom_qty': 1})]})
         bloqueada = self.env['sale.order'].create({
             'partner_id': self.conv.partner_id.id, 'website_id': self.env['website'].search([], limit=1).id,
-            'order_line': [(0, 0, {'product_id': self.lámpara.product_variant_id.id, 'product_uom_qty': 1})]})
+            'order_line': [(0, 0, {'product_id': self.lampara.product_variant_id.id, 'product_uom_qty': 1})]})
         bloqueada.locked = True
         datos = self.brian(self.gerente, 'cotizaciones_que_vencen', {'dias': 5})
         numeros = [c['numero'] for c in datos['cotizaciones']]

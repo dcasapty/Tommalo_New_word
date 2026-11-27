@@ -12,7 +12,7 @@ Hace lo que el contrato pide del Worker, en pequeño:
   401 ``motivo: pase``). La ``red`` del pase no se compara con la conexión (contrato_cambios, «2026-11-13 (2)»).
 * Las tarjetas salen SOLO de las herramientas de Odoo de ese turno (``POST /dcasa/juan/v1/herramienta`` con
   ``origen: tienda`` y sin conversación), nunca inventadas. ``proponer_carrito`` solo con un producto ya visto.
-* Una conversación por guion (palabras clave), no un modelo de IA: colchones o salas → ``buscar_productos``; «ponlo» o
+* Una conversación por guion (palabras clave), no un modelo de IA: jabones o lámparas → ``buscar_productos``; «ponlo» o
   «agrega» → ``proponer_carrito``; envío → ``ubicacion``; la ubicación → ``cotizar_envio`` con ``lat``/``lon``;
   «persona» o «whatsapp» → ``whatsapp``; «gracias» → ``calificar``. Con ``texto`` igual a un motivo de error
   (``tope_dia``, ``presupuesto``…) responde ese error, para probar los avisos.
@@ -103,7 +103,7 @@ class WorkerSimulado:
         self.recibidos = []                     # lo que llegó (para las pruebas), sin la ubicación
         self.ubicaciones = 0
         # Las notas de voz: lo que dice el GET y lo que responde el POST (las pruebas lo cambian).
-        self.voz = {'disponible': True, 'max_segundos': 60, 'max_bytes': 1024 * 1024, 'texto': 'Busco un colchón queen',
+        self.voz = {'disponible': True, 'max_segundos': 60, 'max_bytes': 1024 * 1024, 'texto': 'Busco un jabón grande',
                     'recortado': False, 'motivo': None}
         self.consultas_voz = 0                  # cuántas veces la página preguntó si hay micrófono
         self.voces = []                         # de cada nota: {tipo, kb, duracion_ms}; el audio, nunca
@@ -240,7 +240,7 @@ class WorkerSimulado:
                         ['Una más económica', 'Con más prestaciones', 'No, gracias'])
 
     def _cambio(self, estado, t, carrito):
-        """«quita la cama», «déjame 2 colchones»: solo lo que ya está en el carrito (como el Worker)."""
+        """«quita la crema», «déjame 2 jabones»: solo lo que ya está en el carrito (como el Worker)."""
         if not carrito:
             return None
         palabras = [w for w in re.findall(r'\w+', t) if len(w) >= 4]
@@ -257,7 +257,7 @@ class WorkerSimulado:
              'nombre': linea['nombre']}])
 
     def _buscar(self, estado, t, texto):
-        consulta = ('colchón' if 'colch' in t else 'cama' if 'cama' in t else 'sofá' if ('sala' in t or 'sof' in t)
+        consulta = ('jabón' if 'jab' in t else 'crema' if 'crema' in t else 'lámpara' if 'lámpara' in t or 'lampara' in t
                     else texto)
         productos = [self._tarjeta(p) for p in self.herramienta('buscar_productos', {'consulta': consulta}).get(
             'productos') or []]
@@ -269,7 +269,7 @@ class WorkerSimulado:
         if not productos:
             return self._ok('con_laptop', [{'tipo': 'texto', 'texto': 'No encontré eso en la tienda en línea. ¿Te '
                                                                       'ayudo por WhatsApp?'}, self.WA])
-        titulo = {'colchón': 'Colchones', 'cama': 'Camas', 'sofá': 'Salas'}.get(consulta)
+        titulo = {'jabón': 'Jabones', 'crema': 'Cremas', 'lámpara': 'Lámparas'}.get(consulta)
         return self._ok('busto_estrella', [
             {'tipo': 'texto', 'texto': 'Encontré estos; los precios son + ITBMS.'},
             {'tipo': 'productos', 'productos': productos[:6], 'titulo': titulo},
@@ -297,7 +297,7 @@ class WorkerSimulado:
         if 'envío a ' in t or 'envio a ' in t:
             lugar = re.split(r'env[ií]o a ', texto, maxsplit=1, flags=re.IGNORECASE)[-1].strip(' ¿?.')
             return self._envio(estado, self.herramienta('cotizar_envio', {'lugar': lugar}), list(carrito))
-        if any(p in t for p in ('colch', 'sala', 'sofa', 'sofá', 'cama', 'busco', 'mesa')):
+        if any(p in t for p in ('jab', 'lámpara', 'lampara', 'crema', 'busco')):
             return self._buscar(estado, t, texto)
         if any(p in t for p in ('ponlo', 'agrega', 'carrito')) and estado['ultimo']:
             p = estado['vistos'][estado['ultimo']]
@@ -317,9 +317,9 @@ class WorkerSimulado:
         if 'pago' in t:
             return self._ok('bolsita', [{'tipo': 'texto', 'texto': 'Las formas de pago te las confirma una vendedora '
                                                                    'por WhatsApp.'}], ['Hablar con una persona'])
-        return self._ok('saludando', [{'tipo': 'texto', 'texto': 'Gracias por escribirme. ¿Buscas un mueble, el costo '
+        return self._ok('saludando', [{'tipo': 'texto', 'texto': 'Gracias por escribirme. ¿Buscas un producto, el costo '
                                                                  'del envío o las formas de pago?'}],
-                        ['Colchones', 'Salas', '¿Cuánto cuesta el envío?'])
+                        ['Jabones', 'Lámparas', '¿Cuánto cuesta el envío?'])
 
     # ------------------------------------------------------------------ HTTP
 

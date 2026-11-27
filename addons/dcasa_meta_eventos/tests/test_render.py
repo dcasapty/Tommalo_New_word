@@ -35,18 +35,18 @@ class SitioMetaCase(HttpCase):
         color = cls.env['product.attribute'].create({
             'name': 'Color Meta Prueba', 'create_variant': 'always',
             'value_ids': [Command.create({'name': 'Azul'}), Command.create({'name': 'Gris'})]})
-        cls.sofa = cls.env['product.template'].create({
-            'name': 'SOFÁ VARIANTES META', 'type': 'consu', 'list_price': 400.0, 'is_published': True,
+        cls.crema = cls.env['product.template'].create({
+            'name': 'CREMA VARIANTES META', 'type': 'consu', 'list_price': 400.0, 'is_published': True,
             'sale_ok': True, 'website_id': False, 'taxes_id': [Command.clear()],
             'attribute_line_ids': [Command.create({'attribute_id': color.id,
                                                    'value_ids': [Command.set(color.value_ids.ids)]})]})
-        cls.mesa = cls.env['product.product'].create({
-            'name': 'MESA META RENDER', 'type': 'consu', 'list_price': 120.0, 'is_published': True,
+        cls.lampara = cls.env['product.product'].create({
+            'name': 'LAMPARA META RENDER', 'type': 'consu', 'list_price': 120.0, 'is_published': True,
             'sale_ok': True, 'taxes_id': [Command.clear()]})
         panama = cls.env.ref('base.pa')
         cls.cliente_partner = cls.env['res.partner'].create({
             'name': 'CLIENTE WEB META', 'email': 'cliente.web.meta@example.com', 'phone': '6000-7777',
-            'street': 'Calle de Prueba 1', 'city': 'La Chorrera', 'country_id': panama.id})
+            'street': 'Calle de Prueba 1', 'city': 'Ciudad de Prueba', 'country_id': panama.id})
         cls.cliente = cls.env['res.users'].create({
             'name': 'CLIENTE WEB META', 'login': 'cliente_web_meta', 'password': 'clave-cliente-meta-123',
             'partner_id': cls.cliente_partner.id, 'group_ids': [Command.set([cls.env.ref('base.group_portal').id])]})
@@ -82,12 +82,12 @@ class SitioMetaCase(HttpCase):
         self.website.cookies_bar = True
 
     def variante_mostrada(self):
-        combinacion = self.sofa._get_first_possible_combination()
-        return self.sofa._get_variant_for_combination(combinacion)
+        combinacion = self.crema._get_first_possible_combination()
+        return self.crema._get_variant_for_combination(combinacion)
 
     def carrito_del_cliente(self, producto=None):
         self.authenticate(self.cliente.login, 'clave-cliente-meta-123')
-        producto = producto or self.mesa
+        producto = producto or self.lampara
         self.make_jsonrpc_request('/shop/cart/add', {
             'product_template_id': producto.product_tmpl_id.id, 'product_id': producto.id, 'quantity': 2})
         return self.env['sale.order'].search([('partner_id', '=', self.cliente_partner.id),
@@ -102,8 +102,8 @@ class TestRender(SitioMetaCase):
         self.authenticate(None, None)
         html = {
             'portada': self.url_open('/').text,
-            'tienda': self.url_open('/shop?search=mesa').text,
-            'ficha': self.url_open(self.sofa.website_url).text,
+            'tienda': self.url_open('/shop?search=lampara').text,
+            'ficha': self.url_open(self.crema.website_url).text,
         }
         self.carrito_del_cliente()
         html['checkout'] = self.url_open('/shop/checkout').text
@@ -133,7 +133,7 @@ class TestRender(SitioMetaCase):
         self.assertTrue(datos, 'El checkout lleva los datos de InitiateCheckout')
         datos = json.loads(datos.group(1))
         self.assertEqual(datos['evento'], 'InitiateCheckout')
-        self.assertEqual(datos['datos']['content_ids'], [str(self.mesa.id)])
+        self.assertEqual(datos['datos']['content_ids'], [str(self.lampara.id)])
         self.assertEqual(datos['datos']['num_items'], 2)
         self.assertEqual(datos['datos']['value'], 240.0)
         self.assertIn('"evento": "AddPaymentInfo"', paginas['confirmacion'])
@@ -157,7 +157,7 @@ class TestRender(SitioMetaCase):
     def test_el_personal_con_sesion_no_lleva_pixel(self):
         self.encender_pixel()
         self.authenticate(self.vendedora.login, 'clave-vendedora-meta-123')
-        for ruta in ('/', self.sofa.website_url):
+        for ruta in ('/', self.crema.website_url):
             with self.subTest(ruta=ruta):
                 html = self.url_open(ruta).text
                 self.assertNotIn('dcasa-meta-pixel', html)
@@ -175,12 +175,12 @@ class TestRender(SitioMetaCase):
     def test_el_carrito_de_odoo_trae_el_id_de_la_variante_sin_tocar_sus_claves(self):
         self.authenticate(None, None)
         apagado = self.make_jsonrpc_request('/shop/cart/add', {
-            'product_template_id': self.mesa.product_tmpl_id.id, 'product_id': self.mesa.id, 'quantity': 1})
+            'product_template_id': self.lampara.product_tmpl_id.id, 'product_id': self.lampara.id, 'quantity': 1})
         self.assertNotIn('dcasa_meta_id', apagado['tracking_info'][0])
         self.encender_pixel()
         variante = self.variante_mostrada()
         encendido = self.make_jsonrpc_request('/shop/cart/add', {
-            'product_template_id': self.sofa.id, 'product_id': variante.id, 'quantity': 1})
+            'product_template_id': self.crema.id, 'product_id': variante.id, 'quantity': 1})
         info = encendido['tracking_info'][0]
         self.assertEqual(info['dcasa_meta_id'], str(variante.id))
         self.assertIn('item_id', info, 'Las claves de Odoo siguen ahí')
@@ -257,7 +257,7 @@ class TestCheckout(SitioMetaCase):
         self.encender_ventas_web()
         self.authenticate(None, None)
         self.make_jsonrpc_request('/shop/cart/add', {
-            'product_template_id': self.mesa.product_tmpl_id.id, 'product_id': self.mesa.id, 'quantity': 1})
+            'product_template_id': self.lampara.product_tmpl_id.id, 'product_id': self.lampara.id, 'quantity': 1})
         pedido = self.env['sale.order'].search([('website_id', '=', self.website.id)], order='id desc', limit=1)
         pedido.sudo().partner_id = self.cliente_partner  # una ficha vieja colgada del carrito
         respuesta = self.make_jsonrpc_request('/dcasa/meta/consentimiento-compra', {'acepta': True})

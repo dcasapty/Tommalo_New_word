@@ -168,8 +168,8 @@ class ProductTemplate(models.Model):
         string='Precio por par', digits='Product Price',
         compute='_compute_dcasa_precio_par', inverse='_inverse_dcasa_precio_par',
         help='Promoción «2 por…»: lo que cuestan 2 juntas (sin ITBMS). Cada par se cobra a este precio y una suelta va '
-             'a su precio normal (3 = un par + una normal). Lo pone Gerencia. Vacío: sin promoción. Con varias variantes, cada '
-             'una tiene el suyo.')
+             'a su precio normal (3 = un par + una normal). Lo pone Gerencia. Vacío: sin '
+             'promoción. Con varias variantes, cada una tiene el suyo.')
 
     @api.depends('product_variant_ids.dcasa_precio_par')
     def _compute_dcasa_precio_par(self):

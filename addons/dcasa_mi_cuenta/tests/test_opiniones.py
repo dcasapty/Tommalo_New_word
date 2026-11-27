@@ -13,15 +13,15 @@ class TestOpinionesMiCuenta(MiCuentaComun, HttpCase):
     def setUp(self):
         super().setUp()
         self.preparar()
-        # La factura del pedido de la socia va en abono (a medias): se paga lo que falta para poder opinar del sofá.
+        # La factura del pedido de la socia va en abono (a medias): se paga lo que falta para poder opinar del crema.
         self._pagar(self.factura, self.factura.amount_residual, self.inicio_abono)
         self.assertIn(self.factura.payment_state, ('paid', 'in_payment'))
         self.Resena = self.env['dcasa.resena'].sudo()
         self.usuario = new_test_user(self.env, login='mc_opina', password=CLAVE, groups='base.group_portal',
                                      partner_id=self.socia.id, name=self.socia.name)
 
-    def opinar(self, producto=None, estrellas='5', texto='Quedó perfecto en la sala.'):
-        return self.post(OPINIONES, producto_id=str((producto or self.sofa).product_tmpl_id.id), estrellas=estrellas,
+    def opinar(self, producto=None, estrellas='5', texto='Quedó perfecto en casa.'):
+        return self.post(OPINIONES, producto_id=str((producto or self.crema).product_tmpl_id.id), estrellas=estrellas,
                          texto=texto)
 
     def mias(self):
@@ -38,20 +38,20 @@ class TestOpinionesMiCuenta(MiCuentaComun, HttpCase):
         respuesta = self.url_open(OPINIONES)
         self.assertEqual(respuesta.headers.get('Cache-Control'), 'no-store')
         html = respuesta.text
-        self.assertIn('Sofá Milán de Prueba', html)
-        self.assertIn(f'name="producto_id" value="{self.sofa.product_tmpl_id.id}"', html)
+        self.assertIn('Crema Milán de Prueba', html)
+        self.assertIn(f'name="producto_id" value="{self.crema.product_tmpl_id.id}"', html)
         self.assertNotIn(f'value="{self.cojin.product_tmpl_id.id}"', html, 'El cojín no está en la tienda')
         respuesta = self.opinar()
         self.assertEqual(self.ruta(respuesta), OPINIONES)
         self.assertIn('¡Gracias por contarnos!', respuesta.text)
         self.assertIn('La estamos leyendo', respuesta.text)
-        self.assertNotIn(f'name="producto_id" value="{self.sofa.product_tmpl_id.id}"', respuesta.text,
+        self.assertNotIn(f'name="producto_id" value="{self.crema.product_tmpl_id.id}"', respuesta.text,
                          'Ya opinó: el formulario de ese producto ya no sale')
         (resena,) = self.mias()
         self.assertEqual((resena.estado, resena.estrellas, resena.texto),
-                         ('pendiente', 5, 'Quedó perfecto en la sala.'))
+                         ('pendiente', 5, 'Quedó perfecto en casa.'))
         # por revisar: la ficha no la enseña
-        self.assertNotIn('Quedó perfecto en la sala.', self.url_open(self.sofa.website_url).text)
+        self.assertNotIn('Quedó perfecto en casa.', self.url_open(self.crema.website_url).text)
         # una sola vez
         self.assertIn('una vez por producto', self.opinar(estrellas='1').text)
         self.assertEqual(len(self.mias()), 1)
@@ -71,10 +71,10 @@ class TestOpinionesMiCuenta(MiCuentaComun, HttpCase):
         self.assertNotIn('name="producto_id"', html)
         respuesta = self.opinar()
         self.assertIn('Puedes opinar de lo que compraste y ya pagaste', respuesta.text)
-        self.assertFalse(self.Resena.search([('product_tmpl_id', '=', self.sofa.product_tmpl_id.id)]))
+        self.assertFalse(self.Resena.search([('product_tmpl_id', '=', self.crema.product_tmpl_id.id)]))
 
     def test_lo_de_otro_cliente_no_cuenta(self):
-        """El otro cliente tiene el sofá facturado (sin pagar): ni él opina ni la socia por él."""
+        """El otro cliente tiene el crema facturado (sin pagar): ni él opina ni la socia por él."""
         usuario_otro = new_test_user(self.env, login='mc_otro_op', password=CLAVE, groups='base.group_portal',
                                      partner_id=self.otro.id, name=self.otro.name)
         self.authenticate(usuario_otro.login, CLAVE)
@@ -84,7 +84,7 @@ class TestOpinionesMiCuenta(MiCuentaComun, HttpCase):
     def test_estrellas_fuera_de_rango_o_sin_csrf(self):
         self.authenticate(self.usuario.login, CLAVE)
         self.assertIn('Elige de 1 a 5 estrellas', self.opinar(estrellas='9').text)
-        sin_token = self.url_open(OPINIONES, data={'producto_id': str(self.sofa.product_tmpl_id.id), 'estrellas': '5'})
+        sin_token = self.url_open(OPINIONES, data={'producto_id': str(self.crema.product_tmpl_id.id), 'estrellas': '5'})
         self.assertNotEqual(sin_token.status_code, 200)
         self.assertFalse(self.mias())
 

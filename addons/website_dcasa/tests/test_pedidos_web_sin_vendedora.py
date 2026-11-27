@@ -41,7 +41,7 @@ class TestPedidosWebSinVendedora(TransactionCase):
             'user_id': cls.b.id})
         cls.programa = env['res.partner'].create({'name': 'Vendedor del programa (link /v/)'})
         cls.producto = env['product.product'].create({
-            'name': 'Mesa de la web', 'type': 'consu', 'list_price': 100.0, 'taxes_id': [Command.clear()]})
+            'name': 'Lampara de la web', 'type': 'consu', 'list_price': 100.0, 'taxes_id': [Command.clear()]})
 
     def _pedido_web(self, cliente=None, **valores):
         """Como lo arma la tienda: con sudo, del sitio web, sin tocar la vendedora."""

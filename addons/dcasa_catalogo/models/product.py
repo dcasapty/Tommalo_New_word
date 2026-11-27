@@ -15,7 +15,7 @@ class ProductTemplate(models.Model):
              'Se muestran en la ficha de la tienda.')
     dcasa_combo = fields.Char(
         string='Precio en combo o el par',
-        help='Texto del Excel de precios, p. ej. «Combo con colchón $349.99» o «El par (-10%) $28.78». '
+        help='Texto del Excel de precios, p. ej. «Combo con pieza extra $49.99» o «El par (-10%) $28.78». '
              'Se muestra en la ficha separado del precio.')
     # El «A la mano» de Odoo se calcula al vuelo y por eso la lista de productos no lo puede ordenar, agrupar ni sumar
     # por categoría. Este es el mismo número guardado en el producto: marketing ordena por mayor o menor stock, y
@@ -120,7 +120,7 @@ class ProductProduct(models.Model):
 
     @api.model
     def _search_display_name(self, operator, value):
-        """«colchón queen» encuentra el colchón en tamaño Queen: cada palabra puede estar en el
+        """«crema grande» encuentra la crema en tamaño Grande: cada palabra puede estar en el
         nombre, la referencia o el tamaño (en Odoo, la frase entera tenía que estar en el nombre)."""
         palabras = value.split() if operator == 'ilike' and isinstance(value, str) else []
         if len(palabras) < 2:

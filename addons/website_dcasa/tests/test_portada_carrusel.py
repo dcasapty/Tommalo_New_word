@@ -1,20 +1,20 @@
 # ruff: noqa: E501  (JavaScript del navegador embebido en texto)
 """Portada: el hero con los productos que elige Gerencia (models/portada.py, views/homepage_templates.xml,
-static/src/js/portada.js), con la marca de Tommalo (docs/MARCA_TOMMALO.md, 2026-11-19). Lo que se fija aquí:
+static/src/js/portada.js). Lo que se fija aquí:
 
 * El ajuste: «Sitio web › Carrusel de la portada», una pantalla con los segundos que dura cada foto (3 de fábrica,
-  de 2 a 15) y la lista de productos, que se ordena arrastrando; solo Gerencia y los administradores la ven y la cambian
-  (viene de D'CASA, 2026-11-19: «demoran… 5 a 6 segundos… de unos 2 a 3, o poderlo definir yo mismo»).
-* Vacío = el hero de siempre, con la foto del bebé (también si nada de la lista se puede mostrar: sin publicar o sin
-  foto). Con productos: el mismo hero crema, y en el marco redondeado de la derecha sus fotos se funden unas en otras,
+  de 2 a 15) y la lista de productos, que se ordena arrastrando; solo Gerencia y los administradores la ven y la cambian.
+* Vacío = el hero de solo texto, sin foto (también si nada de la lista se puede mostrar: sin publicar o sin
+  foto). Con productos: el mismo hero, y en el marco redondeado de la derecha sus fotos se funden unas en otras,
   en orden al azar, con un zoom lento que no para. Ni nombres de producto, ni enlaces, ni flechas, ni barras, ni
   pausa: el visitante no maneja nada, así que las fotos son decorativas (aria-hidden, alt vacío). La primera es la
   imagen LCP (precargada, «eager», prioridad alta).
-* Sin velo ni degradado sobre las fotos: el texto va sobre el crema, al lado (encima en el celular).
-* El carrusel nace UNA vez con los productos aprobados (por su código público); lo que no existe se salta.
+* Sin velo ni degradado sobre las fotos: el texto va sobre el fondo, al lado (encima en el celular).
+* El carrusel nace UNA vez con los productos de CARRUSEL_INICIAL (vacío en Tommalo; aquí se prueba con códigos de
+  PRUEBA): lo que no existe se salta.
 * Con el editor del sitio abierto (quien tiene el grupo de diseñador recibe las plantillas con sus marcas) la portada
   abre, y un hero guardado con el editor sigue dentro de su condición.
-* La sección «de cine» (dos cintas de fotos de las categorías de muebles) ya no sale: se quitó con la marca.
+* La sección «de cine» ya no sale.
 * En Chrome: la foto llena su marco, el zoom corre, la foto cambia sola dentro del tiempo elegido (y quieta con
   movimiento reducido), el fundido y el zoom van a escala con ese tiempo, no hay NADA que tocar y nada ensancha la
   página.
@@ -23,6 +23,7 @@ import base64
 import contextlib
 import io
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from lxml import html as lhtml
 from PIL import Image
@@ -71,11 +72,11 @@ class TestCarruselPortada(HttpCase):
         cls.Diapositiva.search([]).unlink()
         base = {'type': 'consu', 'is_storable': False, 'sale_ok': True, 'is_published': True, 'list_price': 45.0}
         Plantilla = cls.env['product.template']
-        cls.camas = Plantilla.browse()   # (el nombre viene de la copia de origen: aquí son cajas de pañales)
+        cls.cremas = Plantilla.browse()   # (el nombre viene de la copia de origen: aquí son cajas de pañales)
         for nombre, color in (('CAJA NATEEN TALLA M', (20, 20, 20)),
                               ('CAJA NATEEN TALLA L', (230, 150, 170)),
                               ('CAJA WIPES DE AGUA', (220, 205, 180))):
-            cls.camas |= Plantilla.create({**base, 'name': f'ZZCARRUSEL {nombre}', 'image_1920': _foto(color)})
+            cls.cremas |= Plantilla.create({**base, 'name': f'ZZCARRUSEL {nombre}', 'image_1920': _foto(color)})
         cls.sin_publicar = Plantilla.create({**base, 'name': 'ZZCARRUSEL CAJA SIN PUBLICAR', 'is_published': False,
                                              'image_1920': _foto((90, 90, 90))})
         cls.sin_foto = Plantilla.create({**base, 'name': 'ZZCARRUSEL CAJA SIN FOTO'})
@@ -101,18 +102,18 @@ class TestCarruselPortada(HttpCase):
 
     def test_solo_gerencia_y_administradores_eligen_el_carrusel(self):
         Diapositiva = self.Diapositiva.with_user(self.gerente)
-        diapositiva = Diapositiva.create({'product_tmpl_id': self.camas[0].id})
+        diapositiva = Diapositiva.create({'product_tmpl_id': self.cremas[0].id})
         self.assertEqual(diapositiva.website_id, self.website, 'por defecto, el sitio de siempre')
         diapositiva.sequence = 5
-        diapositiva.product_tmpl_id = self.camas[1]
+        diapositiva.product_tmpl_id = self.cremas[1]
         self.assertTrue(diapositiva.en_portada)
         diapositiva.unlink()
         admin = self.env.ref('base.user_admin')
-        self.Diapositiva.with_user(admin).create({'product_tmpl_id': self.camas[0].id}).unlink()
+        self.Diapositiva.with_user(admin).create({'product_tmpl_id': self.cremas[0].id}).unlink()
         for usuario in (self.vendedora, self.interno):
             with self.subTest(usuario=usuario.login):
                 with self.assertRaises(AccessError):
-                    self.Diapositiva.with_user(usuario).create({'product_tmpl_id': self.camas[0].id})
+                    self.Diapositiva.with_user(usuario).create({'product_tmpl_id': self.cremas[0].id})
                 with self.assertRaises(AccessError):
                     self.Diapositiva.with_user(usuario).search([])
         menu = 'website_dcasa.menu_dcasa_portada_diapositiva'
@@ -124,41 +125,40 @@ class TestCarruselPortada(HttpCase):
 
     @mute_logger('odoo.sql_db')
     def test_un_producto_va_una_sola_vez_y_la_lista_dice_cual_no_sale(self):
-        self._elegir(self.camas[0], self.sin_publicar, self.sin_foto)
+        self._elegir(self.cremas[0], self.sin_publicar, self.sin_foto)
         with self.assertRaises(IntegrityError), self.cr.savepoint():
-            self.Diapositiva.create({'website_id': self.website.id, 'product_tmpl_id': self.camas[0].id})
+            self.Diapositiva.create({'website_id': self.website.id, 'product_tmpl_id': self.cremas[0].id})
         por_producto = {d.product_tmpl_id: d.en_portada for d in self.Diapositiva.search([])}
-        self.assertEqual(por_producto, {self.camas[0]: True, self.sin_publicar: False, self.sin_foto: False})
+        self.assertEqual(por_producto, {self.cremas[0]: True, self.sin_publicar: False, self.sin_foto: False})
 
     # ------------------------------------------------------------------ la portada
 
-    def test_vacio_queda_el_hero_de_siempre(self):
+    def test_vacio_queda_el_hero_de_solo_texto(self):
         self.Diapositiva.search([]).unlink()
         texto, arbol = self._portada()
         self.assertIsNone(self._vitrina(arbol))
         self.assertTrue(arbol.xpath('//div[@id="oe_structure_dcasa_hero"]//section[contains(@class, "o_dcasa_hero")]'))
-        self.assertIn('/website_dcasa/static/src/img/hero-bebe-1200.webp', texto, 'la foto del bebé de tommalo.example')
-        precarga = arbol.xpath('//head/link[@rel="preload"][@as="image"]')
-        self.assertEqual([p.get('href') for p in precarga], ['/website_dcasa/static/src/img/hero-bebe-1200.webp'])
-        self.assertIn('hero-bebe-800.webp 800w', precarga[0].get('imagesrcset'))
+        self.assertIn('PENDIENTE: titular de la portada', texto)
+        self.assertNotIn('hero-bebe', texto, 'sin foto de hero')
+        self.assertFalse(arbol.xpath('//div[@id="oe_structure_dcasa_hero"]//img'), 'el hero de solo texto no lleva foto')
+        self.assertFalse(arbol.xpath('//head/link[@rel="preload"][@as="image"]'), 'y no hay foto que precargar')
 
     def test_con_productos_el_fondo_son_las_fotos_y_encima_solo_el_texto(self):
         """El hero es un fondo: una foto por producto, en el orden del panel, y encima el texto de siempre.
 
-        Nada que el visitante pueda tocar (la dueña, 2026-11-17: «no quiero ni siquiera que el usuario tenga control
-        de este carrusel», «ni siquiera tiene que tener el nombre del producto»): ni enlaces, ni nombres, ni flechas,
+        Nada que el visitante pueda tocar (el visitante no maneja el carrusel ni ve el nombre del producto): ni enlaces, ni nombres, ni flechas,
         ni barras, ni pausa. Por eso la pila de fotos es decorativa y el lector de pantalla no la lee.
         """
-        orden = [self.camas[2], self.camas[0], self.camas[1]]
+        orden = [self.cremas[2], self.cremas[0], self.cremas[1]]
         self._elegir(orden[0], self.sin_publicar, orden[1], self.sin_foto, orden[2])
         texto, arbol = self._portada()
         vitrina = self._vitrina(arbol)
         self.assertIsNotNone(vitrina, 'con productos elegidos, el hero es el fondo en movimiento')
         self.assertFalse(arbol.xpath('//div[@id="oe_structure_dcasa_hero"]'), 'y no el de siempre')
-        self.assertNotIn('hero-bebe', texto, 'y no la foto del bebé')
+        self.assertNotIn('hero-bebe', texto)
         self.assertEqual(len(arbol.xpath('//h1')), 1, 'un solo titular en la página')
         self.assertEqual(' '.join(vitrina.xpath('.//h1')[0].text_content().split()),
-                         'Cuidado hipoalergénico para la piel de tu bebé')
+                         'PENDIENTE: titular de la portada')
         self.assertEqual(vitrina.xpath('.//a[contains(@class, "btn-primary")]/@href'), ['/shop'])
 
         pila = vitrina.xpath('.//div[contains(@class, "o_dcasa_vitrina_fotos")]')[0]
@@ -205,11 +205,10 @@ class TestCarruselPortada(HttpCase):
         self.assertEqual(precarga[0].get('imagesrcset'), fuente)
         self.assertEqual(precarga[0].get('fetchpriority'), 'high')
 
-    def test_el_mismo_hero_crema_con_su_boton_naranja(self):
-        """Con productos, el hero es el de tommalo.example: el antetítulo en píldora, el titular, el subtítulo y el único
-        botón («Ver el catálogo», el principal: naranja con letra navy). Sin la clase del hero de siempre ni la de la
-        foto oscura, y sin el botón de WhatsApp de la copia de origen."""
-        self._elegir(*self.camas)
+    def test_el_mismo_hero_con_su_boton_principal(self):
+        """Con productos, el hero lleva: el antetítulo en píldora, el titular, el subtítulo y el único botón («Ver el
+        catálogo», el principal). Sin la clase del hero de solo texto ni la de la foto oscura, y sin botón de WhatsApp."""
+        self._elegir(*self.cremas)
         _texto, arbol = self._portada()
         vitrina = self._vitrina(arbol)
         panel = vitrina.xpath('.//div[contains(@class, "o_dcasa_vitrina_panel")]')[0]
@@ -220,14 +219,13 @@ class TestCarruselPortada(HttpCase):
         self.assertEqual(len(vitrina.xpath('.//span[contains(@class, "o_dcasa_hero_mancha")]')), 2, 'las manchas suaves')
 
     def test_la_seccion_de_cine_ya_no_sale(self):
-        """La sección «de cine» (dos cintas de fotos por categoría de muebles) se quitó con la marca de Tommalo: no está
-        en la portada de su web y sus categorías eran las de la mueblería de origen."""
+        """La sección «de cine» (dos cintas de fotos por categoría) se quitó: no está en la portada."""
         _texto, arbol = self._portada()
         self.assertFalse(arbol.xpath('//section[contains(@class, "o_dcasa_cine")]'))
         self.assertFalse(hasattr(type(self.website), '_dcasa_cine'))
         self.assertFalse(hasattr(modulo_portada, 'CATEGORIAS_CINE'))
 
-    def test_si_nada_se_puede_mostrar_vuelve_el_hero_de_siempre(self):
+    def test_si_nada_se_puede_mostrar_vuelve_el_hero_de_solo_texto(self):
         self._elegir(self.sin_publicar, self.sin_foto)
         _texto, arbol = self._portada()
         self.assertIsNone(self._vitrina(arbol))
@@ -235,7 +233,7 @@ class TestCarruselPortada(HttpCase):
 
     def test_un_solo_producto_una_foto_quieta(self):
         """Con un solo producto el fondo es esa foto, con su zoom lento; no hay nada más que enseñar."""
-        self._elegir(self.camas[1])
+        self._elegir(self.cremas[1])
         _texto, arbol = self._portada()
         vitrina = self._vitrina(arbol)
         self.assertEqual(len(vitrina.xpath('.//div[contains(@class, "o_dcasa_vitrina_fotos")]/div')), 1)
@@ -246,14 +244,14 @@ class TestCarruselPortada(HttpCase):
         """Odoo guarda la portada de los visitantes hasta una hora: el carrusel va en la clave de esa memoria."""
         self.Diapositiva.search([]).unlink()
         self.assertIsNone(self._vitrina(self._portada()[1]))
-        self._elegir(self.camas[0], self.camas[1])
+        self._elegir(self.cremas[0], self.cremas[1])
         self.assertIsNotNone(self._vitrina(self._portada()[1]), 'elegir productos se ve sin esperar')
-        self._elegir(self.camas[1], self.camas[0])
+        self._elegir(self.cremas[1], self.cremas[0])
         fotos = self._vitrina(self._portada()[1]).xpath(
             './/div[contains(@class, "o_dcasa_vitrina_fotos")]/div//img/@src')
-        self.assertEqual([_id_del_src(f) for f in fotos], [self.camas[1].id, self.camas[0].id], 'reordenar, también')
+        self.assertEqual([_id_del_src(f) for f in fotos], [self.cremas[1].id, self.cremas[0].id], 'reordenar, también')
         self.Diapositiva.search([]).unlink()
-        self.assertIsNone(self._vitrina(self._portada()[1]), 'y vaciar la lista vuelve al hero de siempre')
+        self.assertIsNone(self._vitrina(self._portada()[1]), 'y vaciar la lista vuelve al hero de solo texto')
 
     # ------------------------------------------------------------------ los segundos de cada foto
 
@@ -275,7 +273,7 @@ class TestCarruselPortada(HttpCase):
         self.assertEqual(self.website._dcasa_hero_segundos(), 3.0, 'sin ajustes, 3 segundos por foto')
         self.assertEqual(self.website._dcasa_hero_tiempo(), '3s')
         self.assertEqual(self._ajustes().segundos, 3.0, 'y los ajustes nuevos nacen con 3')
-        self._elegir(*self.camas)
+        self._elegir(*self.cremas)
         self.assertEqual(self._tiempo_de_la_portada(), '--vitrina-tiempo: 3s;', 'la plantilla lo escribe en el fondo')
 
     def test_un_sitio_nuevo_trae_los_3_segundos_de_fabrica_y_los_sitios_no_se_mezclan(self):
@@ -292,7 +290,7 @@ class TestCarruselPortada(HttpCase):
             self.env['dcasa.portada.ajustes'].sudo().create({'website_id': otro.id})
 
     def test_la_portada_usa_los_segundos_que_se_eligen(self):
-        self._elegir(*self.camas)
+        self._elegir(*self.cremas)
         for valor, texto in ((2, '2s'), (2.5, '2.5s'), (7.5, '7.5s'), (15, '15s')):
             with self.subTest(segundos=valor):
                 self._segundos(valor)
@@ -334,7 +332,7 @@ class TestCarruselPortada(HttpCase):
     def test_un_valor_suelto_en_la_base_no_rompe_la_portada(self):
         """Si alguien dejara en la base un valor que no sirve (SQL a mano: fuera de rango o NaN), la portada sigue y usa
         los 3 segundos de fábrica."""
-        self._elegir(*self.camas)
+        self._elegir(*self.cremas)
         ajustes = self._ajustes()
         for suelto in ('0', '0.2', '99', '1000000', "'NaN'"):
             with self.subTest(suelto=suelto):
@@ -345,7 +343,7 @@ class TestCarruselPortada(HttpCase):
 
     def test_cambiar_los_segundos_cambia_la_firma_y_la_portada_guardada(self):
         """Odoo guarda la portada de los visitantes hasta una hora: los segundos van en la clave de esa memoria."""
-        self._elegir(*self.camas)
+        self._elegir(*self.cremas)
         self._segundos(3)
         pedido = SimpleNamespace(website=self.website, lang=SimpleNamespace(code='es_419'),
                                  httprequest=SimpleNamespace(path='/'), session=SimpleNamespace(debug=''))
@@ -363,10 +361,10 @@ class TestCarruselPortada(HttpCase):
         """La lista de la pantalla cuelga de los ajustes del sitio: quien crea una diapositiva solo con el sitio (la
         siembra, las pruebas) la deja igual de bien puesta, y la lista de un sitio no trae las del otro."""
         otro = self.env['website'].create({'name': 'Sitio de prueba del carrusel'})
-        self._elegir(self.camas[0], self.camas[1])
-        propia = self.Diapositiva.create({'website_id': otro.id, 'product_tmpl_id': self.camas[2].id})
+        self._elegir(self.cremas[0], self.cremas[1])
+        propia = self.Diapositiva.create({'website_id': otro.id, 'product_tmpl_id': self.cremas[2].id})
         self.assertEqual(propia.ajustes_id, self._ajustes(otro))
-        self.assertEqual(self._ajustes().diapositiva_ids.product_tmpl_id, self.camas[0] | self.camas[1])
+        self.assertEqual(self._ajustes().diapositiva_ids.product_tmpl_id, self.cremas[0] | self.cremas[1])
         self.assertEqual(self._ajustes(otro).diapositiva_ids, propia)
         # Desde la lista del padre llega el padre y no el sitio: el sitio es el del padre, no el «actual».
         nueva = self.Diapositiva.create({'ajustes_id': self._ajustes(otro).id, 'product_tmpl_id': self.sin_publicar.id})
@@ -382,9 +380,9 @@ class TestCarruselPortada(HttpCase):
             self.assertEqual(pantalla.segundos, 3.0)
             pantalla.segundos = 2.5
             with pantalla.diapositiva_ids.new() as linea:
-                linea.product_tmpl_id = self.camas[0]
+                linea.product_tmpl_id = self.cremas[0]
         self.assertEqual(ajustes.segundos, 2.5)
-        self.assertEqual(ajustes.diapositiva_ids.product_tmpl_id, self.camas[0])
+        self.assertEqual(ajustes.diapositiva_ids.product_tmpl_id, self.cremas[0])
         self.assertEqual(ajustes.diapositiva_ids.website_id, self.website)
         self.assertEqual(self.website._dcasa_hero_tiempo(), '2.5s')
         # Nada del sitio mismo: Gerencia ya no escribe en `website` (ni siquiera para esto).
@@ -413,7 +411,7 @@ class TestCarruselPortada(HttpCase):
                     ajustes.with_user(usuario).write({'segundos': 2})
                 with self.assertRaises(AccessError):
                     ajustes.with_user(usuario).write({'diapositiva_ids': [Command.create(
-                        {'product_tmpl_id': self.camas[0].id})]})
+                        {'product_tmpl_id': self.cremas[0].id})]})
                 with self.assertRaises(AccessError):
                     self.env['dcasa.portada.ajustes'].with_user(usuario).search([])
         self.assertEqual(ajustes.segundos, 3.0)
@@ -444,49 +442,58 @@ class TestCarruselPortada(HttpCase):
                 self.assertIn('HERO GUARDADO EN EL EDITOR', texto)
                 self.assertIsNone(self._vitrina(arbol))
             with self.subTest(ruta=ruta, carrusel=True):
-                self._elegir(*self.camas)
+                self._elegir(*self.cremas)
                 texto, arbol = self._portada(ruta)
                 self.assertIsNotNone(self._vitrina(arbol))
                 self.assertNotIn('HERO GUARDADO EN EL EDITOR', texto)
                 self.assertEqual(len(arbol.xpath('//div[contains(@class, "o_dcasa_vitrina_fotos")]/div')), 3)
 
-    # ------------------------------------------------------------------ nace con las camas aprobadas
+    # ------------------------------------------------------------------ nace con los productos de CARRUSEL_INICIAL
 
-    def _cama_con_codigo(self, codigo):
-        """Una cama publicada, con foto, con el código público ``codigo`` (el código solo se da al crear)."""
+    # Códigos públicos de PRUEBA con que se parchea CARRUSEL_INICIAL (en la base de Tommalo va vacío).
+    CODIGOS_DE_PRUEBA = ('DC-PRUEB1', 'DC-PRUEB2', 'DC-PRUEB3', 'DC-PRUEB4', 'DC-PRUEB5', 'DC-PRUEB6')
+
+    def _crema_con_codigo(self, codigo):
+        """Una crema publicada, con foto, con el código público ``codigo`` (el código solo se da al crear)."""
         return self.env['product.template'].create({
-            'name': f'ZZCARRUSEL CAMA {codigo}', 'sale_ok': True, 'is_published': True, 'list_price': 199.99,
+            'name': f'ZZCARRUSEL CREMA {codigo}', 'sale_ok': True, 'is_published': True, 'list_price': 199.99,
             'image_1920': _foto((120, 110, 100)), 'dcasa_codigo_publico': codigo})
 
-    def test_nace_una_vez_con_las_camas_aprobadas_y_se_salta_lo_que_no_existe(self):
+    def test_de_fabrica_el_carrusel_inicial_va_vacio(self):
+        self.assertEqual(CARRUSEL_INICIAL, ())
+
+    def test_nace_una_vez_con_los_productos_iniciales_y_se_salta_lo_que_no_existe(self):
         Param = self.env['ir.config_parameter'].sudo()
-        self.assertTrue(Param.get_param(PARAM_SEMBRADO), 'al instalar ya se intentó (en esta base no hay esas camas)')
-        # Tres de las ocho existen, creadas en otro orden; las demás no: se saltan sin error.
-        ivory, black, beige = (self._cama_con_codigo(CARRUSEL_INICIAL[i]) for i in (5, 0, 3))
+        self.assertTrue(Param.get_param(PARAM_SEMBRADO), 'al instalar ya se intentó (en esta base no hay esas cremas)')
+        # Tres de las seis existen, creadas en otro orden; las demás no: se saltan sin error.
+        quinta, primera, cuarta = (self._crema_con_codigo(self.CODIGOS_DE_PRUEBA[i]) for i in (4, 0, 3))
         self.Diapositiva.search([]).unlink()
         Param.set_param(PARAM_SEMBRADO, False)
-        self.assertEqual(self.Diapositiva._dcasa_sembrar(), 3)
+        with patch.object(modulo_portada, 'CARRUSEL_INICIAL', self.CODIGOS_DE_PRUEBA):
+            self.assertEqual(self.Diapositiva._dcasa_sembrar(), 3)
         diapositivas = self.Diapositiva.search([('website_id', '=', self.website.id)])
-        self.assertEqual(list(diapositivas.mapped('product_tmpl_id')), [black, beige, ivory],
-                         'en el orden que aprobó la dueña')
+        self.assertEqual(list(diapositivas.mapped('product_tmpl_id')), [primera, cuarta, quinta],
+                         'en el orden de CARRUSEL_INICIAL')
         self.assertTrue(Param.get_param(PARAM_SEMBRADO))
         fotos = self._vitrina(self._portada()[1]).xpath(
             './/div[contains(@class, "o_dcasa_vitrina_fotos")]/div//img/@src')
-        self.assertEqual([_id_del_src(f) for f in fotos], [black.id, beige.id, ivory.id])
+        self.assertEqual([_id_del_src(f) for f in fotos], [primera.id, cuarta.id, quinta.id])
         # Desde ahí la lista es de Gerencia: si la vacía (o la cambia), una actualización no la vuelve a llenar.
         diapositivas.unlink()
-        self.assertEqual(self.Diapositiva._dcasa_sembrar(), 0)
+        with patch.object(modulo_portada, 'CARRUSEL_INICIAL', self.CODIGOS_DE_PRUEBA):
+            self.assertEqual(self.Diapositiva._dcasa_sembrar(), 0)
         self.assertFalse(self.Diapositiva.search_count([]))
-        self.assertIsNone(self._vitrina(self._portada()[1]), 'vacía: el hero de siempre')
+        self.assertIsNone(self._vitrina(self._portada()[1]), 'vacía: el hero de solo texto')
 
     def test_no_pisa_una_lista_que_ya_tiene_productos(self):
-        self._cama_con_codigo(CARRUSEL_INICIAL[0])
-        self._elegir(self.camas[2])
+        self._crema_con_codigo(self.CODIGOS_DE_PRUEBA[0])
+        self._elegir(self.cremas[2])
         self.env['ir.config_parameter'].sudo().set_param(PARAM_SEMBRADO, False)
-        self.assertEqual(self.Diapositiva._dcasa_sembrar(), 0)
-        self.assertEqual(self.Diapositiva.search([]).product_tmpl_id, self.camas[2])
+        with patch.object(modulo_portada, 'CARRUSEL_INICIAL', self.CODIGOS_DE_PRUEBA):
+            self.assertEqual(self.Diapositiva._dcasa_sembrar(), 0)
+        self.assertEqual(self.Diapositiva.search([]).product_tmpl_id, self.cremas[2])
 
-    def test_sin_ninguna_cama_aprobada_queda_el_hero_de_siempre(self):
+    def test_sin_ningun_producto_inicial_queda_el_hero_de_solo_texto(self):
         self.Diapositiva.search([]).unlink()
         self.env['ir.config_parameter'].sudo().set_param(PARAM_SEMBRADO, False)
         self.assertEqual(self.Diapositiva._dcasa_sembrar(), 0)
@@ -524,7 +531,7 @@ class TestCarruselPortada(HttpCase):
         return res['result']['value']
 
     def test_en_la_computadora_las_fotos_llenan_su_marco_y_cambian_solas(self):
-        self._elegir(*self.camas)
+        self._elegir(*self.cremas)
         r = self._en_chrome(PASOS_COMPUTADORA)
         self.assertTrue(r['fotoEnSuMarco'], 'la foto llena el marco redondeado')
         self.assertEqual(r['radioMarco'], '24px')
@@ -542,7 +549,7 @@ class TestCarruselPortada(HttpCase):
     def _ritmo_en_chrome(self, segundos, espera_ms):
         """Pone los segundos en el sitio, abre la portada en Chrome y mide el ritmo del fondo (PASOS_RITMO)."""
         self._segundos(segundos)
-        self._elegir(*self.camas)
+        self._elegir(*self.cremas)
         return self._en_chrome(PASOS_RITMO.replace('ESPERA_MAX', str(espera_ms)))['ritmo']
 
     def _comprobar_escala(self, r, segundos):
@@ -573,13 +580,13 @@ class TestCarruselPortada(HttpCase):
     def test_con_2_segundos_hay_fundido_y_se_ve_una_sola_foto_al_asentarse(self):
         """A 2 s el fundido (0,7 s) deja pasar a la siguiente foto sin dejar dos a medias para siempre."""
         self._segundos(2)
-        self._elegir(*self.camas)
+        self._elegir(*self.cremas)
         r = self._en_chrome(PASOS_ASENTARSE)
         self.assertEqual(r['visiblesAlAsentarse'], 1, 'tras el fundido queda una sola foto a la vista')
         self.assertGreaterEqual(r['cambios'], 2, 'y siguió cambiando de foto a foto, sin quedarse trabada')
 
     def test_con_movimiento_reducido_nada_se_mueve_solo(self):
-        self._elegir(*self.camas)
+        self._elegir(*self.cremas)
         r = self._en_chrome(PASOS_REDUCIDO, reducido=True)
         self.assertEqual(r['trasEsperar'], 0, 'la foto no cambia sola')
         self.assertEqual(r['zoom'], 'none', 'y el zoom tampoco se mueve')
@@ -588,7 +595,7 @@ class TestCarruselPortada(HttpCase):
         self.assertTrue(r['nadaEnsancha'])
 
     def test_en_el_telefono_el_texto_va_arriba_y_las_fotos_debajo(self):
-        self._elegir(*self.camas)
+        self._elegir(*self.cremas)
         r = self._en_chrome(PASOS_TELEFONO, ancho=390, alto=844, movil=True)
         self.assertTrue(r['fotoEnSuMarco'], 'la foto llena su marco')
         self.assertTrue(r['textoArriba'], 'en el celular el texto va arriba y las fotos debajo, como en su web')

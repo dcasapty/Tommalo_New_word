@@ -78,8 +78,9 @@ MAX_CLAVES_CACHE_VITRINA = 64
 def limpiar_cache_vitrina():
     """Vacía las fichas guardadas de «Lo más buscado» (para las pruebas y para quien cambie la tienda a mano)."""
     _CACHE_VITRINA.clear()
-# Las sugerencias del saludo dicen la categoría con la palabra que escribiría un cliente («Camas», no «Recámaras»).
-NOMBRE_SUGERENCIA = {'recamaras': 'Camas', 'oficina': 'Escritorios'}
+# Las sugerencias del saludo dicen la categoría con la palabra que escribiría un cliente, si es distinta del nombre de la
+# categoría de la portada (clave → palabra). Vacío: se usa el nombre de la categoría (Belleza, Hogar, Salud, Otros).
+NOMBRE_SUGERENCIA = {}
 # Lo que la página necesita de cada producto para pintar su tarjeta (lo mismo que valida `productoValido` en el JS).
 CAMPOS_TARJETA = ('producto_id', 'plantilla_id', 'nombre', 'precio_texto', 'disponibilidad', 'imagen', 'ruta',
                   'agregable')
@@ -160,8 +161,8 @@ class DcasaBrianTiendaAPI(http.Controller):
         return _json(resultado)
 
     def _sugerencias(self):
-        """Las dos categorías de la portada con más productos publicados, para las sugerencias del saludo (pedido de la
-        dueña, 2026-11-15, «opción 2»: la lista fija decía «Salas» con 2 productos y no decía «Camas», con 121). Es el
+        """Las dos categorías de la portada con más productos publicados, para las sugerencias del saludo (una lista
+        fija podía decir una categoría casi vacía y no la más surtida). Es el
         mismo número que la portada pone debajo de cada categoría; con empate, el orden de la portada. Sin nada
         publicado, ninguna: la página usa las de fábrica."""
         website = request.website

@@ -1,7 +1,7 @@
 """Código público del producto (DC-K7M4PX): el que ve el cliente. Vive en dcasa_base; aquí se prueba con el catálogo
 real cargado (Productos, cotizaciones, migración de lo que ya existía).
 
-Pedido de la dueña: cada producto nuevo recibe solo un código que el cliente pueda ver y decir; el cliente no conoce los
+Pedido del negocio: cada producto nuevo recibe solo un código que el cliente pueda ver y decir; el cliente no conoce los
 códigos del proveedor.
 """
 import importlib.util
@@ -113,8 +113,8 @@ class TestCodigoPublico(TransactionCase):
         self.assertFalse(sin_codigo, sin_codigo.mapped('name'))
         del_catalogo = self.env['ir.model.data'].search([
             ('module', '=', 'dcasa_catalogo'), ('model', '=', 'product.template')]).mapped('res_id')
-        self.assertGreaterEqual(len(del_catalogo), 6, 'Los productos del catálogo de Tommalo están en la cuenta')
-        self.assertTrue(all(self.Plantilla.browse(del_catalogo).mapped('dcasa_codigo_publico')))
+        self.assertTrue(all(self.Plantilla.browse(del_catalogo).mapped('dcasa_codigo_publico')),
+                        'los del catálogo (hoy ninguno: está vacío a propósito) llevan su código')
         self.env.cr.execute('SELECT count(*), count(DISTINCT dcasa_codigo_publico) FROM product_template')
         total, distintos = self.env.cr.fetchone()
         self.assertEqual(total, distintos, 'cada código es de un solo producto')
@@ -309,8 +309,8 @@ class TestCodigoPublico(TransactionCase):
     # ------------------------------------------------------------------ buscar
 
     def test_se_encuentra_en_el_buscador_de_productos(self):
-        producto = self.producto('Zzmueble buscado por código')
-        otro = self.producto('Zzotro mueble')
+        producto = self.producto('Zzproducto buscado por código')
+        otro = self.producto('Zzotro producto')
         codigo = producto.dcasa_codigo_publico
         for escrito in (codigo, codigo.lower(), codigo.replace('-', ''), codigo[3:], codigo[3:7].lower(), codigo[:7]):
             nombres = [n for _id, n in self.Plantilla.name_search(escrito, limit=20)]

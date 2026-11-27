@@ -388,7 +388,7 @@ class TestEstadoYConfig(ApiCase):
         self.assertEqual(set(cuerpo['comentarios']), {
             'activo', 'facebook', 'instagram', 'texto_publico', 'tope_por_hora', 'publicas_por_persona',
             'privadas_por_persona'})
-        self.assertEqual(cuerpo['nombre_publico'], 'Tommalo Panamá')
+        self.assertEqual(cuerpo['nombre_publico'], 'Tommalo')
         # El horario de Tommalo (2026-11-18): lunes a sábado de 9:00 a 18:00.
         self.assertEqual(cuerpo['horario'], {'inicio': '09:00', 'fin': '18:00', 'dias': [1, 2, 3, 4, 5, 6],
                                              'zona': 'America/Panama'})
@@ -433,6 +433,9 @@ class TestHerramientasApi(ApiCase):
         return self.post('herramienta', cuerpo)
 
     def test_ejecutar_una_herramienta(self):
+        self.env.company.write({'phone': '+507 6000-0002', 'email': 'contacto@tommalo.example'})
+        if 'dcasa_whatsapp_number' in self.env['website']._fields:
+            self.env['website'].search([]).write({'dcasa_whatsapp_number': '+507 6000-0002'})
         self.post('mensaje', self.mensaje())
         conversacion = self.conversacion()
         respuesta = self.ejecutar('horario_y_tienda', conversacion_id=conversacion.id)
@@ -440,7 +443,7 @@ class TestHerramientasApi(ApiCase):
         cuerpo = respuesta.json()
         self.assertTrue(cuerpo['ok'])
         # Los datos de la empresa de fábrica (Tommalo, 2026-11-18: sin dirección todavía, con su correo de contacto).
-        self.assertEqual(cuerpo['resultado']['tienda'], 'Tommalo Panamá')
+        self.assertEqual(cuerpo['resultado']['tienda'], 'Tommalo')
         self.assertEqual(cuerpo['resultado']['correo'], 'contacto@tommalo.example')
         accion = self.env['brian.accion'].sudo().search([('herramienta', '=', 'juan_horario_y_tienda')], limit=1)
         self.assertEqual((accion.canal, accion.estado, accion.dcasa_conversacion_id),

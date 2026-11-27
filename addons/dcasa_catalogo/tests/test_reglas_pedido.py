@@ -22,59 +22,59 @@ class TestReglasPedido(TransactionCase):
         self.assertIsNone(precio_terminado_en_99(None), 'Celda vacía: no se inventa un precio')
 
     def test_codigo_que_ya_existe_va_aparte(self):
-        self.assertEqual(codigo_del_pedido('Y0300300', {'Y0300300'}, 'LTSC07'), 'Y0300300-LTSC07')
-        self.assertEqual(codigo_del_pedido('908K', {'Y0300300'}, 'LTSC07'), '908K')
+        self.assertEqual(codigo_del_pedido('ZZ0300300', {'ZZ0300300'}, 'LOTE07'), 'ZZ0300300-LOTE07')
+        self.assertEqual(codigo_del_pedido('ZZ91K', {'ZZ0300300'}, 'LOTE07'), 'ZZ91K')
 
     def filas(self):
         datos = [
-            ('908K', 'Cama tapizada King – beige', '203 × 193 × 123 cm'),
-            ('908K', 'Cama tapizada King – negro', '203 × 193 × 123 cm'),
-            ('908K', 'Cama tapizada King – gris', '203 × 193 × 123 cm'),
-            ('809Q', 'Cama tapizada Queen – beige', '213 × 158 × 120 cm'),
-            ('811Q', 'Cama tapizada Queen – beige', '213 × 158 × 120 cm'),
-            ('822F', 'Cama tapizada Full – blanco', '193 × 135 × 110 cm'),
-            ('825Q', 'Cama tapizada Queen – crema', '205 × 151 × 110 cm'),
-            ('HK-BF-022-N-F-1-W', 'Cama tapizada Full – blanco', 'Full'),
-            ('Y0400300-Q', 'Cama tapizada Queen – tela negra', '205 × 151 × 110 cm'),
-            ('Y0400400-Q', 'Cama tapizada Queen – tela marrón', '205 × 151 × 110 cm'),
+            ('ZZ91K', 'Pieza tapizada King – beige', '203 × 193 × 123 cm'),
+            ('ZZ91K', 'Pieza tapizada King – negro', '203 × 193 × 123 cm'),
+            ('ZZ91K', 'Pieza tapizada King – gris', '203 × 193 × 123 cm'),
+            ('ZZ82Q', 'Pieza tapizada Queen – beige', '213 × 158 × 120 cm'),
+            ('ZZ83Q', 'Pieza tapizada Queen – beige', '213 × 158 × 120 cm'),
+            ('ZZ84F', 'Pieza tapizada Full – blanco', '193 × 135 × 110 cm'),
+            ('ZZ85Q', 'Pieza tapizada Queen – crema', '205 × 151 × 110 cm'),
+            ('ZZ-BF-022-N-F-1-W', 'Pieza tapizada Full – blanco', 'Full'),
+            ('ZZ0400300-Q', 'Pieza tapizada Queen – tela negra', '205 × 151 × 110 cm'),
+            ('ZZ0400400-Q', 'Pieza tapizada Queen – tela marrón', '205 × 151 × 110 cm'),
         ]
         return [fila_para_comparar(*d) for d in datos]
 
     def test_foto_por_codigo(self):
         filas = self.filas()
-        r = asignar_foto('908K Cama tapizada King – Gris 203 × 193 × 123 cm.jpg', filas)
+        r = asignar_foto('ZZ91K Pieza tapizada King – Gris 203 × 193 × 123 cm.jpg', filas)
         self.assertEqual((r['fila'], r['como']), (2, 'codigo'), 'Código con varios colores: manda el color')
-        r = asignar_foto('HK-BF-022-N-F-1-W.jpg', filas)
+        r = asignar_foto('ZZ-BF-022-N-F-1-W.jpg', filas)
         self.assertEqual((r['fila'], r['como']), (7, 'codigo'))
-        r = asignar_foto('908K Cama tapizada King.jpg', filas)
+        r = asignar_foto('ZZ91K Pieza tapizada King.jpg', filas)
         self.assertIsNone(r['fila'], 'Sin color no se sabe de cuál de los tres es')
 
     def test_foto_por_descripcion(self):
         filas = self.filas()
-        r = asignar_foto('Cama tapizada Queen – crema 205 × 151 × 110 cm.jpg', filas)
-        self.assertEqual((filas[r['fila']]['codigo'], r['como']), ('825Q', 'descripcion'))
-        r = asignar_foto('Cama tapizada Full – blanco 193 × 135 × 110 cm.jpg', filas)
-        self.assertEqual(filas[r['fila']]['codigo'], '822F', 'Las medidas descartan al Full blanco sin medidas')
+        r = asignar_foto('Pieza tapizada Queen – crema 205 × 151 × 110 cm.jpg', filas)
+        self.assertEqual((filas[r['fila']]['codigo'], r['como']), ('ZZ85Q', 'descripcion'))
+        r = asignar_foto('Pieza tapizada Full – blanco 193 × 135 × 110 cm.jpg', filas)
+        self.assertEqual(filas[r['fila']]['codigo'], 'ZZ84F', 'Las medidas descartan al Full blanco sin medidas')
 
     def test_foto_dudosa_no_se_adivina(self):
         filas = self.filas()
-        archivo = 'Cama tapizada Queen – beige 213 × 158 × 120 cm.jpg'
+        archivo = 'Pieza tapizada Queen – beige 213 × 158 × 120 cm.jpg'
         r = asignar_foto(archivo, filas)
         self.assertEqual((r['fila'], r['como']), (None, 'ambigua'))
-        self.assertIn('809Q', r['nota'])
-        self.assertIn('811Q', r['nota'])
-        r = asignar_foto(archivo, filas, {archivo: ('811Q', None, 'cabecero de canales')})
-        self.assertEqual((filas[r['fila']]['codigo'], r['como']), ('811Q', 'decision'))
+        self.assertIn('ZZ82Q', r['nota'])
+        self.assertIn('ZZ83Q', r['nota'])
+        r = asignar_foto(archivo, filas, {archivo: ('ZZ83Q', None, 'cabecero de canales')})
+        self.assertEqual((filas[r['fila']]['codigo'], r['como']), ('ZZ83Q', 'decision'))
         self.assertEqual(asignar_foto('foto.jpg', filas)['como'], 'sin_coincidencia')
 
     def test_color_del_archivo_distinto_queda_avisado(self):
         filas = self.filas()
-        archivo = 'Y0400300-Q  Queen tela marron205×151×110 cm.jpg'
+        archivo = 'ZZ0400300-Q  Queen tela marron205×151×110 cm.jpg'
         r = asignar_foto(archivo, filas)
-        self.assertEqual(filas[r['fila']]['codigo'], 'Y0400300-Q')
+        self.assertEqual(filas[r['fila']]['codigo'], 'ZZ0400300-Q')
         self.assertIn('marron', r['nota'], 'Se asigna por código, pero queda el aviso en el reporte')
-        r = asignar_foto(archivo, filas, {archivo: ('Y0400400-Q', None, 'la cama es marrón')})
-        self.assertEqual(filas[r['fila']]['codigo'], 'Y0400400-Q')
+        r = asignar_foto(archivo, filas, {archivo: ('ZZ0400400-Q', None, 'la pieza es marrón')})
+        self.assertEqual(filas[r['fila']]['codigo'], 'ZZ0400400-Q')
 
 
 @tagged('post_install', '-at_install')
@@ -97,8 +97,9 @@ class TestStockDePrueba(TransactionCase):
         contar(contado, 3)
         contar(vendido, 2)
         contar(vendido, 0)
-        # Del catálogo, la talla que llegó en 0 (sin movimientos): NAT-XL.
-        del_catalogo = Producto.search([('default_code', '=', 'NAT-XL')])
+        # Un producto «del catálogo» (de prueba) que llegó en 0, sin movimientos.
+        del_catalogo = Producto.create({'name': 'Producto de catálogo de prueba', 'default_code': 'ZZ-CAT-0',
+                                        'is_storable': True})
         self.assertFalse(self.env['stock.move'].search_count([('product_id', '=', del_catalogo.id)]))
 
         parametros = self.env['ir.config_parameter'].sudo()

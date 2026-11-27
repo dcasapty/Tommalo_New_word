@@ -88,7 +88,7 @@ def _cantidad(valor):
 
 
 def frase_de_linea(pedido, fila):
-    """«1 × Sofá Roma (Color: Gris) · $50.00 c/u · −10 % · total $55.00 · va con: Combo…»."""
+    """«1 × Crema de prueba (Color: Gris) · $50.00 c/u · −10 % · total $55.00 · va con: Combo…»."""
     texto = f"{_cantidad(fila['cantidad'])} × {fila['producto']}"
     if fila['variante']:
         texto += f" ({fila['variante']})"

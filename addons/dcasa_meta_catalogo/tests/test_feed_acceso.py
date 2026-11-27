@@ -13,7 +13,7 @@ class TestFeedAcceso(MetaComun, HttpCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.mesa = cls._producto('Mesa acceso prueba Meta', 150.0)
+        cls.lampara = cls._producto('Lampara acceso prueba Meta', 150.0)
         cls.gmc = cls.env['product.feed'].create({'name': 'Google prueba', 'website_id': cls.website.id,
                                                   'product_category_ids': [(6, 0, cls.padre.ids)]})
 
@@ -30,7 +30,7 @@ class TestFeedAcceso(MetaComun, HttpCase):
         respuesta = self._pedir()
         self.assertEqual(respuesta.status_code, 404)
         self.assertNotIn(CABECERA, respuesta.content)
-        self.assertNotIn(b'Mesa acceso', respuesta.content)
+        self.assertNotIn(b'Lampara acceso', respuesta.content)
         self.feed.dcasa_activo = True
         self.assertEqual(self._pedir().status_code, 200)
 
@@ -43,7 +43,7 @@ class TestFeedAcceso(MetaComun, HttpCase):
         self.assertNotIn('Set-Cookie', respuesta.headers, 'ni sesión ni idioma: el borde no guarda nada personal')
         self.assertNotIn('Content-Encoding', respuesta.headers, 'sin gzip')
         self.assertTrue(respuesta.content.startswith(CABECERA))
-        self.assertIn(str(self.mesa.product_variant_id.id), [f['id'] for f in leer_csv(respuesta.content)])
+        self.assertIn(str(self.lampara.product_variant_id.id), [f['id'] for f in leer_csv(respuesta.content)])
 
     def test_token_malo_403_y_sin_feed_404(self):
         self.assertEqual(self._pedir(token='0' * 32).status_code, 403)
@@ -62,7 +62,7 @@ class TestFeedAcceso(MetaComun, HttpCase):
         self.website.enabled_gmc_src = True
         respuesta = self.url_open(f'/gmc.xml?feed_id={self.feed.id}&access_token={self.feed.access_token}')
         self.assertEqual(respuesta.status_code, 404)
-        self.assertNotIn(b'Mesa acceso', respuesta.content)
+        self.assertNotIn(b'Lampara acceso', respuesta.content)
         # El de Google sí funciona por su ruta (no se rompió lo nativo).
         self.assertEqual(self.url_open(f'/gmc.xml?feed_id={self.gmc.id}&access_token={self.gmc.access_token}')
                          .status_code, 200)
@@ -82,8 +82,8 @@ class TestFeedAcceso(MetaComun, HttpCase):
                 self.assertNotIn(b'127.0.0.1', respuesta.content)
 
     def test_enlaces_y_fotos_absolutos_y_https(self):
-        self.env['product.image'].create({'name': 'Extra', 'image_1920': self.mesa.image_1920,
-                                          'product_tmpl_id': self.mesa.id})
+        self.env['product.image'].create({'name': 'Extra', 'image_1920': self.lampara.image_1920,
+                                          'product_tmpl_id': self.lampara.id})
         filas = leer_csv(self._pedir().content)
         self.assertTrue(filas)
         for fila in filas:
@@ -92,7 +92,7 @@ class TestFeedAcceso(MetaComun, HttpCase):
                 with self.subTest(enlace):
                     self.assertTrue(enlace.startswith(BASE + '/'), enlace)
         # Las fotos del CSV abren (las sirve /dcasa/img, en JPEG).
-        fila = next(f for f in filas if f['id'] == str(self.mesa.product_variant_id.id))
+        fila = next(f for f in filas if f['id'] == str(self.lampara.product_variant_id.id))
         foto = self.url_open(fila['image_link'].removeprefix(BASE))
         self.assertEqual(foto.status_code, 200)
         self.assertEqual(foto.headers['Content-Type'], 'image/jpeg')

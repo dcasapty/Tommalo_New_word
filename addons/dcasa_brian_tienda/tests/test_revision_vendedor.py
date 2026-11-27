@@ -42,7 +42,7 @@ class TestRevisionVendedor(ConReglasDePrueba, TiendaCase):
                                     name='ZZRV Socia Inventada')
         cls.socia = cls.usuaria.partner_id
         cls.socia.write({'phone': '6000-0099', 'email': 'zzrv.socia@example.com', 'street': 'Calle Inventada 1',
-                         'city': 'La Chorrera', 'country_id': pais.id, 'zip': '0000'})
+                         'city': 'Ciudad de Prueba', 'country_id': pais.id, 'zip': '0000'})
 
     def setUp(self):
         super().setUp()
@@ -89,7 +89,7 @@ class TestRevisionVendedor(ConReglasDePrueba, TiendaCase):
         self.socia._dcasa_guardar_pin(PIN)
         self.env['dcasa.movimiento']._asentar(self.socia, 'ajuste', 1500, 'test', motivo='Saldo de prueba')
         self.authenticate('zzrv_socia', CLAVE)
-        self.assertTrue(self.agregar(self.base_cama).json()['ok'])
+        self.assertTrue(self.agregar(self.base_crema).json()['ok'])
         orden = self.orden()
         orden._dcasa_usar_puntos_web(premio=self.premios[10])
         premio = orden.order_line.filtered('dcasa_canje_id')
@@ -108,7 +108,7 @@ class TestRevisionVendedor(ConReglasDePrueba, TiendaCase):
         """El visitante fue al pago, eligió «Entrega a domicilio: te cotizamos por WhatsApp» (la línea de $0 que pone
         la tienda, no una persona) y volvió al chat: «súmame el envío» queda en ``ajeno`` para siempre (Andrés dice
         «No pude sumar el envío ahorita… inténtalo otra vez»)."""
-        self.agregar(self.base_cama)
+        self.agregar(self.base_crema)
         orden = self.orden()
         domicilio = self.env['sale.order']._dcasa_envio_transportista()
         orden._set_delivery_method(domicilio)            # lo que hace /shop/set_delivery_method (o /shop/checkout)
@@ -124,7 +124,7 @@ class TestRevisionVendedor(ConReglasDePrueba, TiendaCase):
         vuelve a poner la de Odoo. Con un envío que cuesta, /shop/checkout ya lo cambia (y después se puede volver a
         sumar desde el chat)."""
         self.authenticate('zzrv_socia', CLAVE)
-        self.agregar(self.base_cama, 3)                  # pasa el mínimo: envío gratis
+        self.agregar(self.base_crema, 3)                  # pasa el mínimo: envío gratis
         self.assertTrue(self.sumar(self.costa).json()['ok'])
         respuesta = self.url_open('/shop/checkout')
         self.assertTrue(respuesta.url.endswith('/shop/checkout'), respuesta.url)
@@ -137,7 +137,7 @@ class TestRevisionVendedor(ConReglasDePrueba, TiendaCase):
         self.assertFalse(orden.order_line.filtered('dcasa_envio_lugar_id'), '/shop/payment pone la de Odoo')
         self.assertEqual(orden.order_line.filtered('is_delivery').mapped('price_unit'), [0.0])
         # Con un envío que cuesta ($45: ya no pasa el mínimo), /shop/checkout lo cambia por «te cotizamos».
-        self.post('carrito/cantidad', {'producto_id': self.base_cama.product_variant_id.id, 'cantidad': 1})
+        self.post('carrito/cantidad', {'producto_id': self.base_crema.product_variant_id.id, 'cantidad': 1})
         self.assertTrue(self.sumar(self.costa).json()['ok'], 'después del pago se puede volver a sumar')
         orden.invalidate_recordset()
         self.assertEqual(orden.order_line.filtered('dcasa_envio_lugar_id').price_unit, 45.0)
@@ -151,10 +151,10 @@ class TestRevisionVendedor(ConReglasDePrueba, TiendaCase):
         el lugar se archiva). Sin las reglas que permitieron sumarlo, la tienda no lo conserva: en el siguiente cambio
         del carrito (o al pedir el carrito o su PDF) vuelve la entrega de Odoo, y el PDF no lo da como «el de nuestra
         tabla de envíos»."""
-        self.agregar(self.base_cama)
+        self.agregar(self.base_crema)
         self.assertTrue(self.sumar(self.colon).json()['ok'])
         self.env['dcasa.juan.ajustes'].obtener().cotizar_envios = False
-        self.post('carrito/cantidad', {'producto_id': self.base_cama.product_variant_id.id, 'cantidad': 2})
+        self.post('carrito/cantidad', {'producto_id': self.base_crema.product_variant_id.id, 'cantidad': 2})
         orden = self.orden()
         orden.invalidate_recordset()
         self.assertFalse(orden.order_line.filtered('dcasa_envio_lugar_id'),
@@ -163,7 +163,7 @@ class TestRevisionVendedor(ConReglasDePrueba, TiendaCase):
     def test_rv_la_tarifa_en_revision_o_el_lugar_archivado_tampoco_y_el_pdf_lo_sabe(self):
         """Lo mismo con la tarifa en revisión (al pedir el carrito) y con el lugar archivado (al armar el PDF): el
         envío sumado sale y el PDF dice lo de siempre («el costo del envío… te lo confirma una vendedora»)."""
-        self.agregar(self.base_cama)
+        self.agregar(self.base_crema)
         self.assertTrue(self.sumar(self.colon).json()['ok'])
         tarifa = self.env['dcasa.envio.tarifa'].search([], limit=1)
         with patch.object(type(tarifa), '_estado_publico', return_value={'configurada': True, 'aprobada': False,
@@ -181,7 +181,7 @@ class TestRevisionVendedor(ConReglasDePrueba, TiendaCase):
 
     def test_rv_ajeno_si_el_envio_lo_puso_una_persona(self):
         """Un envío con precio que puso una persona (no la tienda ni el chat) no se cambia: «ajeno»."""
-        self.agregar(self.base_cama)
+        self.agregar(self.base_crema)
         orden = self.orden()
         domicilio = self.env['sale.order']._dcasa_envio_transportista()
         orden.set_delivery_line(domicilio, 30.0)

@@ -125,8 +125,8 @@ class TestBuscarYFotoEnElCelular(ChromeMovilCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.mesa = cls.env['product.template'].create({
-            'name': 'Mesa de prueba de la foto', 'list_price': 59.99, 'is_published': True, 'image_1920': _foto()})
+        cls.lampara = cls.env['product.template'].create({
+            'name': 'Lampara de prueba de la foto', 'list_price': 59.99, 'is_published': True, 'image_1920': _foto()})
 
     def test_lupa_junto_al_carrito_sin_romper_la_cabecera(self):
         for ancho in ANCHOS:
@@ -157,7 +157,7 @@ class TestBuscarYFotoEnElCelular(ChromeMovilCase):
         quedan debajo, a la vista."""
         for ancho in ANCHOS:
             with self.subTest(ancho=ancho), self._chrome_movil(ancho) as browser:
-                browser.navigate_to(self.base_url() + '/shop?search=mesa', wait_stop=True)
+                browser.navigate_to(self.base_url() + '/shop?search=lampara', wait_stop=True)
                 self.assertTrue(browser._wait_ready())
                 m = self._evaluar(browser, BARRA_TIENDA)
                 self.assertLessEqual(m['pagina'], m['pantalla'])
@@ -172,7 +172,7 @@ class TestBuscarYFotoEnElCelular(ChromeMovilCase):
 
     def test_foto_en_grande_con_el_dedo(self):
         with self._chrome_movil(390) as browser:
-            browser.navigate_to(self.base_url() + self.mesa.website_url, wait_stop=True)
+            browser.navigate_to(self.base_url() + self.lampara.website_url, wait_stop=True)
             self.assertTrue(browser._wait_ready())
             m = self._evaluar(browser, GESTOS)
         self.assertTrue(m['boton'], 'la lupa sobre la foto')

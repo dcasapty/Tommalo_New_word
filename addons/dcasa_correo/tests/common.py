@@ -34,8 +34,8 @@ class CorreoCase(TransactionCase):
         cls.env = cls.env(context=dict(cls.env.context, tracking_disable=True))
         cls.ICP = cls.env['ir.config_parameter'].sudo()
         cls.company = cls.env.company
-        cls.mueble = cls.env['product.product'].create({
-            'name': 'SOFÁ CORREO', 'type': 'consu', 'list_price': 200.0, 'taxes_id': [Command.clear()]})
+        cls.articulo = cls.env['product.product'].create({
+            'name': 'CREMA CORREO', 'type': 'consu', 'list_price': 200.0, 'taxes_id': [Command.clear()]})
         cls.diario = cls.env['account.journal'].search(
             [('code', '=', 'EFE'), ('company_id', '=', cls.company.id)], limit=1)
         Partner = cls.env['res.partner']
@@ -108,7 +108,7 @@ class CorreoCase(TransactionCase):
         factura = self.env['account.move'].create({
             'move_type': 'out_invoice', 'partner_id': (partner or self.ana).id,
             'invoice_date': fields.Date.today(),
-            'invoice_line_ids': [Command.create({'product_id': self.mueble.id, 'quantity': 1, 'price_unit': precio,
+            'invoice_line_ids': [Command.create({'product_id': self.articulo.id, 'quantity': 1, 'price_unit': precio,
                                                  'tax_ids': [Command.clear()]})],
             **valores})
         if publicar:

@@ -12,7 +12,7 @@ from ..models.reglas import EJEMPLO
 
 RECOMENDADO = {'base_itbms': 'sin', 'base_envio': 'sin', 'base_descuentos': 'despues', 'base_devoluciones': 'resta',
                'base_pasarela': 'no_resta'}
-# Un mueble de 1,000, un premio de 100, un descuento de línea de 50, envío de 50, ITBMS de 90, devolución de 200 (con
+# Un articulo de 1,000, un premio de 100, un descuento de línea de 50, envío de 50, ITBMS de 90, devolución de 200 (con
 # 18 de ITBMS) y 30 de pasarela.
 VENTA = {'productos': 100000, 'descuento_lineas': 5000, 'descuento_negativas': 10000, 'envio': 5000, 'itbms': 9000,
          'devuelto': 20000, 'devuelto_itbms': 1800, 'pasarela': 3000}

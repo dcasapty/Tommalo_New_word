@@ -11,7 +11,7 @@ Un solo lugar para el cliente, sencillo y pensado para el celular (se usa de pie
 * **Inicio**: lo pendiente primero (la compra con saldo: «Te falta $X», lo pagado y hasta cuándo; o la entrega
   lista; o los premios por recoger), la última compra con su línea de tiempo, los puntos y WhatsApp.
 * **Compras**: pedidos, cotizaciones, apartados y facturas sueltas en grupos («Por pagar», «Por entregar o
-  retirar», «Ya las tienes», «Canceladas»), con foto del mueble y el detalle de cada abono.
+  retirar», «Ya las tienes», «Canceladas»), con foto del producto y el detalle de cada abono.
 * **Puntos**: lo que antes era /socios/cuenta, ordenado para el mostrador.
 * **Mis datos**: solo lectura, cambiar el PIN o la contraseña y salir.
 * **Tus opiniones** (/mi-cuenta/opiniones): opinar de lo que compró y pagó por completo, una vez por producto, y

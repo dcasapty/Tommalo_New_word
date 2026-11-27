@@ -47,7 +47,7 @@ class TestCotizarAutomatica(CotizarCase):
         self.assertEqual(esquema['properties']['lineas']['items']['required'], ['codigo'])
 
     def test_arma_la_cotizacion_con_los_totales_que_calcula_odoo(self):
-        datos = self.cotizar({'codigo': 'ZZ-SOFA', 'cantidad': 2}, {'codigo': 'zz-cama'})
+        datos = self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 2}, {'codigo': 'zz-lámpara'})
         (orden,) = self.ordenes()
         self.assertTrue(datos['creada'])
         self.assertFalse(datos['reutilizada'])
@@ -60,30 +60,30 @@ class TestCotizarAutomatica(CotizarCase):
         self.assertAlmostEqual(cotizacion['total'], 1949.99 * 1.07, places=2)
         self.assertEqual(cotizacion['subtotal_texto'], '$1,949.99')
         self.assertEqual(cotizacion['total_texto'], f'${orden.amount_total:,.2f}')
-        sofa, cama = cotizacion['lineas']
-        self.assertEqual((sofa['codigo'], sofa['cantidad'], sofa['precio_unitario_texto']),
-                         (self.sofa.dcasa_codigo_publico, 2, '$800.00 + ITBMS'))
-        self.assertEqual((cama['codigo'], cama['cantidad'], cama['subtotal_texto']),
-                         (self.cama.dcasa_codigo_publico, 1, '$349.99'))
+        espejo, lampara = cotizacion['lineas']
+        self.assertEqual((espejo['codigo'], espejo['cantidad'], espejo['precio_unitario_texto']),
+                         (self.espejo.dcasa_codigo_publico, 2, '$800.00 + ITBMS'))
+        self.assertEqual((lampara['codigo'], lampara['cantidad'], lampara['subtotal_texto']),
+                         (self.lampara.dcasa_codigo_publico, 1, '$349.99'))
         self.assertNotIn('ZZ-', json.dumps(cotizacion), 'la referencia del proveedor no sale')
-        self.assertEqual((sofa['disponibilidad'], cama['disponibilidad']), ('pocas', 'disponible'))
+        self.assertEqual((espejo['disponibilidad'], lampara['disponibilidad']), ('pocas', 'disponible'))
         self.assertIn('no es una venta', datos['nota'])
 
     def test_cotiza_con_el_codigo_publico_y_elige_la_medida_con_opcion(self):
-        sofa = self.sofa.dcasa_codigo_publico
-        datos = self.cotizar({'codigo': sofa.lower(), 'cantidad': 1})
-        self.assertEqual(datos['cotizacion']['lineas'][0]['codigo'], sofa)
-        colchon = self.colchon.dcasa_codigo_publico
-        pregunta = self.cotizar({'codigo': colchon})
+        espejo = self.espejo.dcasa_codigo_publico
+        datos = self.cotizar({'codigo': espejo.lower(), 'cantidad': 1})
+        self.assertEqual(datos['cotizacion']['lineas'][0]['codigo'], espejo)
+        jabon = self.jabon.dcasa_codigo_publico
+        pregunta = self.cotizar({'codigo': jabon})
         self.assertEqual(pregunta['motivo'], 'elegir_opcion', 'tiene medidas: se pregunta cuál')
         self.assertNotIn('ZZ-', json.dumps(pregunta))
-        datos = self.cotizar({'codigo': colchon, 'opcion': 'Zzqueen'})
+        datos = self.cotizar({'codigo': jabon, 'opcion': 'Zzgrande'})
         (linea,) = datos['cotizacion']['lineas']
-        self.assertEqual(linea['codigo'], colchon)
-        self.assertIn('Zzqueen', linea['producto'])
+        self.assertEqual(linea['codigo'], jabon)
+        self.assertIn('Zzgrande', linea['producto'])
 
     def test_es_un_borrador_enviado_que_nunca_se_confirma_y_sin_descuentos(self):
-        self.cotizar({'codigo': 'ZZ-SOFA', 'cantidad': 1})
+        self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 1})
         (orden,) = self.ordenes()
         self.assertEqual(orden.state, 'sent', 'Enviada, no confirmada')
         self.assertFalse(orden.picking_ids, 'No reserva ni mueve existencias')
@@ -95,15 +95,15 @@ class TestCotizarAutomatica(CotizarCase):
         self.assertIn('Sin confirmar', nota[0].body)
 
     def test_el_asistente_no_figura_como_vendedor_pero_si_alguien_la_atiende_es_suya(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.assertFalse(self.ordenes().user_id)
         otra = self.conversacion(nombre='Otra', id_externo='50769990000')
         otra.sudo().asignada_a = self.vendedora
-        self.cotizar({'codigo': 'ZZ-SOFA'}, conv=otra)
+        self.cotizar({'codigo': 'ZZ-ESPEJO'}, conv=otra)
         self.assertEqual(self.ordenes(otra).user_id, self.vendedora)
 
     def test_el_pdf_queda_en_un_aviso_del_hilo_con_url_firmada_de_vida_corta(self):
-        datos = self.cotizar({'codigo': 'ZZ-CAMA'})
+        datos = self.cotizar({'codigo': 'ZZ-LÁMPARA'})
         (orden,) = self.ordenes()
         documento = datos['documento']
         self.assertEqual((documento['tipo'], documento['mime']), ('documento', 'application/pdf'))
@@ -123,53 +123,53 @@ class TestCotizarAutomatica(CotizarCase):
 
     def test_no_habla_con_el_canal_ni_manda_nada_por_si_sola(self):
         with patch('odoo.addons.dcasa_conversaciones.models.cliente_worker.JuanCliente.enviar') as enviar:
-            self.cotizar({'codigo': 'ZZ-CAMA'})
+            self.cotizar({'codigo': 'ZZ-LÁMPARA'})
         enviar.assert_not_called()
 
     def test_la_misma_cotizacion_pedida_otra_vez_se_reutiliza(self):
-        primera = self.cotizar({'codigo': 'ZZ-SOFA', 'cantidad': 2}, {'codigo': 'ZZ-CAMA'})
+        primera = self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 2}, {'codigo': 'ZZ-LÁMPARA'})
         # Mismas líneas aunque lleguen en otro orden o repartidas: es la misma cotización.
-        segunda = self.cotizar({'codigo': 'ZZ-CAMA'}, {'codigo': 'ZZ-SOFA', 'cantidad': 1}, {'codigo': 'ZZ-SOFA'})
+        segunda = self.cotizar({'codigo': 'ZZ-LÁMPARA'}, {'codigo': 'ZZ-ESPEJO', 'cantidad': 1}, {'codigo': 'ZZ-ESPEJO'})
         self.assertEqual(len(self.ordenes()), 1)
         self.assertTrue(segunda['reutilizada'])
         self.assertEqual(segunda['cotizacion']['numero'], primera['cotizacion']['numero'])
         self.assertTrue(segunda['documento']['url'])
         # Otras cantidades: es otra cotización.
-        tercera = self.cotizar({'codigo': 'ZZ-SOFA', 'cantidad': 3})
+        tercera = self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 3})
         self.assertFalse(tercera['reutilizada'])
         self.assertEqual(len(self.ordenes()), 2)
 
     def test_una_cotizacion_vieja_o_confirmada_no_se_reutiliza(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         (vieja,) = self.ordenes()
         self.env.cr.execute("UPDATE sale_order SET create_date = create_date - interval '3 hours' WHERE id = %s",
                             [vieja.id])
         self.env.invalidate_all()
-        self.assertFalse(self.cotizar({'codigo': 'ZZ-SOFA'})['reutilizada'])
+        self.assertFalse(self.cotizar({'codigo': 'ZZ-ESPEJO'})['reutilizada'])
         nueva = self.ordenes()[-1]
         nueva.action_confirm()
-        self.assertFalse(self.cotizar({'codigo': 'ZZ-SOFA'})['reutilizada'])
+        self.assertFalse(self.cotizar({'codigo': 'ZZ-ESPEJO'})['reutilizada'])
         self.assertEqual(len(self.ordenes()), 3)
 
     def test_las_de_otro_cliente_nunca_se_mezclan(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         otra = self.conversacion(nombre='Otra', id_externo='50769990000')
-        datos = self.cotizar({'codigo': 'ZZ-SOFA'}, conv=otra)
+        datos = self.cotizar({'codigo': 'ZZ-ESPEJO'}, conv=otra)
         self.assertFalse(datos['reutilizada'])
         self.assertNotEqual(self.ordenes()[0], self.ordenes(otra)[0])
 
     def test_tope_de_cotizaciones_nuevas_por_cliente_y_por_dia(self):
         for cantidad in range(1, TOPE_NUEVAS_POR_DIA + 1):
-            self.assertTrue(self.cotizar({'codigo': 'ZZ-SOFA', 'cantidad': cantidad})['creada'])
-        pasada = self.cotizar({'codigo': 'ZZ-SOFA', 'cantidad': TOPE_NUEVAS_POR_DIA + 1})
+            self.assertTrue(self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': cantidad})['creada'])
+        pasada = self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': TOPE_NUEVAS_POR_DIA + 1})
         self.assertEqual((pasada['creada'], pasada['motivo']), (False, 'tope_diario'))
         self.assertIn('pasar_a_vendedora', pasada['mensaje'])
         self.assertEqual(len(self.ordenes()), TOPE_NUEVAS_POR_DIA)
         # Repetir una que ya existe no cuenta como nueva: se sigue pudiendo mandar de nuevo.
-        self.assertTrue(self.cotizar({'codigo': 'ZZ-SOFA', 'cantidad': 1})['reutilizada'])
+        self.assertTrue(self.cotizar({'codigo': 'ZZ-ESPEJO', 'cantidad': 1})['reutilizada'])
 
     def test_cada_uso_queda_auditado_a_nombre_de_juan(self):
-        self.cotizar({'codigo': 'ZZ-SOFA'})
+        self.cotizar({'codigo': 'ZZ-ESPEJO'})
         accion = self.env['brian.accion'].search([('herramienta', '=', 'juan_cotizar')], limit=1)
         self.assertTrue(accion)
         self.assertEqual(accion.create_uid, self.juan)
@@ -180,7 +180,7 @@ class TestCotizarApagada(CotizarCase):
 
     def test_apagada_no_arma_nada_y_manda_a_una_vendedora(self):
         self.ajustes.cotizacion_automatica = False
-        datos = self.cotizar({'codigo': 'ZZ-SOFA'})
+        datos = self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.assertEqual((datos['creada'], datos['motivo']), (False, 'apagada'))
         self.assertIn('pasar_a_vendedora', datos['mensaje'])
         self.assertNotIn('documento', datos)
@@ -190,9 +190,9 @@ class TestCotizarApagada(CotizarCase):
 
     def test_encenderla_de_nuevo_la_deja_funcionando(self):
         self.ajustes.cotizacion_automatica = False
-        self.assertFalse(self.cotizar({'codigo': 'ZZ-SOFA'})['creada'])
+        self.assertFalse(self.cotizar({'codigo': 'ZZ-ESPEJO'})['creada'])
         self.ajustes.cotizacion_automatica = True
-        self.assertTrue(self.cotizar({'codigo': 'ZZ-SOFA'})['creada'])
+        self.assertTrue(self.cotizar({'codigo': 'ZZ-ESPEJO'})['creada'])
 
     def test_apagada_ni_siquiera_revisa_las_lineas(self):
         self.ajustes.cotizacion_automatica = False
@@ -224,7 +224,7 @@ class TestCotizarProductos(CotizarCase):
         self.assertFalse(self.ordenes())
 
     def test_si_una_linea_no_vale_no_se_arma_ninguna(self):
-        datos = self.cotizar({'codigo': 'ZZ-SOFA'}, {'codigo': 'ZZ-SECRETO'})
+        datos = self.cotizar({'codigo': 'ZZ-ESPEJO'}, {'codigo': 'ZZ-SECRETO'})
         self.assertFalse(datos['creada'])
         self.assertFalse(self.ordenes())
         self.assertFalse(self.avisos_con_pdf())
@@ -239,34 +239,34 @@ class TestCotizarProductos(CotizarCase):
         datos = self.cotizar({'codigo': 'ZZ-COL'})
         self.assertEqual((datos['creada'], datos['motivo']), (False, 'elegir_opcion'))
         self.assertEqual(len(datos['opciones']), 2)
-        self.assertTrue(any('Zzqueen' in o for o in datos['opciones']))
+        self.assertTrue(any('Zzgrande' in o for o in datos['opciones']))
         self.assertFalse(self.ordenes())
-        datos = self.cotizar({'codigo': 'ZZ-COL', 'opcion': 'queen'})
+        datos = self.cotizar({'codigo': 'ZZ-COL', 'opcion': 'grande'})
         self.assertTrue(datos['creada'])
         (orden,) = self.ordenes()
-        self.assertIn('Zzqueen', orden.order_line.product_id.display_name)
+        self.assertIn('Zzgrande', orden.order_line.product_id.display_name)
         self.assertEqual(orden.order_line.product_uom_qty, 1)
         # Una opción que no existe no adivina: vuelve a preguntar.
         self.assertEqual(self.cotizar({'codigo': 'ZZ-COL', 'opcion': 'redonda'})['motivo'], 'elegir_opcion')
 
     def test_cantidades_y_listas_mal_escritas_dan_un_error_que_el_modelo_puede_corregir(self):
-        for lineas in ([], 'sofa', [{'codigo': 'ZZ-SOFA'}] * 0, [{'cantidad': 2}], ['ZZ-SOFA'], [{'codigo': ''}],
-                       [{'codigo': 'ZZ-SOFA'}] * (MAX_LINEAS_AUTOMATICAS + 1)):
+        for lineas in ([], 'espejo', [{'codigo': 'ZZ-ESPEJO'}] * 0, [{'cantidad': 2}], ['ZZ-ESPEJO'], [{'codigo': ''}],
+                       [{'codigo': 'ZZ-ESPEJO'}] * (MAX_LINEAS_AUTOMATICAS + 1)):
             with self.subTest(lineas=lineas):
                 self.assertTrue(self.error('cotizar', {'lineas': lineas}))
         for cantidad in (0, -1, 1000, 2.5, 'dos', True):
             with self.subTest(cantidad=cantidad):
-                self.assertIn('cantidad', self.error('cotizar', {'lineas': [{'codigo': 'ZZ-SOFA',
+                self.assertIn('cantidad', self.error('cotizar', {'lineas': [{'codigo': 'ZZ-ESPEJO',
                                                                               'cantidad': cantidad}]}))
         self.assertFalse(self.ordenes())
 
     def test_tolera_la_lista_como_texto_json_y_la_cantidad_como_texto(self):
-        lineas = json.dumps([{'codigo': 'ZZ-SOFA', 'cantidad': '2'}])
+        lineas = json.dumps([{'codigo': 'ZZ-ESPEJO', 'cantidad': '2'}])
         self.assertTrue(self.salida('cotizar', {'lineas': lineas})['creada'])
         self.assertEqual(self.ordenes().order_line.product_uom_qty, 2)
 
     def test_el_modelo_no_puede_poner_precio_ni_descuento(self):
-        datos = self.cotizar({'codigo': 'ZZ-SOFA', 'precio': 1.0, 'descuento': 50, 'precio_unitario': 1})
+        datos = self.cotizar({'codigo': 'ZZ-ESPEJO', 'precio': 1.0, 'descuento': 50, 'precio_unitario': 1})
         self.assertTrue(datos['creada'])
         self.assertEqual(self.ordenes().order_line.price_unit, 800.0)
         self.assertEqual(self.ordenes().order_line.discount, 0)
@@ -277,7 +277,7 @@ class TestCotizarSinPdf(CotizarCase):
 
     def test_si_el_pdf_no_sale_no_se_cae_y_se_avisa_a_las_vendedoras(self):
         with patch(RENDER, return_value=(b'<html>no es pdf</html>', 'html')):
-            datos = self.cotizar({'codigo': 'ZZ-SOFA'})
+            datos = self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.assertEqual((datos['creada'], datos['motivo']), (False, 'sin_pdf'))
         self.assertNotIn('documento', datos)
         self.assertEqual(datos['cotizacion']['numero'], self.ordenes().name)
@@ -288,7 +288,7 @@ class TestCotizarSinPdf(CotizarCase):
     @mute_logger('odoo.addons.dcasa_conversaciones.models.herramientas_juan_cotizacion')
     def test_si_el_motor_de_pdf_revienta_tampoco(self):
         with patch(RENDER, side_effect=RuntimeError('wkhtmltopdf murió')):
-            datos = self.cotizar({'codigo': 'ZZ-SOFA'})
+            datos = self.cotizar({'codigo': 'ZZ-ESPEJO'})
         self.assertEqual(datos['motivo'], 'sin_pdf')
 
 
@@ -299,7 +299,7 @@ class TestCotizarPdfDeVerdad(HttpCase, HerramientasCase):
     @skipUnless(shutil.which('wkhtmltopdf') and _pypdf2_compatible(),
                 'Falta wkhtmltopdf, o el PyPDF2 instalado no es el que pide Odoo (< 3)')
     def test_el_documento_se_baja_con_la_url_firmada_y_es_un_pdf(self):
-        datos = self.salida('cotizar', {'lineas': [{'codigo': 'ZZ-CAMA'}]})
+        datos = self.salida('cotizar', {'lineas': [{'codigo': 'ZZ-LÁMPARA'}]})
         ruta = re.sub(r'^https?://[^/]+', '', datos['documento']['url'])
         respuesta = self.url_open(ruta)
         self.assertEqual(respuesta.status_code, 200)

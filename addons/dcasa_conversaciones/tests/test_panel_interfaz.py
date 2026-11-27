@@ -155,7 +155,7 @@ class PanelUiCase(HttpCase):
     def producto_de_ejemplo(self):
         impuesto = self.env['brian.herramientas']._b_itbms_venta()
         categoria = self.env['product.public.category'].create({'name': 'Zzdormitorio'})
-        lámpara = self.env['product.template'].create({
+        lampara = self.env['product.template'].create({
             'name': 'ZZCAMA ROBLE GRANDE', 'default_code': 'ZZ-LÁMPARA', 'list_price': 349.99, 'standard_price': 123.45,
             'type': 'consu', 'is_storable': True, 'sale_ok': True, 'is_published': True,
             'taxes_id': [Command.set(impuesto.ids)], 'public_categ_ids': [Command.set(categoria.ids)],
@@ -163,8 +163,8 @@ class PanelUiCase(HttpCase):
             'product_template_image_ids': [Command.create({'name': 'Lado', 'image_1920': foto((200, 30, 30))}),
                                            Command.create({'name': 'Detalle', 'image_1920': foto((30, 200, 30))})]})
         almacen = self.env['stock.warehouse'].search([], limit=1)
-        self.env['stock.quant']._update_available_quantity(lámpara.product_variant_id, almacen.lot_stock_id, 7777)
-        return lámpara
+        self.env['stock.quant']._update_available_quantity(lampara.product_variant_id, almacen.lot_stock_id, 7777)
+        return lampara
 
     def avisos_anteriores_ya_viejos(self):
         """Los avisos del bus que dejaron los datos de ejemplo quedan tan viejos como esos mensajes (de hace minutos).
@@ -754,7 +754,7 @@ class TestPanelEnElNavegador(PanelUiCase):
 
     def test_foto_del_catalogo_buscar_y_enviar_con_su_pie(self):
         self.datos_de_ejemplo()
-        self.lámpara = self.producto_de_ejemplo()
+        self.lampara = self.producto_de_ejemplo()
         self.navegador("""
 (async () => {
     await abrirConversacion("Karen");
@@ -783,13 +783,13 @@ class TestPanelEnElNavegador(PanelUiCase):
     }
     console.log("test successful");
 })().catch((e) => console.error(e.message || e));
-""".replace("__CODIGO_PUBLICO__", self.lámpara.dcasa_codigo_publico))
+""".replace("__CODIGO_PUBLICO__", self.lampara.dcasa_codigo_publico))
         (envio,) = self.al_worker('/odoo/enviar')
         (adjunto,) = envio['adjuntos']
         self.assertEqual((adjunto['tipo'], adjunto['mime']), ('imagen', 'image/jpeg'))
         # El pie lo lee el cliente: formato título (F5); la lista del panel, interna, va en MAYÚSCULAS.
         self.assertTrue(envio['texto'].startswith('Zzcama Roble Grande\n$349.99 + ITBMS\nMedidas:'))
-        self.assertTrue(envio['texto'].endswith(self.lámpara.website_url))
+        self.assertTrue(envio['texto'].endswith(self.lampara.website_url))
 
     def test_foto_del_catalogo_ver_mas_trae_los_siguientes(self):
         """Pedido de la dueña (2026-11-06): con 38 bibliotecas solo salían 8 y no siempre se saben los códigos.
@@ -849,9 +849,9 @@ class TestPanelEnElNavegador(PanelUiCase):
         """Pedido de la dueña (2026-11-03): fotos de varios productos (de una búsqueda y de otra) y se mandan juntas, un
         mensaje por producto con su pie; la ventana se cierra cuando la vendedora termina."""
         self.datos_de_ejemplo()
-        lámpara = self.producto_de_ejemplo()
-        lámpara.copy({'name': 'ZZCAMA PINO TWIN', 'default_code': 'ZZ-PINO', 'is_published': True})
-        lámpara.copy({'name': 'ZZESPEJO GRIS', 'default_code': 'ZZ-ESPEJO', 'is_published': True})
+        lampara = self.producto_de_ejemplo()
+        lampara.copy({'name': 'ZZCAMA PINO TWIN', 'default_code': 'ZZ-PINO', 'is_published': True})
+        lampara.copy({'name': 'ZZESPEJO GRIS', 'default_code': 'ZZ-ESPEJO', 'is_published': True})
         self.navegador("""
 (async () => {
     await abrirConversacion("Karen");
@@ -926,7 +926,7 @@ class TestPanelEnElNavegador(PanelUiCase):
 
     def test_cotizacion_crear_borrador_desde_el_catalogo(self):
         self.datos_de_ejemplo()
-        lámpara = self.producto_de_ejemplo()
+        lampara = self.producto_de_ejemplo()
         self.navegador("""
 (async () => {
     await abrirConversacion("Karen");
@@ -945,7 +945,7 @@ class TestPanelEnElNavegador(PanelUiCase):
 """)
         orden = self.env['sale.order'].search([('partner_id', '=', self.karen.partner_id.id)])
         self.assertEqual((orden.state, orden.order_line.product_uom_qty, orden.order_line.product_id.product_tmpl_id),
-                         ('draft', 2.0, lámpara), 'Un borrador, nunca confirmado')
+                         ('draft', 2.0, lampara), 'Un borrador, nunca confirmado')
 
     def test_tiempo_real_un_mensaje_nuevo_aparece_solo(self):
         self.datos_de_ejemplo()

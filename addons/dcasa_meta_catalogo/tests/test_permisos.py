@@ -25,7 +25,7 @@ class TestPermisosMeta(MetaComun, TransactionCase):
 
         cls.vendedora = usuario('vendedora_meta', 'dcasa_base.group_vendedora')
         cls.gerencia = usuario('gerencia_meta', 'dcasa_base.group_gerencia')
-        cls.mesa = cls._producto('Mesa permisos prueba Meta', 75.0)
+        cls.lampara = cls._producto('Lampara permisos prueba Meta', 75.0)
         cls.campana = cls.env['dcasa.meta.campana'].create({'name': 'Permisos'})
 
     def _menus(self, usuario):
@@ -55,13 +55,13 @@ class TestPermisosMeta(MetaComun, TransactionCase):
             self.campana.with_user(self.vendedora).unlink()
 
     def test_la_vendedora_no_marca_productos_para_meta(self):
-        mesa = self.mesa.with_user(self.vendedora)
+        lampara = self.lampara.with_user(self.vendedora)
         with self.assertRaises(AccessError):
-            mesa.write({'dcasa_meta_campana_id': self.campana.id})
+            lampara.write({'dcasa_meta_campana_id': self.campana.id})
         with self.assertRaises(AccessError):
-            mesa.write({'dcasa_meta_no_anunciar': True})
+            lampara.write({'dcasa_meta_no_anunciar': True})
         with self.assertRaises(AccessError):
-            mesa.read(['dcasa_meta_no_anunciar'])
+            lampara.read(['dcasa_meta_no_anunciar'])
         # Su ficha y su lista de productos se abren sin esos campos.
         for tipo in ('form', 'list', 'search'):
             vistas = self.env['product.template'].with_user(self.vendedora).get_views([(False, tipo)])
@@ -70,13 +70,13 @@ class TestPermisosMeta(MetaComun, TransactionCase):
 
     def test_gerencia_si(self):
         feed = self.feed.with_user(self.gerencia)
-        feed.write({'dcasa_marca': "D'CASA Panamá", 'dcasa_activo': False})
+        feed.write({'dcasa_marca': "Tommalo", 'dcasa_activo': False})
         self.assertFalse(self.feed.dcasa_activo)
         self.assertTrue(feed.url)
         feed.action_dcasa_meta_nueva_direccion()
         self.assertEqual(feed.action_dcasa_meta_ver_fuera()['res_model'], 'product.template')
         campana = self.env['dcasa.meta.campana'].with_user(self.gerencia).create({'name': 'De Gerencia'})
-        self.mesa.with_user(self.gerencia).write({'dcasa_meta_campana_id': campana.id, 'dcasa_meta_no_anunciar': True})
+        self.lampara.with_user(self.gerencia).write({'dcasa_meta_campana_id': campana.id, 'dcasa_meta_no_anunciar': True})
         campana.unlink()
         # Gerencia no crea ni borra catálogos (eso es del administrador).
         with self.assertRaises(AccessError):

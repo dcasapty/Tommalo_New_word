@@ -20,7 +20,7 @@ class TestRevisionPdf(TiendaCase):
         estados = []
         for _ in range(2):
             self.otra_sesion()   # el mismo navegador sin su cookie: misma conexión (127.0.0.1)
-            self.post('carrito/agregar', {'producto_id': self.colchon.product_variant_id.id, 'cantidad': 1})
+            self.post('carrito/agregar', {'producto_id': self.jabon.product_variant_id.id, 'cantidad': 1})
             for _ in range(6):
                 estados.append(self.url_open(f'{RAIZ}/carrito/cotizacion.pdf').status_code)
         self.assertIn(429, estados[10:], f'12 PDF desde la misma conexión en la misma hora: {estados}')
@@ -92,7 +92,7 @@ class TestRevisionCarrito(TiendaCase):
     def test_agregar_desde_el_chat_no_baja_una_linea_que_ya_tenia_mas_de_20(self):
         """``_poner`` (controllers/main.py): ``min(actual + cantidad, 20)``. Si la línea ya tenía 25 (puestas en
         /shop/cart), «Agregar» desde el chat la deja en 20 sin avisar: el carrito pierde 5."""
-        variante = self.colchon.product_variant_id
+        variante = self.jabon.product_variant_id
         self.post('carrito/agregar', {'producto_id': variante.id, 'cantidad': 1})
         linea = self.env['sale.order.line'].sudo().search([('product_id', '=', variante.id)], order='id desc', limit=1)
         linea.product_uom_qty = 25   # lo que el cliente puso en la página del carrito

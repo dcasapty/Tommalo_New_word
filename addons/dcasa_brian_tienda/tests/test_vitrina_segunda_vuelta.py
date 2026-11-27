@@ -79,19 +79,19 @@ class TestRvWeb2VitrinaCache(TiendaCase):
         self.assertEqual(compartidos, [], 'estos valores de la respuesta SON los de la memoria')
 
     def test_dos_personas_con_tarifa_y_carrito_distintos_cada_una_ve_lo_suyo(self):
-        """A pone el colchón en su carrito y B (otra sesión, con otra tarifa elegida) abre el chat: B no pierde el
-        colchón ni ve el carrito de A, y la memoria queda con una clave por tarifa."""
-        self.colchon.website_sequence = -99999
+        """A pone el jabón en su carrito y B (otra sesión, con otra tarifa elegida) abre el chat: B no pierde el
+        jabón ni ve el carrito de A, y la memoria queda con una clave por tarifa."""
+        self.jabon.website_sequence = -99999
         limpiar_cache_vitrina()
         tarifa = self.env['product.pricelist'].create({
             'name': 'Tarifa rv_web2', 'selectable': True, 'website_id': self.website.id,
             'item_ids': [(0, 0, {'applied_on': '3_global', 'compute_price': 'percentage', 'percent_price': 50})]})
         a = [p['plantilla_id'] for p in self.url_open(VITRINA).json()['productos']]
-        self.assertEqual(a[0], self.colchon.id)
-        agregado = self.post('carrito/agregar', {'producto_id': self.colchon.product_variant_id.id, 'cantidad': 1})
+        self.assertEqual(a[0], self.jabon.id)
+        agregado = self.post('carrito/agregar', {'producto_id': self.jabon.product_variant_id.id, 'cantidad': 1})
         self.assertTrue(agregado.json()['ok'], agregado.text)
         con_carrito = [p['plantilla_id'] for p in self.url_open(VITRINA).json()['productos']]
-        self.assertNotIn(self.colchon.id, con_carrito)
+        self.assertNotIn(self.jabon.id, con_carrito)
         self.otra_sesion()
         self.url_open(f'/shop?pricelist={tarifa.id}')
         b = self.url_open(VITRINA).json()['productos']
@@ -105,16 +105,16 @@ class TestRvWeb2VitrinaCache(TiendaCase):
         self.assertEqual(b, sin_memoria, 'con o sin memoria, B ve lo mismo')
 
     def test_pasado_el_minuto_lo_despublicado_ya_no_sale(self):
-        self.colchon.website_sequence = -99999
+        self.jabon.website_sequence = -99999
         limpiar_cache_vitrina()
         reloj = {'t': 5000.0}
         with patch.object(controlador.time, 'monotonic', side_effect=lambda: reloj['t']):
-            self.assertEqual(self.url_open(VITRINA).json()['productos'][0]['plantilla_id'], self.colchon.id)
-            self.colchon.is_published = False
+            self.assertEqual(self.url_open(VITRINA).json()['productos'][0]['plantilla_id'], self.jabon.id)
+            self.jabon.is_published = False
             self.env.flush_all()
             reloj['t'] += SEGUNDOS_CACHE_VITRINA - 0.5
-            self.assertEqual(self.url_open(VITRINA).json()['productos'][0]['plantilla_id'], self.colchon.id,
+            self.assertEqual(self.url_open(VITRINA).json()['productos'][0]['plantilla_id'], self.jabon.id,
                              'dentro del minuto se ve la tarjeta de antes')
             reloj['t'] += 1
-            self.assertNotIn(self.colchon.id, [p['plantilla_id'] for p in self.url_open(VITRINA).json()['productos']],
+            self.assertNotIn(self.jabon.id, [p['plantilla_id'] for p in self.url_open(VITRINA).json()['productos']],
                              'pasado el minuto, lo despublicado sale')

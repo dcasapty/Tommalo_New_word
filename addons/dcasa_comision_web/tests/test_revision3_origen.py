@@ -25,7 +25,7 @@ class TestOrigenSinEnlaceAMano(VendedoraCommon):
         return self.env['account.move'].with_user(usuario).create({
             'move_type': 'out_invoice', 'partner_id': self.cliente.id, 'invoice_date': DIA,
             'invoice_line_ids': [Command.create({
-                'name': 'Mueble de mostrador', 'quantity': 1, 'price_unit': 5000.0,
+                'name': 'Articulo de mostrador', 'quantity': 1, 'price_unit': 5000.0,
                 'tax_ids': [Command.set(self.itbms.ids)],
                 'sale_line_ids': [Command.set(pedido_online.order_line.ids)] if comando is None else comando})]})
 
@@ -97,7 +97,7 @@ class TestOrigenSinEnlaceAMano(VendedoraCommon):
         factura = self.venta_web()
         self.assertEqual(self.venta(factura).comision_centavos, 10000)
         # 2. anticipo del 50 % y factura final que lo descuenta
-        orden = self.orden(lineas=[(self.mueble, 2000.0, 1, {})])
+        orden = self.orden(lineas=[(self.articulo, 2000.0, 1, {})])
         wizard = self.env['sale.advance.payment.inv'].with_context(
             active_model='sale.order', active_ids=orden.ids, active_id=orden.id).create({
                 'advance_payment_method': 'percentage', 'amount': 50})
@@ -151,7 +151,7 @@ class TestOrigenPorContextoYMarcas(Liquida):
 
     def _crear(self, usuario, contexto=None, n=1, **extra):
         valores = {'partner_id': self.cliente.id, 'company_id': self.company.id, **extra,
-                   'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1,
+                   'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1,
                                                   'price_unit': 1000.0})]}
         return self.env['sale.order'].with_user(usuario).with_context(**(contexto or {})).create([valores] * n)
 
@@ -180,7 +180,7 @@ class TestOrigenPorContextoYMarcas(Liquida):
         with Form(modelo) as f:
             f.partner_id = self.cliente
             with f.order_line.new() as ln:
-                ln.product_id = self.mueble
+                ln.product_id = self.articulo
         self.assertFalse(f.record.dcasa_nacio_en_web)
         self.assertFalse(f.record.dcasa_venta_online)
 
@@ -238,7 +238,7 @@ class TestOrigenPorContextoYMarcas(Liquida):
         orden = self.env['sale.order'].sudo().create({
             'partner_id': self.cliente.id, 'company_id': self.company.id, 'dcasa_nacio_en_web': True,
             'dcasa_venta_online': True, 'dcasa_creada_por_id': self.u_vendedora.id,
-            'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1, 'price_unit': 1000.0})]})
+            'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1, 'price_unit': 1000.0})]})
         self.assertEqual((orden.dcasa_nacio_en_web, orden.dcasa_venta_online, orden.dcasa_creada_por_id.id), (False, False, 0))
         self.rechaza(lambda: orden.sudo().write({'dcasa_nacio_en_web': True}))
         self.rechaza(lambda: orden.sudo().write({'dcasa_tocada_por_id': self.u_vendedora.id}))
@@ -266,8 +266,8 @@ class TestHuellaDeQuienTocaElCarrito(ComisionReloj):
 
     def setUp(self):
         super().setUp()
-        self.otro_mueble = self.env['product.product'].create({
-            'name': 'OTRO MUEBLE DE PRUEBA COMISION', 'type': 'consu', 'invoice_policy': 'order', 'list_price': 500.0,
+        self.otro_articulo = self.env['product.product'].create({
+            'name': 'OTRO ARTICULO DE PRUEBA COMISION', 'type': 'consu', 'invoice_policy': 'order', 'list_price': 500.0,
             'taxes_id': [Command.set(self.itbms.ids)]})
 
     def probar(self, accion, creado_por=None, confirmar=False):
@@ -286,11 +286,11 @@ class TestHuellaDeQuienTocaElCarrito(ComisionReloj):
                 sale_write_from_compute=True).write({'price_unit': 1.0}),
             'cantidad de una línea (write directo)': lambda o: o.order_line.with_user(vend).write({'product_uom_qty': 5}),
             'descuento de una línea': lambda o: o.order_line.with_user(vend).write({'discount': 5.0}),
-            'cambio de producto de una línea': lambda o: o.order_line.with_user(vend).write({'product_id': self.otro_mueble.id}),
+            'cambio de producto de una línea': lambda o: o.order_line.with_user(vend).write({'product_id': self.otro_articulo.id}),
             'línea nueva (create directo, sin precio)': lambda o: self.env['sale.order.line'].with_user(vend).create({
-                'order_id': o.id, 'product_id': self.mueble.id, 'product_uom_qty': 2}),
+                'order_id': o.id, 'product_id': self.articulo.id, 'product_uom_qty': 2}),
             'línea nueva con la llave en el contexto': lambda o: self.env['sale.order.line'].with_user(vend).with_context(
-                sale_write_from_compute=True).create({'order_id': o.id, 'product_id': self.mueble.id,
+                sale_write_from_compute=True).create({'order_id': o.id, 'product_id': self.articulo.id,
                                                        'product_uom_qty': 2, 'price_unit': 900.0}),
             'borrar una línea': lambda o: o.order_line.with_user(vend).unlink(),
             'mover a este pedido una línea que era de otro': lambda o: self.orden(web=False, confirmar=False).order_line.with_user(
@@ -310,7 +310,7 @@ class TestHuellaDeQuienTocaElCarrito(ComisionReloj):
         casos = {
             'visitante cambia cantidad': lambda o: o.order_line.with_user(publico).sudo().write({'product_uom_qty': 3}),
             'visitante agrega línea': lambda o: self.env['sale.order.line'].with_user(publico).sudo().create({
-                'order_id': o.id, 'product_id': self.mueble.id, 'product_uom_qty': 1}),
+                'order_id': o.id, 'product_id': self.articulo.id, 'product_uom_qty': 1}),
             'el cálculo de precios de Odoo al cambiar la cantidad (sin que nadie teclee el precio)':
                 lambda o: o.order_line.with_context(sale_write_from_compute=True).write({'technical_price_unit': 1000.0}),
             'el precio que repone el propio servidor (el combo armable)': lambda o: o.order_line.with_user(

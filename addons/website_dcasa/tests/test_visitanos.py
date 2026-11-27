@@ -35,7 +35,7 @@ class TestFilasHorario(TransactionCase):
         self.assertEqual(hora_amable(17.75), '5:45 p. m.')
 
     def test_horario_de_la_tienda(self):
-        """El horario que dio la dueña: lunes a sábado 9 a 6 y domingo 9 a 5."""
+        """Un horario de PRUEBA: lunes a sábado 9 a 6 y domingo 9 a 5."""
         self.assertEqual(filas_horario(9.0, 18.0, TODOS, fin_domingo=17.0), FILAS)
 
     def test_domingo_sin_cierre_propio_junta_la_semana(self):
@@ -141,7 +141,8 @@ class TestVisitanosMapa(HttpCase):
         return any(url.startswith('https://www.google.com/maps') for url in self.externas)
 
     def test_el_numero_abre_whatsapp(self):
-        """Pedido de la dueña (2026-11-15): tocar el número en Visítanos abre WhatsApp (no una llamada)."""
+        """Tocar el número en Visítanos abre WhatsApp (no una llamada)."""
+        self.env.ref('website.default_website').dcasa_whatsapp_number = '+507 6000-0002'
         html = self.url_open('/visitanos').text
         self.assertNotIn('href="tel:', html)
         enlace = re.search(r'<a[^>]*href="(https://api\.whatsapp\.com/send\?phone=50760000002[^"]*)"[^>]*>'
@@ -232,14 +233,14 @@ class TestHorarioYElEditor(HttpCase):
         su xpath, en el contexto del sitio). Luego cambia el horario: el pie enseña el nuevo."""
         raiz = self._como_editor('/')
         (pie,) = raiz.xpath('//div[@id="footer"]')
-        (parrafo,) = pie.xpath('.//p[contains(., "Esenciales de bebé")]')
-        parrafo.text = parrafo.text.replace('Esenciales de bebé', 'Esenciales de bebé (editado)')
+        (parrafo,) = pie.xpath('.//p[contains(., "Tienda en línea de")]')
+        parrafo.text = parrafo.text.replace('Tienda en línea', 'Tienda en línea (editado)')
         vista = self.env['ir.ui.view'].browse(int(pie.get('data-oe-id')))
         vista.with_user(self.env.ref('base.user_admin')).with_context(website_id=self.website.id).save(
             lxml_html.tostring(pie, encoding='unicode'), pie.get('data-oe-xpath'))
 
         html = self.url_open('/').text
-        self.assertIn('Esenciales de bebé (editado)', html, 'El cambio del editor quedó guardado')
+        self.assertIn('Tienda en línea (editado)', html, 'El cambio del editor quedó guardado')
         self.assertIn('Lun. a sáb. 9:00 a. m. a 6:00 p. m.', html)
         self.horario = OTRO_HORARIO   # como cambiar el horario en los Ajustes de Juan
         html = self.url_open('/').text

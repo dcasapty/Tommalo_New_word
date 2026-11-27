@@ -307,7 +307,7 @@ class TestRevision2VenYElEquipo(VendedoraCommon):
 
     def _cobrar(self, orden, cliente, vendedora=True):
         orden.sudo().partner_id = cliente
-        orden.sudo().write({'order_line': [Command.create({'product_id': self.mueble.id, 'product_uom_qty': 1,
+        orden.sudo().write({'order_line': [Command.create({'product_id': self.articulo.id, 'product_uom_qty': 1,
                                                            'price_unit': 800.0})]})
         if vendedora:
             orden.sudo().with_user(self.u_vendedora).user_id = self.u_vendedora
@@ -391,7 +391,7 @@ class TestRevision2ChatYCuentas(VendedoraCommon):
 
     def test_revision2_80_la_base_con_cada_interruptor_y_sus_combinaciones_contra_cuentas_a_mano(self):
         """1,000 con 10 % (900) + 500 + premio de 75 + envio de 40; ITBMS 7 % sobre lo que lleva impuesto (92.75)."""
-        lineas = [(self.mueble, 1000.0, 1, {'discount': 10.0}), (self.mueble, 500.0, 1, {}),
+        lineas = [(self.articulo, 1000.0, 1, {'discount': 10.0}), (self.articulo, 500.0, 1, {}),
                   (self.premio, -75.0, 1, {}), (self.envio, 40.0, 1, {'is_delivery': True})]
         casos = [
             ({}, 132500),

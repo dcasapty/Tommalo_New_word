@@ -39,7 +39,7 @@ class TestOrigenDelCarrito(TransactionCase):
 
     def test_un_pedido_creado_con_website_id_fuera_del_carrito_no_nace_en_la_web(self):
         cliente = self.env['res.partner'].create({'name': 'Cliente carrito falso'})
-        producto = self.env['product.product'].create({'name': 'MUEBLE CARRITO FALSO', 'type': 'consu'})
+        producto = self.env['product.product'].create({'name': 'ARTICULO CARRITO FALSO', 'type': 'consu'})
         for contexto in ({}, {'default_website_id': self.website.id}):
             with self.subTest(contexto=contexto):
                 orden = self.env['sale.order'].with_context(**contexto).create({

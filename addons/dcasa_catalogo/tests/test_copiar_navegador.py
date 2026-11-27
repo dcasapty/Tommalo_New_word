@@ -1,4 +1,4 @@
-"""Copiar con un toque en el producto (pedido de la dueña, 2026-10-22: «un ícono de copiar en la mayoría de cosas de
+"""Copiar con un toque en el producto (pedido del negocio: «un ícono de copiar en la mayoría de cosas de
 productos y clientes: nombre, correo, teléfono, códigos, nombres de productos»).
 
 En la ficha del producto: nombre, referencia, código de barras y código público; en la lista: nombre, referencia y

@@ -143,7 +143,7 @@ class TestPago(CorreoCase):
         factura = self.factura()
         nota = self.env['account.move'].create({
             'move_type': 'out_refund', 'partner_id': self.ana.id, 'invoice_date': fields.Date.today(),
-            'invoice_line_ids': [Command.create({'product_id': self.mueble.id, 'quantity': 1, 'price_unit': 50.0,
+            'invoice_line_ids': [Command.create({'product_id': self.articulo.id, 'quantity': 1, 'price_unit': 50.0,
                                                  'tax_ids': [Command.clear()]})]})
         nota.action_post()
         (factura.line_ids | nota.line_ids).filtered(
@@ -154,7 +154,7 @@ class TestPago(CorreoCase):
         # Devolverle el dinero al cliente (pagar una nota de crédito): tampoco.
         devolucion = self.env['account.move'].create({
             'move_type': 'out_refund', 'partner_id': self.ana.id, 'invoice_date': fields.Date.today(),
-            'invoice_line_ids': [Command.create({'product_id': self.mueble.id, 'quantity': 1, 'price_unit': 30.0,
+            'invoice_line_ids': [Command.create({'product_id': self.articulo.id, 'quantity': 1, 'price_unit': 30.0,
                                                  'tax_ids': [Command.clear()]})]})
         devolucion.action_post()
         self.pagar(devolucion)

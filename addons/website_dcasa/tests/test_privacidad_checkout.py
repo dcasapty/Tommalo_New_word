@@ -30,7 +30,7 @@ class TestCheckoutSinDatosAjenos(HttpCase):
         self.website = self.env.ref('website.default_website')
         self.panama = self.env.ref('base.pa')
         self.producto = self.env['product.product'].create({
-            'name': 'MESA DE PRUEBA PRIVACIDAD', 'type': 'consu', 'list_price': 100.0, 'is_published': True,
+            'name': 'LAMPARA DE PRUEBA PRIVACIDAD', 'type': 'consu', 'list_price': 100.0, 'is_published': True,
             'sale_ok': True})
         self.victima = self.env['res.partner'].create({
             'name': 'VICTIMA PRIVADA', 'phone': '+507 6777-0202', 'email': CORREO,
@@ -54,7 +54,7 @@ class TestCheckoutSinDatosAjenos(HttpCase):
         try:
             self.make_jsonrpc_request('/shop/express_checkout', {'billing_address': {
                 'name': 'Quien no es la victima', 'email': 'otra.persona@correo.com', 'phone': '6777-0202',
-                'street': 'Calle Cualquiera 1', 'city': 'La Chorrera', 'country': 'PA'}})
+                'street': 'Calle Cualquiera 1', 'city': 'Ciudad de Prueba', 'country': 'PA'}})
         except (JsonRpcException, HTTPError):
             pass   # rechazado: mejor todavía
         orden.invalidate_recordset()
@@ -105,7 +105,7 @@ class TestCheckoutSinDatosAjenos(HttpCase):
         respuesta = self.url_open('/shop/address/submit', data={
             'csrf_token': self._csrf(), 'address_type': 'delivery', 'use_delivery_as_billing': 'true',
             'name': 'Quien no es la victima', 'email': 'otra.persona@correo.com', 'phone': '6777-0202',
-            'street': 'Calle Cualquiera 1', 'city': 'La Chorrera', 'country_id': self.panama.id})
+            'street': 'Calle Cualquiera 1', 'city': 'Ciudad de Prueba', 'country_id': self.panama.id})
         for privado in PRIVADOS:
             self.assertNotIn(privado, respuesta.text)
         self.victima.invalidate_recordset()
@@ -118,7 +118,7 @@ class TestCheckoutSinDatosAjenos(HttpCase):
         respuesta = self.url_open('/shop/address/submit', data={
             'csrf_token': self._csrf(), 'address_type': 'delivery', 'use_delivery_as_billing': 'true',
             'name': 'Quien no es la victima', 'email': 'otra.persona@correo.com', 'phone': '6777-0202',
-            'street': 'Calle Cualquiera 1', 'city': 'La Chorrera', 'country_id': self.panama.id})
+            'street': 'Calle Cualquiera 1', 'city': 'Ciudad de Prueba', 'country_id': self.panama.id})
         self.assertEqual(respuesta.status_code, 200)
         datos = respuesta.json()
         self.assertIn('phone', datos.get('invalid_fields', []))

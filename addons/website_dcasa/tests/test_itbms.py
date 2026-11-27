@@ -13,8 +13,8 @@ class TestPrecioMasItbms(HttpCase):
         self.website = self.env.ref('website.default_website')
         Product = self.env['product.template']
         # Sin impuesto explícito: nace con el ITBMS de venta por defecto (el que se suma).
-        self.mesa = Product.create({
-            'name': 'MESA ITBMS PRUEBA', 'list_price': 39.99, 'is_published': True,
+        self.lampara = Product.create({
+            'name': 'LAMPARA ITBMS PRUEBA', 'list_price': 39.99, 'is_published': True,
             'website_sequence': -300,
         })
         self.sin_impuesto = Product.create({
@@ -24,12 +24,12 @@ class TestPrecioMasItbms(HttpCase):
 
     def test_tienda_muestra_precio_sin_itbms(self):
         self.assertEqual(self.website.show_line_subtotals_tax_selection, 'tax_excluded')
-        self.assertFalse(self.mesa.taxes_id.price_include)
-        self.assertTrue(self.website._dcasa_mas_itbms(self.mesa))
+        self.assertFalse(self.lampara.taxes_id.price_include)
+        self.assertTrue(self.website._dcasa_mas_itbms(self.lampara))
         self.assertFalse(self.website._dcasa_mas_itbms(self.sin_impuesto), 'Sin impuesto, sin leyenda')
 
     def test_ficha_dice_mas_itbms(self):
-        html = self.url_open(self.mesa.website_url).text
+        html = self.url_open(self.lampara.website_url).text
         self.assertIn('o_dcasa_mas_itbms', html)
         self.assertIn('+ ITBMS', html)
         self.assertIn('39.99', html)
@@ -37,7 +37,7 @@ class TestPrecioMasItbms(HttpCase):
         self.assertNotIn('o_dcasa_mas_itbms', self.url_open(self.sin_impuesto.website_url).text)
 
     def test_json_ld_con_precio_sin_itbms(self):
-        html = self.url_open(self.mesa.website_url).text
+        html = self.url_open(self.lampara.website_url).text
         bloques = re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S)
         productos = []
         for bloque in bloques:
@@ -48,11 +48,11 @@ class TestPrecioMasItbms(HttpCase):
         self.assertEqual(productos[0]['offers']['priceCurrency'], 'USD')
 
     def test_listado_y_portada_dicen_mas_itbms(self):
-        tienda = self.url_open('/shop?search=MESA ITBMS PRUEBA').text
-        self.assertIn('Mesa ITBMS Prueba', tienda)
+        tienda = self.url_open('/shop?search=LAMPARA ITBMS PRUEBA').text
+        self.assertIn('Lampara ITBMS Prueba', tienda)
         self.assertIn('+ ITBMS', tienda)
         portada = self.url_open('/').text
-        tarjeta = re.search(r'Mesa ITBMS Prueba.*?o_dcasa_pcard_actions', portada, re.S).group(0)
+        tarjeta = re.search(r'Lampara ITBMS Prueba.*?o_dcasa_pcard_actions', portada, re.S).group(0)
         self.assertIn('39.99', tarjeta)
         self.assertIn('+ ITBMS', tarjeta)
 
@@ -61,9 +61,9 @@ class TestPrecioMasItbms(HttpCase):
         home = self.url_open('/').text
         token = re.search(r'name="csrf_token" value=[\'"]([^\'"]+)', home).group(1)
         self.url_open('/dcasa/carrito/agregar', data={
-            'csrf_token': token, 'product_template_id': self.mesa.id,
+            'csrf_token': token, 'product_template_id': self.lampara.id,
         }, allow_redirects=False)
         carrito = self.url_open('/shop/cart').text
-        self.assertIn('Mesa ITBMS Prueba', carrito)
+        self.assertIn('Lampara ITBMS Prueba', carrito)
         for cifra in ('39.99', '2.80', '42.79'):
             self.assertIn(cifra, carrito, 'Subtotal, ITBMS y total')

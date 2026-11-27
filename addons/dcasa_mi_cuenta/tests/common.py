@@ -28,8 +28,8 @@ class MiCuentaComun:
         self.env = self.env(context=dict(self.env.context, tracking_disable=True))
         self.website = self.env.ref('website.default_website')
         itbms = self.env.ref('base.main_company').account_sale_tax_id
-        self.sofa = self.env['product.product'].create({
-            'name': 'SOFÁ MILÁN DE PRUEBA', 'type': 'consu', 'invoice_policy': 'order', 'list_price': 1000.0,
+        self.crema = self.env['product.product'].create({
+            'name': 'CREMA MILÁN DE PRUEBA', 'type': 'consu', 'invoice_policy': 'order', 'list_price': 1000.0,
             'taxes_id': [Command.set(itbms.ids)], 'is_published': True,
         })
         self.cojin = self.env['product.product'].create({
@@ -43,14 +43,14 @@ class MiCuentaComun:
 
         hoy = fields.Date.today()
         self.inicio_abono = hoy - timedelta(days=3)
-        self.pedido = self._pedido(self.socia, [(self.sofa, 1), (self.cojin, 2)])
+        self.pedido = self._pedido(self.socia, [(self.crema, 1), (self.cojin, 2)])
         self.pedido.action_confirm()
         self.factura = self.pedido._create_invoices()
         self.factura.action_post()
         self._pagar(self.factura, 300.0, self.inicio_abono)
 
         self.carrito = self._pedido(self.socia, [(self.cojin, 1)], website_id=self.website.id)
-        self.apartado = self._pedido(self.socia, [(self.sofa, 1)])
+        self.apartado = self._pedido(self.socia, [(self.crema, 1)])
         self.apartado.write({'state': 'sent', 'dcasa_apartado_vence': hoy + timedelta(days=3)})
         self.anulado = self._pedido(self.socia, [(self.cojin, 3)])
         self.anulado.write({'state': 'sent', 'dcasa_apartado_vence': hoy - timedelta(days=2)})
@@ -61,7 +61,7 @@ class MiCuentaComun:
         self.suelta.action_post()
 
         self.otro = self.env['res.partner'].create({'name': 'OTRO CLIENTE AJENO', 'phone': '6100-2002'})
-        self.ajeno = self._pedido(self.otro, [(self.sofa, 1)])
+        self.ajeno = self._pedido(self.otro, [(self.crema, 1)])
         self.ajeno.action_confirm()
         self.factura_ajena = self.ajeno._create_invoices()
         self.factura_ajena.action_post()

@@ -26,17 +26,17 @@ class TiendaCase(HttpCase):
         Template = cls.env['product.template']
         impuesto = cls.env['brian.herramientas']._b_itbms_venta()
         base = {'type': 'consu', 'sale_ok': True, 'is_published': True, 'taxes_id': [Command.set(impuesto.ids)]}
-        cls.colchon = Template.create({**base, 'name': 'ZZBT COLCHÓN QUEEN', 'list_price': 278.0})
-        cls.base_cama = Template.create({**base, 'name': 'ZZBT BASE DE CAMA', 'list_price': 69.99})
+        cls.jabon = Template.create({**base, 'name': 'ZZBT JABÓN GRANDE', 'list_price': 278.0})
+        cls.base_crema = Template.create({**base, 'name': 'ZZBT BASE DE CREMA', 'list_price': 69.99})
         cls.secreto = Template.create({**base, 'name': 'ZZBT SECRETO SIN PUBLICAR', 'list_price': 10.0,
                                        'is_published': False})
         cls.gratis = Template.create({**base, 'name': 'ZZBT SIN PRECIO', 'list_price': 0.0})
         tamano = cls.env['product.attribute'].create({'name': 'ZZBT tamaño', 'create_variant': 'always', 'value_ids': [
-            Command.create({'name': 'ZZBT queen'}), Command.create({'name': 'ZZBT king'})]})
+            Command.create({'name': 'ZZBT grande'}), Command.create({'name': 'ZZBT mini'})]})
         # Con un opcional: hay que elegir en la ficha (las reglas del «Agregar» de un clic de la tienda).
         cls.con_medidas = Template.create({
-            **base, 'name': 'ZZBT CAMA CON MEDIDAS', 'list_price': 300.0,
-            'optional_product_ids': [Command.set(cls.base_cama.ids)],
+            **base, 'name': 'ZZBT CREMA CON MEDIDAS', 'list_price': 300.0,
+            'optional_product_ids': [Command.set(cls.base_crema.ids)],
             'attribute_line_ids': [Command.create({'attribute_id': tamano.id,
                                                    'value_ids': [Command.set(tamano.value_ids.ids)]})]})
         # Solo se elige la medida: una variante concreta sí se agrega directo (como el color destacado de la portada).

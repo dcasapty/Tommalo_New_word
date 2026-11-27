@@ -44,10 +44,10 @@ class TestLegibilidadColor(ChromeMovilCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        recamaras = cls.env.ref('website_dcasa.public_category_recamaras')
+        salud = cls.env.ref('website_dcasa.public_category_salud')
         cls.producto = cls.env['product.template'].create({
             'name': 'Caja del test de legibilidad', 'list_price': 29.99, 'is_published': True,
-            'public_categ_ids': [(6, 0, recamaras.ids)],
+            'public_categ_ids': [(6, 0, salud.ids)],
         })
 
     def _abrir(self, browser, ruta):
@@ -184,7 +184,7 @@ class TestLegibilidadBuscador(HttpCase):
                     self.assertIn('aria-label="Buscar en el catálogo"', caja,
                                   'el campo se llamaba solo por su placeholder')
                     ayuda = re.search(r'placeholder="([^"]*)"', caja).group(1)
-                    self.assertNotIn('mueble', ayuda.lower(), 'Tommalo no vende muebles')
+                    self.assertNotIn('articulo', ayuda.lower(), 'Tommalo no vende articulos')
                 propias = [c for c in cajas if f'placeholder="{PLACEHOLDER}"' in c]
                 self.assertGreaterEqual(len(propias), 2, f'la cabecera y la barra de la tienda dicen «{PLACEHOLDER}»')
                 for boton in botones:
@@ -272,14 +272,14 @@ class TestLegibilidadBurbuja(ChromeMovilCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        recamaras = cls.env.ref('website_dcasa.public_category_recamaras')
+        salud = cls.env.ref('website_dcasa.public_category_salud')
         cls.diapositivas = cls.env['dcasa.portada.diapositiva']
         cls.diapositivas.search([]).unlink()
         for n in range(1, 3):
             # El carrusel solo toma productos con foto: una caja «de estudio» dibujada, como la del contrato visual.
             caja = cls.env['product.template'].create({
                 'name': f'Caja del test de la burbuja {n}', 'list_price': 29.99 + n, 'is_published': True,
-                'public_categ_ids': [(6, 0, recamaras.ids)], 'image_1920': _caja_de_estudio((238, 146, 74))})
+                'public_categ_ids': [(6, 0, salud.ids)], 'image_1920': _caja_de_estudio((238, 146, 74))})
             cls.diapositivas.create({'product_tmpl_id': caja.id, 'sequence': n})
 
     MEDIR_BOTON = """

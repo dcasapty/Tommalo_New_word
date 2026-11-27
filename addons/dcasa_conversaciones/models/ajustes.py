@@ -67,7 +67,7 @@ MAX_ESPERANDO_A_LA_VEZ = 50
 # propio («Juan» es solo el nombre interno).
 # El primer mensaje es corto; el aviso largo de privacidad no se manda por el chat (vive en la política del sitio).
 # Lo que no cambia: Juan nunca afirma ser humano y, si alguien pregunta de verdad, dice que es el asistente virtual.
-BIENVENIDA = "Buenas, un gusto atenderle. Somos Tommalo Panamá 👼🏻"
+BIENVENIDA = "Buenas, un gusto atenderle. Somos Tommalo."
 # Comentarios de Instagram y Facebook (2026-11-12, la dueña: «Corto y lo demás por privado»). Lo público nunca lleva
 # nada que escriba quien comenta, ni su nombre (decisión del coordinador, 2.ª vuelta de la revisión, 2026-11-13): sin
 # {nombre}.
@@ -116,7 +116,7 @@ class JuanAjustes(models.Model):
     _rec_name = 'nombre_publico'
 
     nombre_publico = fields.Char(
-        'Nombre público', required=True, default='Tommalo Panamá', tracking=True,
+        'Nombre público', required=True, default='Tommalo', tracking=True,
         help="Cómo se presenta el asistente ante los clientes. «Juan» es solo el nombre interno.")
 
     # --- Encendido -----------------------------------------------------------------------------

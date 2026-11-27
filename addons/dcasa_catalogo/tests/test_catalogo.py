@@ -50,8 +50,6 @@ class TestCatalogoVacioAProposito(TransactionCase):
         propios = self.env['ir.model.data'].search([
             ('module', '=', 'dcasa_catalogo'), ('model', '=', 'product.template')])
         self.assertFalse(propios.mapped('name'), 'ningún producto con xmlid dcasa_catalogo.producto_*')
-        self.assertFalse(self.env['ir.model.data'].search_count([
-            ('module', '=', 'dcasa_catalogo'), ('name', '=like', 'producto\\_%')]))
         self.assertFalse(self.env['product.template'].with_context(active_test=False).search([
             ('dcasa_black_weekend', '=', True)]))
 
@@ -101,7 +99,7 @@ class TestCatalogoVacioAProposito(TransactionCase):
 
 @tagged('post_install', '-at_install')
 class TestCatalogoConProductosDePrueba(TransactionCase):
-    """Lo que debe hacer la carga cuando el catálogo ya tenga productos, con productos inventados y marcados de prueba."""
+    """Lo que debe hacer la carga cuando el catálogo ya tenga productos, con productos inventados de prueba."""
 
     @classmethod
     def setUpClass(cls):
@@ -132,8 +130,11 @@ class TestCatalogoConProductosDePrueba(TransactionCase):
                 if valor:
                     dato['valor'] = valor
                 datos.append(dato)
-            items.append({'clave': clave, 'nombre': nombre, 'categoria': categoria, 'orden': len(items) + 1,
-                          'descripcion': None, 'variantes': datos, **({'atributo': ATRIBUTO} if variantes[0][0] else {})})
+            item = {'clave': clave, 'nombre': nombre, 'categoria': categoria, 'orden': len(items) + 1,
+                    'descripcion': None, 'variantes': datos}
+            if variantes[0][0]:
+                item['atributo'] = ATRIBUTO
+            items.append(item)
         cls.catalogo = _catalogo(*items)
         cls.creados = cargar_catalogo(cls.env, cls.catalogo)
 

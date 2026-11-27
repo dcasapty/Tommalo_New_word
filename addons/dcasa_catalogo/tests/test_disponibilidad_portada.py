@@ -1,4 +1,4 @@
-"""Tarjetas de la portada (v3, aprobada por la dueña el 2026-11-15): «Quedan pocas» o «Agotado» sobre la foto, con la
+"""Tarjetas de la portada (v3, aprobada): «Quedan pocas» o «Agotado» sobre la foto, con la
 misma regla y las mismas palabras que la ficha (``_dcasa_disponibilidad_ficha``), nunca el número. «Disponible» no se
 pinta. La etiqueta va después del nombre en el HTML (el lector de pantalla dice primero qué es)."""
 from lxml import html as lhtml

@@ -17,7 +17,7 @@ class TestBlackWeekendAviso(TransactionCase):
         super().setUp()
         self.Pendiente = self.env['dcasa.tienda.pendiente'].sudo()
         self.producto = self.env['product.template'].create({
-            'name': 'Cama BW marcas prueba', 'list_price': 99.99, 'is_published': True})
+            'name': 'Crema BW marcas prueba', 'list_price': 99.99, 'is_published': True})
         self._marcados()
         self.Pendiente.search([]).unlink()
 

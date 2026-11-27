@@ -43,15 +43,15 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
         cls.colon = Lugar.search([('name', '=', 'Barrio Simulado')])     # $105 normal; abono de $20
         impuesto = cls.env['brian.herramientas']._b_itbms_venta()
         # $205 sin ITBMS: pasa el mínimo de $200 por poco, que es donde vive el problema.
-        cls.sofa = cls.env['product.template'].create({
-            'name': 'ZZPE SOFÁ', 'type': 'consu', 'sale_ok': True, 'is_published': True, 'list_price': 205.0,
+        cls.crema = cls.env['product.template'].create({
+            'name': 'ZZPE CREMA', 'type': 'consu', 'sale_ok': True, 'is_published': True, 'list_price': 205.0,
             'taxes_id': [Command.set(impuesto.ids)]})
         pais = cls.env.ref('base.pa')
         cls.usuaria = new_test_user(cls.env, login='zzpe_socia', password=CLAVE, groups='base.group_portal',
                                     name='ZZPE Socia Inventada')
         cls.socia = cls.usuaria.partner_id
         cls.socia.write({'phone': '6000-0077', 'email': 'zzpe.socia@example.com', 'street': 'Calle Inventada 7',
-                         'city': 'La Chorrera', 'country_id': pais.id, 'zip': '0000'})
+                         'city': 'Ciudad de Prueba', 'country_id': pais.id, 'zip': '0000'})
 
     def setUp(self):
         super().setUp()
@@ -89,7 +89,7 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
 
     def carrito_con_envio(self, lugar=None):
         """Un carrito de $205 sin ITBMS con el envío puesto y la promoción aplicada."""
-        self.agregar(self.sofa)
+        self.agregar(self.crema)
         self.sumar(lugar or self.costa)
         orden = self.orden()
         self.assertTrue(self.promocion_puesta(orden), 'la promoción está puesta antes del premio')
@@ -146,7 +146,7 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
         """Un carrito sin envío sumado no tiene promoción que perder: el premio entra igual que antes de este
         cambio. Es la regresión que importa, porque así son casi todos los carritos."""
         self.socia_con_puntos()
-        self.agregar(self.sofa)
+        self.agregar(self.crema)
         orden = self.orden()
         self.assertFalse(self.promocion_puesta(orden))
         orden._dcasa_usar_puntos_web(premio=self.premio('premio_desc_10'))
@@ -156,8 +156,8 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
         """Carrito de $274.99 sin ITBMS: el premio de $10 lo deja en $265.64, muy por encima del mínimo, así que no
         hay nada que avisar y la promoción se queda."""
         self.socia_con_puntos()
-        self.agregar(self.sofa)
-        self.agregar(self.base_cama)
+        self.agregar(self.crema)
+        self.agregar(self.base_crema)
         self.sumar(self.costa)
         orden = self.orden()
         orden._dcasa_usar_puntos_web(premio=self.premio('premio_desc_10'))
@@ -168,8 +168,8 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
 
     def carrito_grande_con_premio(self):
         """Carrito de $274.99 con el envío gratis y un premio de $10 bien puesto (la compra queda en $265.64)."""
-        self.agregar(self.sofa)
-        self.agregar(self.base_cama)
+        self.agregar(self.crema)
+        self.agregar(self.base_crema)
         self.sumar(self.costa)
         orden = self.orden()
         orden._dcasa_usar_puntos_web(premio=self.premio('premio_desc_10'))
@@ -178,7 +178,7 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
         return orden
 
     def test_si_el_carrito_se_achica_despues_los_puntos_vuelven_antes_de_pagar(self):
-        """El premio entró con un carrito de $274.99 y después el socio quitó la cama: la compra queda en $205 y con
+        """El premio entró con un carrito de $274.99 y después el socio quitó la crema: la compra queda en $205 y con
         el premio en $195.65, así que el premio le costaría los $45 del envío gratis. Antes de enseñarle o cobrarle
         el carrito, los puntos vuelven y se le avisa."""
         self.socia_con_puntos()
@@ -186,7 +186,7 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
         orden = self.carrito_grande_con_premio()
         self.assertLess(self.socia.dcasa_saldo, saldo, 'los puntos quedaron reservados')
         orden.order_line.filtered(
-            lambda line: line.product_id == self.base_cama.product_variant_id).sudo().unlink()
+            lambda line: line.product_id == self.base_crema.product_variant_id).sudo().unlink()
         aviso = orden._dcasa_limpiar_premios_web()
         self.assertIn('promoción del envío', aviso or '')
         self.assertFalse(orden.order_line.filtered('dcasa_canje_id'), 'el premio salió del carrito')
@@ -199,7 +199,7 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
         saldo = self.socia.dcasa_saldo
         orden = self.carrito_grande_con_premio()
         orden.order_line.filtered(
-            lambda line: line.product_id == self.base_cama.product_variant_id).sudo().unlink()
+            lambda line: line.product_id == self.base_crema.product_variant_id).sudo().unlink()
         carrito = self.url_open(f'{RAIZ}/carrito').json()['carrito']
         self.assertFalse([e for e in carrito['extras'] if e['tipo'] == 'premio'], 'el premio no sale en el carrito')
         self.assertEqual(self.socia.dcasa_saldo, saldo, 'los puntos volvieron enteros')
@@ -243,7 +243,7 @@ class TestPremioFrenteAlEnvio(ConReglasDePrueba, TiendaCase):
         self.env['dcasa.movimiento']._asentar(self.socia, 'ajuste', 60000, 'test', motivo='Saldo de prueba')
         orden = self.env['sale.order'].sudo().create({
             'partner_id': self.socia.id,
-            'order_line': [Command.create({'product_id': self.sofa.product_variant_id.id, 'product_uom_qty': 1})],
+            'order_line': [Command.create({'product_id': self.crema.product_variant_id.id, 'product_uom_qty': 1})],
         })
         self.assertFalse(orden.website_id, 'es una cotización del mostrador, no un carrito web')
         puesto = orden._dcasa_envio_poner(self.costa, 45.0)

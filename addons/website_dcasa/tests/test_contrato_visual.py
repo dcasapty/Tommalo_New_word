@@ -244,7 +244,7 @@ def _caja_de_estudio(color):
     real."""
     imagen = Image.new('RGB', (900, 1200), (226, 232, 224))
     dibujo = ImageDraw.Draw(imagen)
-    dibujo.rectangle((0, 960, 900, 1200), fill=(206, 214, 204))           # mesa
+    dibujo.rectangle((0, 960, 900, 1200), fill=(206, 214, 204))           # lampara
     dibujo.rectangle((220, 300, 680, 980), fill=color)                     # caja
     dibujo.rectangle((300, 620, 600, 900), fill=(245, 245, 243))           # paquete
     dibujo.rectangle((360, 680, 540, 800), fill=(150, 190, 210))           # la foto del paquete

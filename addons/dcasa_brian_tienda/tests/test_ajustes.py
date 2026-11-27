@@ -211,7 +211,7 @@ class TestLaPagina(TiendaCase):
 
     def test_en_el_pago_no_sale_y_en_el_carrito_si(self):
         self.assertIn('id="o_dcasa_brian"', self.url_open('/shop/cart').text)
-        self.assertIn('id="o_dcasa_brian"', self.url_open(self.colchon.website_url).text)
+        self.assertIn('id="o_dcasa_brian"', self.url_open(self.jabon.website_url).text)
         self.assertIn('id="o_dcasa_brian"', self.url_open('/shop').text)
         sitio = self.env['website'].browse(self.website.id)
         for ruta in ('/shop/payment', '/shop/checkout', '/my', '/my/orders', '/mi-cuenta', '/mi-cuenta/compras'):
@@ -223,7 +223,7 @@ class TestLaPagina(TiendaCase):
         """Se guarda en el borde: nada de la sesión (ni el sid, ni el carrito, ni un pase) va en el HTML."""
         antes = self.url_open('/').text
         self.post('pase')
-        self.post('carrito/agregar', {'producto_id': self.colchon.product_variant_id.id, 'cantidad': 1})
+        self.post('carrito/agregar', {'producto_id': self.jabon.product_variant_id.id, 'cantidad': 1})
         despues = self.url_open('/').text
         burbuja = lambda html: html[html.index('id="o_dcasa_brian"'):].split('</aside>')[0]  # noqa: E731
         self.assertEqual(burbuja(antes), burbuja(despues))
@@ -232,7 +232,7 @@ class TestLaPagina(TiendaCase):
     def test_con_el_editor_del_sitio_las_paginas_abren(self):
         """La trampa del lote 1: con el editor, un t-call metido por xpath en una plantilla de Odoo daba error 500."""
         self.authenticate('admin', 'admin')
-        for ruta in ('/', '/shop', self.colchon.website_url, '/shop/cart', '/privacidad', '/visitanos'):
+        for ruta in ('/', '/shop', self.jabon.website_url, '/shop/cart', '/privacidad', '/visitanos'):
             with self.subTest(ruta=ruta):
                 respuesta = self.url_open(ruta)
                 self.assertEqual(respuesta.status_code, 200)

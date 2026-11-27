@@ -25,14 +25,14 @@ class Carritos(TransactionCase):
         cls.caja = new_test_user(cls.env, login='rev5_caja', groups='base.group_user,dcasa_base.group_caja')
         cls.vend = new_test_user(cls.env, login='rev5_vend', groups='base.group_user,dcasa_base.group_vendedora')
         cls.itbms = cls.env.company.account_sale_tax_id
-        cls.mueble = cls.env['product.product'].create({'name': 'MUEBLE carrito 5', 'type': 'consu', 'list_price': 1000.0, 'taxes_id': [Command.set(cls.itbms.ids)]})
+        cls.articulo = cls.env['product.product'].create({'name': 'ARTICULO carrito 5', 'type': 'consu', 'list_price': 1000.0, 'taxes_id': [Command.set(cls.itbms.ids)]})
         cls.mueble2 = cls.env['product.product'].create({'name': 'MUEBLE2 carrito 5', 'type': 'consu', 'list_price': 700.0})
         cls.cliente = cls.env['res.partner'].create({'name': 'Cliente carrito 5'})
         cls.cliente2 = cls.env['res.partner'].create({'name': 'Otro cliente carrito'})
 
     def carrito(self, web=True, lineas=None, **extra):
         o = self.env['sale.order'].create({'partner_id': self.cliente.id, 'order_line': [Command.create({
-            'product_id': (p or self.mueble).id, 'product_uom_qty': q}) for p, q in (lineas or [(self.mueble, 1)])], **extra})
+            'product_id': (p or self.articulo).id, 'product_uom_qty': q}) for p, q in (lineas or [(self.articulo, 1)])], **extra})
         if web:
             o._dcasa_escribir_marca(dcasa_nacio_en_web=True, dcasa_creada_por_id=self.publico.id)
         return o
@@ -147,17 +147,17 @@ class TestRecalculoDelServidor(Carritos):
         el carrito de un visitante: lo recalcula el servidor con la llave y no queda marca (el cambio queda en el chatter
         del producto). Nómina y Caja ni siquiera pueden cambiar precios."""
         carrito = self.carrito()
-        self.mueble.with_user(self.gere).write({'list_price': 5000.0})
+        self.articulo.with_user(self.gere).write({'list_price': 5000.0})
         carrito.with_user(self.gere).action_update_prices()
         self.assertEqual(carrito.order_line.price_unit, 5000.0, 'el servidor recalculó con el precio nuevo')
         self.assertFalse(self.marca(carrito))
         for usuario in (self.nomi, self.caja):
             with self.subTest(usuario=usuario.login), self.assertRaises(AccessError):
-                self.mueble.with_user(usuario).write({'list_price': 1.0})
+                self.articulo.with_user(usuario).write({'list_price': 1.0})
 
     def test_revision5_c06_solo_gerencia_crea_reglas_de_la_lista_de_precios(self):
         lista = self.env['product.pricelist'].search([], limit=1)
-        valores = {'pricelist_id': lista.id, 'applied_on': '1_product', 'product_tmpl_id': self.mueble.product_tmpl_id.id,
+        valores = {'pricelist_id': lista.id, 'applied_on': '1_product', 'product_tmpl_id': self.articulo.product_tmpl_id.id,
                    'compute_price': 'fixed', 'fixed_price': 7777.0}
         self.env['product.pricelist.item'].with_user(self.gere).create(valores)
         for usuario in (self.nomi, self.caja):
@@ -180,7 +180,7 @@ class TestMoverLineasEntrePedidos(Carritos):
             'copy+unlink': lambda: (L1.copy({'order_id': objetivo.id}), L1.unlink()),
             'varias lineas': lambda: (L1 | L2).write({'order_id': objetivo.id}),
             'write mezclado': lambda: (L1 | Linea.browse(objetivo.order_line.ids)).write({'order_id': objetivo.id}),
-            'create+write': lambda: (Linea.create({'order_id': objetivo.id, 'product_id': self.mueble.id, 'product_uom_qty': 1}),
+            'create+write': lambda: (Linea.create({'order_id': objetivo.id, 'product_id': self.articulo.id, 'product_uom_qty': 1}),
                                      L1.write({'order_id': objetivo.id})),
             'con precio': lambda: L1.write({'order_id': objetivo.id, 'price_unit': 4000.0}),
         }
@@ -192,7 +192,7 @@ class TestMoverLineasEntrePedidos(Carritos):
             for forma in ('write order_id', 'order.write link', 'order.write set', 'copy+unlink', 'varias lineas',
                           'write mezclado', 'create+write', 'con precio'):
                 for objetivo, nombre in ((self.carrito(web=False), 'mostrador'), (self.carrito(), 'online')):
-                    origen = self.carrito(lineas=[(self.mueble, 1), (self.mueble2, 1)])
+                    origen = self.carrito(lineas=[(self.articulo, 1), (self.mueble2, 1)])
                     try:
                         with self.env.cr.savepoint():
                             self.mover(forma, usuario, origen, objetivo)

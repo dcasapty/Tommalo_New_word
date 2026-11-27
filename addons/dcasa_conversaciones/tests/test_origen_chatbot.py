@@ -81,7 +81,7 @@ class TestCotizacionesQueVencen(CotizarCase):
     def web(self):
         return self.env['sale.order'].create({
             'partner_id': self.conv.partner_id.id, 'website_id': self.env['website'].search([], limit=1).id,
-            'order_line': [(0, 0, {'product_id': self.lámpara.product_variant_id.id, 'product_uom_qty': 1})]})
+            'order_line': [(0, 0, {'product_id': self.lampara.product_variant_id.id, 'product_uom_qty': 1})]})
 
     def test_viene_en_3_dias_y_la_cotizacion_dice_valida_hasta(self):
         self.assertEqual(self.ajustes.cotizacion_dias_abierta, 3)
@@ -127,7 +127,7 @@ class TestCotizacionesQueVencen(CotizarCase):
     def test_la_de_una_vendedora_no_se_toca(self):
         orden = self.env['sale.order'].with_user(self.vendedora).create({
             'partner_id': self.conv.partner_id.id,
-            'order_line': [(0, 0, {'product_id': self.lámpara.product_variant_id.id, 'product_uom_qty': 1})]})
+            'order_line': [(0, 0, {'product_id': self.lampara.product_variant_id.id, 'product_uom_qty': 1})]})
         self.assertEqual(orden.dcasa_origen, 'vendedora')
         self.vencer(orden, dias=10)
         self.cron()

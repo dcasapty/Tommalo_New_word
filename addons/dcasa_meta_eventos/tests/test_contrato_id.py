@@ -40,8 +40,8 @@ class TestContratoId(HttpCase):
         color = cls.env['product.attribute'].create({
             'name': 'Color Contrato Meta', 'create_variant': 'always',
             'value_ids': [Command.create({'name': 'Rojo'}), Command.create({'name': 'Negro'})]})
-        cls.sofa = cls.env['product.template'].create({
-            'name': 'SOFÁ CONTRATO META', 'type': 'consu', 'list_price': 250.0, 'is_published': True,
+        cls.crema = cls.env['product.template'].create({
+            'name': 'CREMA CONTRATO META', 'type': 'consu', 'list_price': 250.0, 'is_published': True,
             'sale_ok': True, 'website_id': False, 'taxes_id': [Command.clear()],
             'image_1920': foto(),
             'attribute_line_ids': [Command.create({'attribute_id': color.id,
@@ -75,14 +75,14 @@ class TestContratoId(HttpCase):
         return {fila['id'] for fila in csv.DictReader(io.StringIO(respuesta.text))}
 
     def test_catalogo_ficha_y_compra_usan_el_mismo_id(self):
-        variantes = self.sofa.product_variant_ids
+        variantes = self.crema.product_variant_ids
         catalogo = self.ids_del_catalogo()
         for variante in variantes:
             self.assertIn(str(variante.id), catalogo)
         # Ficha: el id que lleva el píxel para la variante que se muestra.
-        combinacion = self.sofa._get_first_possible_combination()
-        mostrada = self.sofa._get_variant_for_combination(combinacion)
-        self.assertIn(f'data-dcasa-meta-id="{mostrada.id}"', self.url_open(self.sofa.website_url).text)
+        combinacion = self.crema._get_first_possible_combination()
+        mostrada = self.crema._get_variant_for_combination(combinacion)
+        self.assertIn(f'data-dcasa-meta-id="{mostrada.id}"', self.url_open(self.crema.website_url).text)
         self.assertIn(str(mostrada.id), catalogo)
         # Purchase del servidor con las dos variantes.
         factura = self.env['account.move'].create({

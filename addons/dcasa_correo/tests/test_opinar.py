@@ -14,7 +14,7 @@ class TestInvitacionAOpinar(CorreoCase):
 
     def setUp(self):
         super().setUp()
-        self.mueble.is_published = True
+        self.articulo.is_published = True
         self.startPatcher(patch(MI_CUENTA, return_value=True))
 
     def test_pagada_invita_a_mi_cuenta(self):
@@ -37,12 +37,12 @@ class TestInvitacionAOpinar(CorreoCase):
         self.assertEqual(valores['opinar'], '')
 
     def test_sin_nada_por_opinar_no_invita(self):
-        self.mueble.is_published = False
+        self.articulo.is_published = False
         factura = self.factura()
         self.pagar(factura)
         self.assertEqual(factura._dcasa_correo_valores()['opinar'], '', 'No está en la tienda')
-        self.mueble.is_published = True
-        self.env['dcasa.resena']._dcasa_crear_del_cliente(self.ana, self.mueble.product_tmpl_id.id, 5)
+        self.articulo.is_published = True
+        self.env['dcasa.resena']._dcasa_crear_del_cliente(self.ana, self.articulo.product_tmpl_id.id, 5)
         self.assertEqual(factura._dcasa_correo_valores()['opinar'], '', 'Ya opinó de lo que trae esta factura')
 
     def test_sin_mi_cuenta_no_invita(self):

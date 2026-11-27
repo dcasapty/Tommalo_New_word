@@ -188,9 +188,9 @@ class PreparaPedido:
         cls.metodo = cls.env.ref('dcasa_pago_yappy.payment_method_yappy')
         cls.cliente = cls.env['res.partner'].create({
             'name': 'Ana Prueba Yappy', 'email': 'ana.prueba.yappy@example.com', 'phone': '+507 6000-0101',
-            'street': 'Calle de prueba 1', 'city': 'La Chorrera', 'country_id': cls.env.ref('base.pa').id})
+            'street': 'Calle de prueba 1', 'city': 'Ciudad de Prueba', 'country_id': cls.env.ref('base.pa').id})
         cls.producto = cls.env['product.product'].create({
-            'name': 'Sofá de prueba (Yappy)', 'type': 'consu', 'is_storable': True, 'list_price': 100.0,
+            'name': 'Crema de prueba (Yappy)', 'type': 'consu', 'is_storable': True, 'list_price': 100.0,
             'taxes_id': [Command.set(cls.env.company.account_sale_tax_id.ids)]})
         almacen = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1)
         cls.env['stock.quant']._update_available_quantity(cls.producto, almacen.lot_stock_id, 50.0)

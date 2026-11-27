@@ -46,7 +46,7 @@ class TestMiCuentaAtaques(MiCuentaComun, HttpCase):
         socia, sin PDF ni los datos completos (la sesión de la tienda no es de ella)."""
         usuario = self.usuario_de_la_tienda('mc_tienda_otra')
         usuario.partner_id.write({'phone': TELEFONO_FIJO, 'street': 'Calle de la Tienda 9'})
-        suyo = self._pedido(usuario.partner_id, [(self.sofa, 1)])
+        suyo = self._pedido(usuario.partner_id, [(self.crema, 1)])
         suyo.action_confirm()
         suya = suyo._create_invoices()
         suya.action_post()
@@ -163,7 +163,7 @@ class TestMiCuentaAtaques(MiCuentaComun, HttpCase):
         una ficha con el celular de la clienta como llave, que el siguiente intento reclamaba sin código, y que al
         fusionarla con la de ella le daba a la intrusa sus compras en «Mi cuenta»."""
         clienta = self.env['res.partner'].create({'name': 'CLIENTA A ABONOS', 'phone': '6100-4004'})
-        pedido = self._pedido(clienta, [(self.sofa, 1)])
+        pedido = self._pedido(clienta, [(self.crema, 1)])
         pedido.action_confirm()
         factura = pedido._create_invoices()
         factura.action_post()
@@ -201,7 +201,7 @@ class TestMiCuentaAtaques(MiCuentaComun, HttpCase):
 
     def test_cada_pagina_con_sesion_es_privada_y_no_se_indexa(self):
         usuario = self.usuario_de_la_tienda('mc_tienda_cab')
-        suyo = self._pedido(usuario.partner_id, [(self.sofa, 1)])
+        suyo = self._pedido(usuario.partner_id, [(self.crema, 1)])
         suyo.action_confirm()
         suya = suyo._create_invoices()
         suya.action_post()

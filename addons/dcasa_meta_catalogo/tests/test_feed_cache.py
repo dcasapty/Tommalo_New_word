@@ -16,8 +16,8 @@ class TestFeedCache(MetaComun, TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.mesa = cls._producto('Mesa caché prueba Meta', 120.0)
-        cls.silla = cls._producto('Silla caché prueba Meta', 45.0)
+        cls.lampara = cls._producto('Lampara caché prueba Meta', 120.0)
+        cls.taza = cls._producto('Taza caché prueba Meta', 45.0)
 
     def setUp(self):
         super().setUp()
@@ -50,46 +50,46 @@ class TestFeedCache(MetaComun, TransactionCase):
 
     def test_cambiar_un_precio_vuelve_a_armar(self):
         self._servir()
-        self.mesa.list_price = 130.0
-        self._despues(self.mesa)
+        self.lampara.list_price = 130.0
+        self._despues(self.lampara)
         filas = self._servir()
         self.assertEqual(self.armados, 2)
-        self.assertEqual(self._fila(filas, self.mesa)['price'], '130.00 USD')
+        self.assertEqual(self._fila(filas, self.lampara)['price'], '130.00 USD')
 
     def test_despublicar_vuelve_a_armar(self):
         self._servir()
-        self.silla.is_published = False
-        self._despues(self.silla)
+        self.taza.is_published = False
+        self._despues(self.taza)
         filas = self._servir()
         self.assertEqual(self.armados, 2)
-        self.assertIsNone(self._fila(filas, self.silla))
+        self.assertIsNone(self._fila(filas, self.taza))
 
     def test_marcar_una_campana_vuelve_a_armar(self):
         self._servir()
         campana = self.env['dcasa.meta.campana'].create({'name': 'Regreso a clases'})
-        self.mesa.dcasa_meta_campana_id = campana
-        self._despues(self.mesa)
+        self.lampara.dcasa_meta_campana_id = campana
+        self._despues(self.lampara)
         filas = self._servir()
         self.assertEqual(self.armados, 2)
-        self.assertEqual(self._fila(filas, self.mesa)['custom_label_1'], 'regreso_a_clases')
+        self.assertEqual(self._fila(filas, self.lampara)['custom_label_1'], 'regreso_a_clases')
         # Archivar la campaña (otra tabla) también se nota.
         campana.active = False
         self._despues(campana)
         filas = self._servir()
         self.assertEqual(self.armados, 3)
-        self.assertEqual(self._fila(filas, self.mesa)['custom_label_1'], '')
+        self.assertEqual(self._fila(filas, self.lampara)['custom_label_1'], '')
 
     def test_no_anunciar_vuelve_a_armar(self):
         self._servir()
-        self.silla.dcasa_meta_no_anunciar = True
-        self._despues(self.silla)
-        self.assertIsNone(self._fila(self._servir(), self.silla))
+        self.taza.dcasa_meta_no_anunciar = True
+        self._despues(self.taza)
+        self.assertIsNone(self._fila(self._servir(), self.taza))
         self.assertEqual(self.armados, 2)
 
     def test_cambiar_el_feed_vuelve_a_armar(self):
         self._servir()
         self.feed.dcasa_marca = 'Otra marca'
-        self.assertEqual(self._fila(self._servir(), self.mesa)['brand'], 'Otra marca')
+        self.assertEqual(self._fila(self._servir(), self.lampara)['brand'], 'Otra marca')
         self.assertEqual(self.armados, 2)
 
     def test_a_un_dia_o_con_regenerar_ahora(self):

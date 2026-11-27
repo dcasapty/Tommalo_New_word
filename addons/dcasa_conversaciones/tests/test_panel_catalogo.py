@@ -57,7 +57,7 @@ class CatalogoCase(PanelCase):
         cls.categoria = cls.env['product.public.category'].create({'name': 'Zzdormitorio'})
         base = {'type': 'consu', 'is_storable': True, 'sale_ok': True, 'is_published': True,
                 'taxes_id': [Command.set(impuesto.ids)], 'public_categ_ids': [Command.set(cls.categoria.ids)]}
-        cls.lámpara = Template.create({
+        cls.lampara = Template.create({
             **base, 'name': 'ZZCAMA ROBLE GRANDE', 'default_code': 'ZZ-LÁMPARA', 'list_price': 349.99,
             'standard_price': 123.45, 'dcasa_medidas': 'Ancho × Largo: 160 × 200 cm', 'image_1920': foto(),
             'product_template_image_ids': [
@@ -73,7 +73,7 @@ class CatalogoCase(PanelCase):
             'attribute_line_ids': [Command.create({'attribute_id': tamano.id,
                                                    'value_ids': [Command.set(tamano.value_ids.ids)]})]})
         almacen = cls.env['stock.warehouse'].search([], limit=1)
-        cls.env['stock.quant']._update_available_quantity(cls.lámpara.product_variant_id, almacen.lot_stock_id, 7777)
+        cls.env['stock.quant']._update_available_quantity(cls.lampara.product_variant_id, almacen.lot_stock_id, 7777)
         cls.env['stock.quant']._update_available_quantity(cls.espejo.product_variant_id, almacen.lot_stock_id, 3)
 
     def setUp(self):
@@ -125,9 +125,9 @@ class TestBuscarCatalogo(CatalogoCase):
                 self.assertEqual(self.panel.buscar_catalogo(consulta), {'productos': [], 'encontrados': 0})
 
     def test_precio_mas_itbms_y_disponibilidad_como_etiqueta(self):
-        (lámpara,) = self.panel.buscar_catalogo('ZZ-LÁMPARA')['productos']
-        self.assertEqual((lámpara['precio'], lámpara['precio_texto'], lámpara['mas_itbms']), (349.99, '$349.99 + ITBMS', True))
-        self.assertEqual(lámpara['disponibilidad'], 'disponible')
+        (lampara,) = self.panel.buscar_catalogo('ZZ-LÁMPARA')['productos']
+        self.assertEqual((lampara['precio'], lampara['precio_texto'], lampara['mas_itbms']), (349.99, '$349.99 + ITBMS', True))
+        self.assertEqual(lampara['disponibilidad'], 'disponible')
         (espejo,) = self.panel.buscar_catalogo('ZZ-ESPEJO')['productos']
         self.assertEqual(espejo['disponibilidad'], 'pocas')
         self.assertEqual(self.panel.buscar_catalogo('first class')['productos'][0]['disponibilidad'], 'agotado')
@@ -139,13 +139,13 @@ class TestBuscarCatalogo(CatalogoCase):
         self.assertNotRegex(datos, r'(?i)standard_price|costo|free_qty|qty_available|existencias')
 
     def test_trae_medidas_enlace_y_fotos(self):
-        (lámpara,) = self.panel.buscar_catalogo('ZZ-LÁMPARA')['productos']
-        self.assertEqual(lámpara['medidas'], 'Ancho × Largo: 160 × 200 cm')
-        self.assertEqual(lámpara['id'], self.lámpara.id)
-        self.assertEqual(lámpara['fotos_total'], 3)
+        (lampara,) = self.panel.buscar_catalogo('ZZ-LÁMPARA')['productos']
+        self.assertEqual(lampara['medidas'], 'Ancho × Largo: 160 × 200 cm')
+        self.assertEqual(lampara['id'], self.lampara.id)
+        self.assertEqual(lampara['fotos_total'], 3)
         self.assertRegex(
-            lámpara['miniatura'], rf'^/dcasa/img/product\.template/{self.lámpara.id}/image_1920/256\.webp\?v=\w+$')
-        self.assertTrue(lámpara['url'].endswith(self.lámpara.website_url))
+            lampara['miniatura'], rf'^/dcasa/img/product\.template/{self.lampara.id}/image_1920/256\.webp\?v=\w+$')
+        self.assertTrue(lampara['url'].endswith(self.lampara.website_url))
         (espejo,) = self.panel.buscar_catalogo('ZZ-ESPEJO')['productos']
         self.assertEqual((espejo['fotos_total'], espejo['miniatura']), (0, None), 'Sin foto no se inventa una')
 
@@ -154,8 +154,8 @@ class TestBuscarCatalogo(CatalogoCase):
         self.assertIsNone(jabon['variante_id'])
         self.assertEqual(sorted(v['nombre'] for v in jabon['variantes']),
                          ['ZZJABÓN FIRST CLASS (Zzchica)', 'ZZJABÓN FIRST CLASS (Zzgrande)'])
-        (lámpara,) = self.panel.buscar_catalogo('ZZ-LÁMPARA')['productos']
-        self.assertEqual((lámpara['variante_id'], lámpara['variantes']), (self.lámpara.product_variant_id.id, []))
+        (lampara,) = self.panel.buscar_catalogo('ZZ-LÁMPARA')['productos']
+        self.assertEqual((lampara['variante_id'], lampara['variantes']), (self.lampara.product_variant_id.id, []))
 
     def test_limite(self):
         self.assertEqual(len(self.panel.buscar_catalogo('zz', limite=2)['productos']), 2)
@@ -164,9 +164,9 @@ class TestBuscarCatalogo(CatalogoCase):
 
     def test_solo_el_equipo_de_ventas_por_rpc(self):
         for usuario in (self.interno, self.portal):
-            for metodo, args in (('buscar_catalogo', ['lámpara']), ('fotos_catalogo', [self.lámpara.id]),
-                                 ('enviar_foto_catalogo', [self.conv.id, self.lámpara.id]),
-                                 ('preparar_foto_catalogo', [self.conv.id, self.lámpara.id]),
+            for metodo, args in (('buscar_catalogo', ['lámpara']), ('fotos_catalogo', [self.lampara.id]),
+                                 ('enviar_foto_catalogo', [self.conv.id, self.lampara.id]),
+                                 ('preparar_foto_catalogo', [self.conv.id, self.lampara.id]),
                                  ('cotizaciones_abiertas', [self.conv.id]),
                                  ('crear_cotizacion', [self.conv.id, []]), ('enviar_cotizacion', [self.conv.id])):
                 with self.subTest(usuario=usuario.login, metodo=metodo), self.assertRaises(AccessError):
@@ -177,7 +177,7 @@ class TestBuscarCatalogo(CatalogoCase):
 class TestFotosYEnvio(CatalogoCase):
 
     def test_las_fotos_de_un_producto(self):
-        resultado = self.panel.fotos_catalogo(self.lámpara.id)
+        resultado = self.panel.fotos_catalogo(self.lampara.id)
         self.assertEqual(resultado['producto']['nombre'], 'ZZCAMA ROBLE GRANDE')
         refs = [f['ref'] for f in resultado['fotos']]
         self.assertEqual(refs[0], 'principal')
@@ -194,7 +194,7 @@ class TestFotosYEnvio(CatalogoCase):
         self.assertFalse(self.envios())
 
     def test_manda_la_foto_con_el_pie_armado(self):
-        resultado = self.panel.enviar_foto_catalogo(self.conv.id, self.lámpara.id)
+        resultado = self.panel.enviar_foto_catalogo(self.conv.id, self.lampara.id)
         self.assertTrue(resultado['enviado'])
         (envio,) = self.envios()
         cuerpo = envio.kwargs['json']
@@ -202,7 +202,7 @@ class TestFotosYEnvio(CatalogoCase):
         self.assertEqual(lineas[0], 'Zzcama Roble Grande', 'el cliente lee el nombre en formato título (F5)')
         self.assertEqual(lineas[1], '$349.99 + ITBMS')
         self.assertEqual(lineas[2], 'Medidas: Ancho × Largo: 160 × 200 cm')
-        self.assertTrue(lineas[3].endswith(self.lámpara.website_url))
+        self.assertTrue(lineas[3].endswith(self.lampara.website_url))
         self.assertEqual(len(lineas), 4)
         (adjunto,) = cuerpo['adjuntos']
         self.assertEqual((adjunto['tipo'], adjunto['mime'], adjunto['nombre']),
@@ -211,8 +211,8 @@ class TestFotosYEnvio(CatalogoCase):
         self.assertNotIn('123.45', json.dumps(cuerpo))
 
     def test_la_foto_sale_en_jpeg_de_hasta_1024_px_y_sin_transparencias(self):
-        self.lámpara.image_1920 = foto((0, 0, 0, 0), (2000, 1000), 'PNG', 'RGBA')
-        resultado = self.panel.enviar_foto_catalogo(self.conv.id, self.lámpara.id)
+        self.lampara.image_1920 = foto((0, 0, 0, 0), (2000, 1000), 'PNG', 'RGBA')
+        resultado = self.panel.enviar_foto_catalogo(self.conv.id, self.lampara.id)
         (adjunto,) = resultado['mensaje']['adjuntos']
         registro = self.env['ir.attachment'].browse(adjunto['id'])
         imagen = Image.open(io.BytesIO(registro.raw))
@@ -221,8 +221,8 @@ class TestFotosYEnvio(CatalogoCase):
         self.assertEqual((registro.res_model, registro.create_uid), ('dcasa.mensaje', self.vendedora))
 
     def test_la_galeria_manda_varias_fotos_en_un_mensaje(self):
-        galeria = self.panel.fotos_catalogo(self.lámpara.id)['fotos']
-        resultado = self.panel.enviar_foto_catalogo(self.conv.id, self.lámpara.id, [f['ref'] for f in galeria])
+        galeria = self.panel.fotos_catalogo(self.lampara.id)['fotos']
+        resultado = self.panel.enviar_foto_catalogo(self.conv.id, self.lampara.id, [f['ref'] for f in galeria])
         self.assertEqual([a['nombre'] for a in resultado['mensaje']['adjuntos']],
                          ['zzcama-roble-grande-1.jpg', 'zzcama-roble-grande-2.jpg', 'zzcama-roble-grande-3.jpg'])
         (envio,) = self.envios()
@@ -230,13 +230,13 @@ class TestFotosYEnvio(CatalogoCase):
         self.assertEqual(len(self.conv.mensaje_ids.filtered(lambda m: m.autor == 'vendedora')), 1)
 
     def test_el_pie_se_puede_cambiar(self):
-        resultado = self.panel.enviar_foto_catalogo(self.conv.id, self.lámpara.id, None, 'Esta es la que te dije')
+        resultado = self.panel.enviar_foto_catalogo(self.conv.id, self.lampara.id, None, 'Esta es la que te dije')
         (envio,) = self.envios()
         self.assertEqual(envio.kwargs['json']['texto'], 'Esta es la que te dije')
         self.assertEqual(resultado['mensaje']['texto'], 'Esta es la que te dije')
 
     def test_preparar_deja_las_fotos_en_la_caja_sin_enviar_nada(self):
-        preparado = self.panel.preparar_foto_catalogo(self.conv.id, self.lámpara.id)
+        preparado = self.panel.preparar_foto_catalogo(self.conv.id, self.lampara.id)
         # El pie lo lee el cliente: formato título (F5).
         self.assertTrue(preparado['texto'].startswith('Zzcama Roble Grande\n$349.99 + ITBMS'))
         (adjunto,) = preparado['adjuntos']
@@ -252,18 +252,18 @@ class TestFotosYEnvio(CatalogoCase):
         demasiadas = ['principal'] + [f'galeria-{n}' for n in range(8)]
         for fotos in (['galeria-999999'], ['inexistente'], [5], 'principal', demasiadas):
             with self.subTest(fotos=fotos), self.assertRaises(UserError):
-                self.panel.enviar_foto_catalogo(self.conv.id, self.lámpara.id, fotos)
+                self.panel.enviar_foto_catalogo(self.conv.id, self.lampara.id, fotos)
         with self.assertRaises(UserError):
             self.panel.enviar_foto_catalogo(self.conv.id, self.espejo.id)   # sin foto: no se inventa una
         with self.assertRaises(UserError):
-            self.panel.enviar_foto_catalogo(self.conv.id, self.lámpara.id, None, 5)
+            self.panel.enviar_foto_catalogo(self.conv.id, self.lampara.id, None, 5)
         for malo in (0, -1, 'x', None, True):
             with self.subTest(producto=malo), self.assertRaises(UserError):
                 self.panel.enviar_foto_catalogo(self.conv.id, malo)
         self.assertFalse(self.envios())
 
     def test_la_foto_enviada_toma_la_conversacion_igual_que_cualquier_respuesta(self):
-        self.panel.enviar_foto_catalogo(self.conv.id, self.lámpara.id)
+        self.panel.enviar_foto_catalogo(self.conv.id, self.lampara.id)
         self.assertEqual((self.conv.estado, self.conv.asignada_a), ('humano', self.vendedora))
 
 
@@ -277,7 +277,7 @@ class TestCotizacion(CatalogoCase):
     def orden(self, estado='draft', partner=None, **valores):
         return self.env['sale.order'].with_user(self.vendedora).create({
             'partner_id': (partner or self.partner).id, 'user_id': self.vendedora.id,
-            'order_line': [Command.create({'product_id': self.lámpara.product_variant_id.id, 'product_uom_qty': 1})],
+            'order_line': [Command.create({'product_id': self.lampara.product_variant_id.id, 'product_uom_qty': 1})],
             **valores})
 
     def test_sin_cotizaciones_abiertas(self):
@@ -305,7 +305,7 @@ class TestCotizacion(CatalogoCase):
 
     def test_crear_un_borrador_con_productos_del_catalogo_sin_confirmar(self):
         resultado = self.panel.crear_cotizacion(self.conv.id, [
-            {'variante_id': self.lámpara.product_variant_id.id, 'cantidad': 2},
+            {'variante_id': self.lampara.product_variant_id.id, 'cantidad': 2},
             {'variante_id': self.espejo.product_variant_id.id, 'cantidad': 1}])
         orden = self.env['sale.order'].browse(resultado['cotizacion']['id'])
         self.assertEqual((orden.state, orden.partner_id, orden.user_id), ('draft', self.partner, self.vendedora))
@@ -329,11 +329,11 @@ class TestCotizacion(CatalogoCase):
 
     def test_el_precio_lo_pone_odoo_no_la_pantalla(self):
         resultado = self.panel.crear_cotizacion(self.conv.id, [
-            {'variante_id': self.lámpara.product_variant_id.id, 'cantidad': 1, 'precio': 1.0}])
+            {'variante_id': self.lampara.product_variant_id.id, 'cantidad': 1, 'precio': 1.0}])
         self.assertAlmostEqual(resultado['cotizacion']['lineas'][0]['precio_unitario'], 349.99)
 
     def test_cotizacion_invalida(self):
-        variante = self.lámpara.product_variant_id.id
+        variante = self.lampara.product_variant_id.id
         casos = {
             'sin lineas': [], 'no es lista': 'x', 'demasiadas': [{'variante_id': variante, 'cantidad': 1}] * 21,
             'no publicado': [{'variante_id': self.secreto.product_variant_id.id, 'cantidad': 1}],
@@ -391,7 +391,7 @@ class TestCotizacionEnPdf(HttpCase, CatalogoCase):
     def orden(self, **valores):
         return self.env['sale.order'].with_user(self.vendedora).create({
             'partner_id': self.partner.id, 'user_id': self.vendedora.id,
-            'order_line': [Command.create({'product_id': self.lámpara.product_variant_id.id, 'product_uom_qty': 1})],
+            'order_line': [Command.create({'product_id': self.lampara.product_variant_id.id, 'product_uom_qty': 1})],
             **valores})
 
     @skipUnless(shutil.which('wkhtmltopdf') and _pypdf2_compatible(),

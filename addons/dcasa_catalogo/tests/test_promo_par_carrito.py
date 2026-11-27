@@ -77,14 +77,14 @@ class TestPromoParEnElCarrito(HttpCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.website = cls.env.ref('website.default_website')
-        cls.toallitas = cls.env['product.template'].create({
-            'name': 'ZZTOALLITAS DEL CARRITO', 'type': 'consu', 'is_storable': True, 'sale_ok': True,
+        cls.con_par = cls.env['product.template'].create({
+            'name': 'ZZCAJA DEL CARRITO', 'type': 'consu', 'is_storable': True, 'sale_ok': True,
             'is_published': True, 'list_price': 20.0, 'taxes_id': [Command.clear()],
         }).product_variant_id
-        cls.toallitas.write({'dcasa_presentacion': 'Caja de 600 toallitas', 'dcasa_precio_par': 35.0})
+        cls.con_par.write({'dcasa_presentacion': 'Caja de 12 unidades', 'dcasa_precio_par': 35.0})
         ubicacion = cls.env['stock.warehouse'].search([('company_id', '=', cls.env.company.id)], limit=1).lot_stock_id
         cls.env['stock.quant'].with_context(inventory_mode=True).create({
-            'product_id': cls.toallitas.id, 'location_id': ubicacion.id, 'inventory_quantity': 50})._apply_inventory()
+            'product_id': cls.con_par.id, 'location_id': ubicacion.id, 'inventory_quantity': 50})._apply_inventory()
         cls.usuario = cls.env['res.users'].with_context(no_reset_password=True).create({
             'name': 'Clienta Prueba Promo Par', 'login': CORREO, 'email': CORREO, 'password': CLAVE,
             'group_ids': [Command.set([cls.env.ref('base.group_portal').id])]})
@@ -99,7 +99,7 @@ class TestPromoParEnElCarrito(HttpCase):
 
     def agregar(self, cajas):
         return self.make_jsonrpc_request('/shop/cart/add', {
-            'product_template_id': self.toallitas.product_tmpl_id.id, 'product_id': self.toallitas.id,
+            'product_template_id': self.con_par.product_tmpl_id.id, 'product_id': self.con_par.id,
             'quantity': cajas})
 
     def cambiar(self, linea, cajas):
@@ -174,9 +174,9 @@ class TestPromoParEnElCarrito(HttpCase):
                 orden = self.carrito() or self.env['sale.order'].create({
                     'partner_id': self.cliente.id, 'website_id': self.website.id})
                 orden.order_line.unlink()
-                orden._cart_add(self.toallitas.id, 3)
+                orden._cart_add(self.con_par.id, 3)
                 self.assertEqual(self.estado(), ([(1.0, 20.0), (2.0, 17.5)], 55.0))
                 self.browser_size = tamano
                 self.browser_js('/shop/cart', EN_EL_CARRITO % {
-                    'producto': self.toallitas.id, 'par': PAR, 'suelta': SUELTA}, login=CORREO, timeout=180)
+                    'producto': self.con_par.id, 'par': PAR, 'suelta': SUELTA}, login=CORREO, timeout=180)
                 self.assertEqual(self.estado(), ([(1.0, 20.0), (4.0, 17.5)], 90.0))

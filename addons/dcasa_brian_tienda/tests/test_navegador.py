@@ -62,11 +62,11 @@ CHAT = """(async () => {
                     etiqueta: panel0.querySelector('.o_dcbt_cab_boton[aria-pressed]').getAttribute('aria-label') };
     res.saludos = globos().filter((g) => g.includes('Hola, soy Andrés')).length;
     res.expandido = burbuja.getAttribute('aria-expanded');
-    // Las sugerencias dependen del catálogo (las dos categorías con más productos): se escribe «Colchones», que es lo
+    // Las sugerencias dependen del catálogo (las dos categorías con más productos): se escribe «Jabones», que es lo
     // mismo que manda el botón.
     await hasta(() => document.querySelector('#o_dcbt_panel .o_dcbt_chip'), 'las sugerencias del saludo');
     const campo0 = document.querySelector('#o_dcbt_texto');
-    campo0.value = 'Colchones';
+    campo0.value = 'Jabones';
     campo0.dispatchEvent(new Event('input', { bubbles: true }));
     document.querySelector('#o_dcbt_panel .o_dcbt_composer').requestSubmit();
     // Las de la conversación (en la computadora, ya ampliada, la vitrina trae aparte «Lo más buscado»).
@@ -178,7 +178,7 @@ PURAS = """(() => {
         urls: [m.urlPropia('/shop/x-1'), m.urlPropia('javascript:alert(1)'), m.urlPropia('https://malo.example.com/x'),
                m.urlPropia('https://tommalo.example/shop/x-2'), m.urlPropia('//malo.example.com/x')],
         precio: m.partirPrecio('$278.00 + ITBMS'),
-        wa: m.mensajeWhatsApp({ lineas: [{ cantidad: 2, nombre: 'Colchón' }] }),
+        wa: m.mensajeWhatsApp({ lineas: [{ cantidad: 2, nombre: 'Jabón' }] }),
         tipos: [m.tipoDePagina('/').tipo, m.tipoDePagina('/shop').tipo, m.tipoDePagina('/shop/cart').tipo,
                 m.tipoDePagina('/socios').tipo],
         // El robot de D'CASA y sus poses se fueron con la marca (2026-11-19): el JS ya no los trae.
@@ -291,8 +291,8 @@ class NavegadorCase(TiendaCase):
                                  groups='base.group_user,dcasa_base.group_gerencia')
         importar(cls.env, gerencia)
         cls.env['dcasa.envio.tarifa'].search([], limit=1).with_user(gerencia).action_aprobar()
-        # Los colchones del catálogo de ejemplo saldrían antes en «Colchones»: el chat de prueba ve solo los suyos.
-        cls.env['product.template'].search([('name', 'ilike', 'colch'), ('id', '!=', cls.colchon.id)]).write(
+        # Los jabones del catálogo de ejemplo saldrían antes en «Jabones»: el chat de prueba ve solo los suyos.
+        cls.env['product.template'].search([('name', 'ilike', 'jab'), ('id', '!=', cls.jabon.id)]).write(
             {'is_published': False})
 
     def setUp(self):
@@ -348,9 +348,9 @@ class TestChatEnElNavegador(NavegadorCase):
     def revisar_chat(self, r, ancho):
         self.assertEqual(r['saludos'], 1, 'Brian se presenta una sola vez')
         self.assertEqual(r['expandido'], 'true')
-        self.assertEqual(r['tarjeta'], 'ZZBT Colchón Queen', 'la tarjeta sale de buscar_productos de Odoo')
+        self.assertEqual(r['tarjeta'], 'ZZBT Jabón Grande', 'la tarjeta sale de buscar_productos de Odoo')
         self.assertEqual(r['precio'], '$278.00+ ITBMS')
-        self.assertEqual(r['ver'], self.colchon.website_url)
+        self.assertEqual(r['ver'], self.jabon.website_url)
         self.assertEqual(r['listo'], 1)
         self.assertEqual(r['navbar'], '2', 'el globo del carrito de la cabecera se pone al día')
         self.assertEqual(r['total'], '$834.00')
@@ -395,7 +395,7 @@ class TestChatEnElNavegador(NavegadorCase):
         self.assertEqual(r['urls'], ['/shop/x-1', None, None, '/shop/x-2', None])
         self.assertEqual(r['precio'], ['$278.00', '+ ITBMS'])
         # El mensaje de WhatsApp no lleva el nombre de la tienda de origen (lo recibe la tienda: sabe quién es).
-        self.assertEqual(r['wa'], 'Hola, vengo del chat de la web. Tengo en el carrito: 2 × Colchón.')
+        self.assertEqual(r['wa'], 'Hola, vengo del chat de la web. Tengo en el carrito: 2 × Jabón.')
         self.assertEqual(r['tipos'], ['inicio', 'catalogo', 'carrito', 'socios'], 'el tipo de página sigue yendo al Worker')
         self.assertEqual(r['delRobot'], [], 'nada del robot de D’CASA en el JS')
 
@@ -404,7 +404,7 @@ class TestChatEnElNavegador(NavegadorCase):
 class TestBurbujaEnLaPagina(NavegadorCase):
 
     def test_la_burbuja_a_360_390_430_y_1366(self):
-        rutas = ('/', '/shop', self.colchon.website_url, '/shop/cart')
+        rutas = ('/', '/shop', self.jabon.website_url, '/shop/cart')
         for ancho, movil in ((360, True), (390, True), (430, True), (1366, False)):
             for ruta in rutas:
                 with self.subTest(ancho=ancho, ruta=ruta), self.chrome(ancho, movil=movil) as browser:
@@ -503,7 +503,7 @@ class TestBurbujaNoTapa(NavegadorCase):
     def test_la_burbuja_se_aparta_de_los_botones_de_categoria_de_no_encontramos(self):
         # Los botones de «no encontramos» son las categorías de la portada que tienen algo publicado. En el catálogo de
         # Tommalo ninguna lo tiene (en D'CASA, sí): se pone un producto de la prueba en una para que salga el botón.
-        self.colchon.public_categ_ids = [Command.set(self.env.ref('website_dcasa.public_category_colchones').ids)]
+        self.jabon.public_categ_ids = [Command.set(self.env.ref('website_dcasa.public_category_hogar').ids)]
         self.env.flush_all()
         with self.chrome(390) as browser:
             browser.navigate_to(self.base_url() + '/shop?search=zzqqxxnoexiste', wait_stop=True)
@@ -552,7 +552,7 @@ class TestBurbujaQuieta(NavegadorCase):
 
     def test_en_la_ficha_y_con_el_chat_abierto(self):
         with self.chrome(1366, 768, movil=False) as browser:
-            browser.navigate_to(self.base_url() + self.colchon.website_url, wait_stop=True)
+            browser.navigate_to(self.base_url() + self.jabon.website_url, wait_stop=True)
             r = self.evaluar(browser, QUIETA_EN_LA_FICHA)
         self.assertEqual((r['quieta'], r['deLaMarca']), (0, True))
         self.assertEqual(r['alMoverse'], 0, 'en el precio y «Agregar al carrito», la misma')
@@ -561,7 +561,7 @@ class TestBurbujaQuieta(NavegadorCase):
 
     def test_con_movimiento_reducido_tambien(self):
         with self.chrome(390, reducido=True) as browser:
-            browser.navigate_to(self.base_url() + self.colchon.website_url, wait_stop=True)
+            browser.navigate_to(self.base_url() + self.jabon.website_url, wait_stop=True)
             r = self.evaluar(browser, NOCHE_BURBUJA)
         self.assertEqual((r['alLlegar'], r['cambios']), (True, 0))
 
@@ -582,7 +582,7 @@ class TestBrianDeNoche(NavegadorCase):
     def test_el_saludo_de_noche_con_y_sin_aviso(self):
         cerrada = 'Ahora la tienda está cerrada'
         with self.chrome(1366, 768, movil=False) as browser:
-            browser.navigate_to(self.base_url() + self.colchon.website_url, wait_stop=True)
+            browser.navigate_to(self.base_url() + self.jabon.website_url, wait_stop=True)
             r = self.evaluar(browser, NOCHE_CHAT)
         self.assertEqual((r['noche'], r['avisar']), (True, False), 'el pase dice la verdad y que no hay que avisar')
         self.assertTrue(r['deLaMarca'], 'de noche, la misma burbuja de la marca')
@@ -592,7 +592,7 @@ class TestBrianDeNoche(NavegadorCase):
         self.assertFalse([g for g in r['globos'] if cerrada in g])
         self.env['ir.config_parameter'].sudo().set_param('dcasa_brian_tienda.avisar_cerrado', 'True')
         with self.chrome(1366, 768, movil=False) as browser:
-            browser.navigate_to(self.base_url() + self.colchon.website_url, wait_stop=True)
+            browser.navigate_to(self.base_url() + self.jabon.website_url, wait_stop=True)
             r = self.evaluar(browser, NOCHE_CHAT)
         self.assertEqual((r['noche'], r['avisar']), (True, True))
         self.assertTrue(r['globos'][1].startswith(cerrada), r['globos'])
@@ -600,7 +600,7 @@ class TestBrianDeNoche(NavegadorCase):
 
     def test_la_burbuja_de_noche_es_la_de_dia(self):
         with self.chrome(1366, 768, movil=False) as browser:
-            browser.navigate_to(self.base_url() + self.colchon.website_url, wait_stop=True)
+            browser.navigate_to(self.base_url() + self.jabon.website_url, wait_stop=True)
             r = self.evaluar(browser, NOCHE_BURBUJA)
         self.assertEqual((r['alLlegar'], r['cambios']), (True, 0), 'naranja con el globo navy, y no cambia al bajar')
 
@@ -680,7 +680,7 @@ class TestCabeceraDeLaMarca(NavegadorCase):
 # El carrito en la barra del chat (pedido de la dueña, 2026-11-15): con algo en el carrito, el ícono de WhatsApp pasa a
 # ser el carrito con su cantidad; vacío, vuelve WhatsApp. Y el chat al día con el carrito que cambia la PÁGINA (el
 # «Agregar» de la ficha: Odoo y después el número del menú), también al seguir la conversación en otra página (el chat
-# decía «Tu carrito está vacío» con la cama ya puesta).
+# decía «Tu carrito está vacío» con la crema ya puesta).
 BARRA = """
     const barra = () => {
         const cab = document.querySelector('#o_dcbt_panel .o_dcbt_cab');
@@ -750,7 +750,7 @@ class TestCarritoEnLaBarra(NavegadorCase):
         super().setUp()
         # Los ids se leen ANTES de abrir el navegador: con la página abierta, sus pedidos (las fotos, el pase) usan el
         # mismo cursor de la prueba y leer el ORM a la vez daba, a veces, una variante vacía (2026-11-16).
-        self.ids = (self.colchon.id, self.colchon.product_variant_id.id)
+        self.ids = (self.jabon.id, self.jabon.product_variant_id.id)
 
     def _js(self, codigo):
         plantilla, variante = self.ids
@@ -814,19 +814,19 @@ VENDEDOR = """(async () => {
     document.querySelector('button.o_dcbt_burbuja').click();
     await hasta(() => globos().some((g) => g.includes('Hola, soy Andrés')) && document.querySelector('#o_dcbt_panel .o_dcbt_chip'), 'el saludo');
     r.barraVacia = barra();
-    // Camas: tres de la base (desde su tarjeta).
-    escribir('Muéstrame camas');
-    const base = await hasta(() => [...document.querySelectorAll('#o_dcbt_panel .o_dcbt_carrusel .o_dcbt_tarjeta')].find((t) => /Base de Cama/i.test(t.textContent) && t.querySelector('[data-agregar]')), 'la base de cama');
+    // Cremas: tres de la base (desde su tarjeta).
+    escribir('Muéstrame cremas');
+    const base = await hasta(() => [...document.querySelectorAll('#o_dcbt_panel .o_dcbt_carrusel .o_dcbt_tarjeta')].find((t) => /Base de Crema/i.test(t.textContent) && t.querySelector('[data-agregar]')), 'la base de crema');
     base.querySelector('[data-paso="1"]').click();
     base.querySelector('[data-paso="1"]').click();
     base.querySelector('[data-agregar]').click();
     await hasta(() => barra(), 'la barra del carrito');
     r.barra = barra();
     r.composer = caja(document.querySelector('#o_dcbt_panel .o_dcbt_composer'));
-    // Colchones: uno.
-    escribir('Ahora colchones');
-    const colchon = await hasta(() => document.querySelectorAll('#o_dcbt_panel .o_dcbt_carrusel').length >= 2 && [...document.querySelectorAll('#o_dcbt_panel .o_dcbt_carrusel')].pop().querySelector('.o_dcbt_tarjeta [data-agregar]'), 'los colchones');
-    colchon.click();
+    // Jabones: uno.
+    escribir('Ahora jabones');
+    const jabon = await hasta(() => document.querySelectorAll('#o_dcbt_panel .o_dcbt_carrusel').length >= 2 && [...document.querySelectorAll('#o_dcbt_panel .o_dcbt_carrusel')].pop().querySelector('.o_dcbt_tarjeta [data-agregar]'), 'los jabones');
+    jabon.click();
     await hasta(() => (barra() || {}).texto && barra().texto.includes('4 artículos'), 'cuatro artículos');
     // A5: la vitrina, con «En tu carrito» arriba y un grupo por pedido (el más reciente primero, abierto). En la
     // computadora el chat ya abrió ampliado: solo en el celular hay que pedir la cuadrícula.
@@ -854,8 +854,8 @@ VENDEDOR = """(async () => {
     const hoja = document.querySelector('#o_dcbt_hoja');
     r.hoja = { expandida: barra().expandida, foco: document.activeElement === hoja.querySelector('.o_dcbt_hoja_cerrar'), lineas: hoja.querySelectorAll('.o_dcbt_linea_carrito').length,
                envio: hoja.querySelectorAll('.o_dcbt_linea_envio').length, texto: hoja.textContent, caja: caja(hoja), panel: caja(document.querySelector('#o_dcbt_panel')) };
-    // A3: quitar el colchón desde la hoja → Andrés reacciona UNA vez.
-    [...hoja.querySelectorAll('.o_dcbt_linea_carrito')].find((l) => /Colch/i.test(l.textContent)).querySelector('[data-quitar]').click();
+    // A3: quitar el jabón desde la hoja → Andrés reacciona UNA vez.
+    [...hoja.querySelectorAll('.o_dcbt_linea_carrito')].find((l) => /Jab/i.test(l.textContent)).querySelector('[data-quitar]').click();
     await hasta(() => cuantos('Vi que quitaste') === 1, 'la reacción al quitar');
     r.reaccion = globos().find((g) => g.includes('Vi que quitaste'));
     r.chipsReaccion = [...document.querySelectorAll('#o_dcbt_panel .o_dcbt_chips')].pop().textContent;
@@ -877,7 +877,7 @@ VENDEDOR = """(async () => {
     }
     r.trasEsc = { hoja: !document.querySelector('#o_dcbt_hoja').hidden, chat: !document.querySelector('#o_dcbt_panel').hidden };
     // A4: cambiar el carrito conversando: Andrés propone, la página lo aplica en Odoo y Andrés confirma.
-    escribir('Quita la base de cama, por favor');
+    escribir('Quita la base de crema, por favor');
     await hasta(() => globos().some((g) => g.startsWith('Listo, quité')), 'el «listo, quité»');
     await hasta(() => !barra(), 'la barra se va con el carrito vacío');
     r.quite = globos().find((g) => g.startsWith('Listo, quité'));
@@ -894,8 +894,8 @@ class TestAndresVendedor(NavegadorCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.costa = cls.env['dcasa.envio.lugar'].search([('name', '=', 'Costa Inventada')])
-        # Las camas del catálogo de ejemplo saldrían antes en «camas»: el chat de prueba ve solo las suyas.
-        cls.env['product.template'].search([('name', 'ilike', 'cama'), ('name', 'not ilike', 'ZZBT')]).write(
+        # Las cremas del catálogo de ejemplo saldrían antes en «cremas»: el chat de prueba ve solo las suyas.
+        cls.env['product.template'].search([('name', 'ilike', 'crema'), ('name', 'not ilike', 'ZZBT')]).write(
             {'is_published': False})
 
     def test_la_barra_el_envio_la_reaccion_cambiar_conversando_y_la_vitrina(self):
@@ -912,10 +912,10 @@ class TestAndresVendedor(NavegadorCase):
             self.assertEqual(r['barra']['pdf'], '/dcasa/brian/v1/carrito/cotizacion.pdf')
             self.assertEqual(r['barra']['expandida'], 'false')
             self.assertLessEqual(r['barra']['caja']['abajo'], r['composer']['y'] + 1, 'encima del campo de texto')
-            # A5: «En tu carrito» arriba; Colchones (lo último) abierto, Camas plegado.
+            # A5: «En tu carrito» arriba; Jabones (lo último) abierto, Cremas plegado.
             self.assertIn('o_dcbt_seccion_carrito', r['vitrina']['primero'])
             self.assertEqual(r['vitrina']['lineas'], 2)
-            self.assertEqual([g[:2] for g in r['vitrina']['grupos']], [['Colchones', True], ['Camas', False]])
+            self.assertEqual([g[:2] for g in r['vitrina']['grupos']], [['Jabones', True], ['Cremas', False]])
             # A2: la línea del envío de Odoo en la tarjeta y la barra; Andrés no dijo ninguna cifra al sumarlo.
             self.assertIn('Envío a domicilio: Costa Inventada', r['envioEnLaTarjeta'])
             self.assertIn('+ envío', r['barraConEnvio']['texto'])
@@ -926,7 +926,7 @@ class TestAndresVendedor(NavegadorCase):
             self.assertIn('Total con ITBMS', r['hoja']['texto'])
             self.assertGreaterEqual(r['hoja']['caja']['y'], r['hoja']['panel']['y'])
             # A3: una sola reacción, amable y con alternativas; la segunda baja no la repite.
-            self.assertTrue(r['reaccion'].startswith('Vi que quitaste ZZBT Colchón Queen'), r['reaccion'])
+            self.assertTrue(r['reaccion'].startswith('Vi que quitaste ZZBT Jabón Grande'), r['reaccion'])
             self.assertIn('Una más económica', r['chipsReaccion'])
             self.assertEqual((r['reacciones'], r['marca']), (1, '1'))
             self.assertEqual(r['trasEsc'], {'hoja': False, 'chat': True})
@@ -1006,7 +1006,7 @@ VOZ_GRABAR = """(async () => {
     r.antes = { voz: voz(), pedidos: microfono.pedidos, etiqueta: boton.getAttribute('aria-label'),
                 lado: boton.nextElementSibling === panel().querySelector('.o_dcbt_enviar[type="submit"]') };
     // Algo en el carrito: con la barra de A1 a la vista, la nota no tapa nada.
-    escribir('Colchones');
+    escribir('Jabones');
     const tarjeta = await hasta(() => panel().querySelector('.o_dcbt_carrusel .o_dcbt_tarjeta [data-agregar]'), 'las tarjetas');
     tarjeta.click();
     await hasta(() => !panel().querySelector('.o_dcbt_barra').hidden, 'la barra del carrito');
@@ -1021,7 +1021,7 @@ VOZ_GRABAR = """(async () => {
                 nota: caja(panel().querySelector('.o_dcbt_voz_grabando')), mensajes: caja(panel().querySelector('.o_dcbt_mensajes')),
                 panel: caja(panel()), alto: innerHeight, ancho: innerWidth };
     tocar('.o_dcbt_voz_listo');
-    await hasta(() => delCliente().includes('Busco un colchón queen'), 'el texto en el globo del visitante');
+    await hasta(() => delCliente().includes('Busco un jabón grande'), 'el texto en el globo del visitante');
     await hasta(() => globos().filter((g) => g.startsWith('Encontré estos')).length > respuestas, 'la respuesta de Andrés al texto');
     r.despues = { voz: voz(), apagados: apagados(), grabacion: window.__dcasaBrian.grabacion,
                   guardado: sessionStorage.getItem('dcasa.brian.chat') || '' };
@@ -1164,7 +1164,7 @@ class TestNotaDeVoz(NavegadorCase):
             self.assertLess(nota['duracion_ms'], 30000)
             self.assertIsNone(nota['motivo'])
             textos = [c.get('texto') for c in self.worker.recibidos[recibidos:]]
-            self.assertIn('Busco un colchón queen', textos, 'el texto llegó por /tienda/v1/mensaje como un mensaje')
+            self.assertIn('Busco un jabón grande', textos, 'el texto llegó por /tienda/v1/mensaje como un mensaje')
 
     def test_cancelar_no_manda_nada_y_con_movimiento_reducido_quieto(self):
         voces, recibidos = len(self.worker.voces), len(self.worker.recibidos)
@@ -1190,19 +1190,19 @@ class TestNotaDeVoz(NavegadorCase):
         with self.chrome(1366, 768, movil=False, microfono=True) as browser:
             browser.navigate_to(self.base_url() + '/', wait_stop=True)
             # Corta sola al llegar al tope del Worker (aquí 3 s) y se manda.
-            self.worker.voz.update(max_segundos=3, texto='Busco una cama matrimonial')
+            self.worker.voz.update(max_segundos=3, texto='Busco una crema matrimonial')
             r = self.evaluar(browser, self._js(VOZ_PASO, SOLA_AL_TOPE), timeout=120)
             self.assertTrue(r['tope'].endswith('/ 0:03'), r['tope'])
-            self.assertEqual(r['nuevosDelCliente'], ['Busco una cama matrimonial'])
+            self.assertEqual(r['nuevosDelCliente'], ['Busco una crema matrimonial'])
             self.assertLessEqual(self.worker.voces[-1]['duracion_ms'], 3000)
             self.assertGreaterEqual(self.worker.voces[-1]['duracion_ms'], 2500)
             self.assertTrue(r['apagados'])
             self.worker.voz['max_segundos'] = 60
             # Recortado: el texto queda en la caja para que el visitante lo revise y lo mande él.
             recibidos = len(self.worker.recibidos)
-            self.worker.voz.update(texto='Quiero ver salas', recortado=True)
+            self.worker.voz.update(texto='Quiero ver lámparas', recortado=True)
             r = self.evaluar(browser, self._js(VOZ_PASO, LISTO_Y_CAJA), timeout=120)
-            self.assertEqual(r['campo'], 'Quiero ver salas')
+            self.assertEqual(r['campo'], 'Quiero ver lámparas')
             self.assertTrue(r['foco'])
             self.assertEqual(r['nuevosDelCliente'], [], 'no se mandó solo')
             self.assertEqual(len(self.worker.recibidos), recibidos)

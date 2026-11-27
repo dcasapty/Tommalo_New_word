@@ -13,13 +13,13 @@ class TestBusqueda(BaseCase):
 
     def test_raiz_singulariza(self):
         self.assertEqual(P.raiz('jabones'), 'jabon')
-        self.assertEqual(P.raiz('lámparas'), 'lámpara')
+        self.assertEqual(P.raiz('lámparas'), 'lampara')
         self.assertEqual(P.raiz('espejos'), 'espejo')
         self.assertEqual(P.raiz('mesa'), 'mesa')
         self.assertEqual(P.raiz('es'), 'es')
 
     def test_palabras_ignoran_signos(self):
-        self.assertEqual(P.palabras('¿Tienen lámparas GRANDE?'), ['tienen', 'lámpara', 'grande'])
+        self.assertEqual(P.palabras('¿Tienen lámparas GRANDE?'), ['tienen', 'lampara', 'grande'])
         self.assertEqual(P.palabras('SOF-001'), ['sof', '001'])
         self.assertEqual(P.palabras('???'), [])
 

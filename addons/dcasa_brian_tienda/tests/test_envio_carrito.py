@@ -53,13 +53,13 @@ class TestEnvioEnElCarrito(TiendaCase):
     # ------------------------------------------------------------------ lo que sí
 
     def test_suma_el_envio_con_la_promocion_y_los_numeros_salen_de_odoo(self):
-        self.agregar(self.base_cama, 3)   # $209.97 sin ITBMS: pasa el mínimo de la promoción
+        self.agregar(self.base_crema, 3)   # $209.97 sin ITBMS: pasa el mínimo de la promoción
         datos = self.sumar(self.costa).json()
         self.assertTrue(datos['ok'], datos)
         self.assertFalse(datos['ya_estaba'])
         carrito = datos['carrito']
         self.assertEqual(carrito['envio'], {'lugar_id': self.costa.id, 'lugar': 'Costa Inventada'})
-        self.assertEqual([x['producto_id'] for x in carrito['lineas']], [self.base_cama.product_variant_id.id],
+        self.assertEqual([x['producto_id'] for x in carrito['lineas']], [self.base_crema.product_variant_id.id],
                          'el envío no va entre los productos')
         self.assertEqual(carrito['cantidad_total'], 3)
         (envio, promocion) = carrito['extras']
@@ -78,7 +78,7 @@ class TestEnvioEnElCarrito(TiendaCase):
         self.assertEqual(self.url_open(f'{RAIZ}/carrito').json()['carrito']['envio']['lugar_id'], self.costa.id)
 
     def test_sin_promocion_el_total_trae_el_envio_y_el_precio_nunca_lo_manda_el_navegador(self):
-        self.agregar(self.base_cama, 1)   # $69.99: no pasa el mínimo
+        self.agregar(self.base_crema, 1)   # $69.99: no pasa el mínimo
         carrito = self.sumar(self.costa, precio=1, total=1, price_unit=1).json()['carrito']
         self.assertEqual(self.envios(), [45.0], 'el precio de la calculadora, aunque el navegador mande otro')
         self.assertEqual(len(carrito['extras']), 1)
@@ -87,7 +87,7 @@ class TestEnvioEnElCarrito(TiendaCase):
         self.assertAlmostEqual(orden.amount_untaxed, 114.99)
 
     def test_otro_lugar_lo_reemplaza_y_el_mismo_ya_estaba(self):
-        self.agregar(self.base_cama, 3)
+        self.agregar(self.base_crema, 3)
         self.sumar(self.costa)
         otra_vez = self.sumar(self.costa).json()
         self.assertTrue(otra_vez['ya_estaba'])
@@ -97,29 +97,29 @@ class TestEnvioEnElCarrito(TiendaCase):
         self.assertEqual(self.envios(), [-20.0, 105.0])
 
     def test_cambiar_el_carrito_no_pone_el_envio_en_cero_y_la_promocion_sigue_a_la_compra(self):
-        self.agregar(self.base_cama, 1)
+        self.agregar(self.base_crema, 1)
         self.sumar(self.costa)
         self.assertEqual(self.envios(), [45.0])
         # Sube la cantidad desde el chat: la tienda revisa el carrito (el transportista dice $0) y el envío se queda.
-        datos = self.post('carrito/cantidad', {'producto_id': self.base_cama.product_variant_id.id, 'cantidad': 3})
+        datos = self.post('carrito/cantidad', {'producto_id': self.base_crema.product_variant_id.id, 'cantidad': 3})
         self.assertEqual(self.envios(), [-45.0, 45.0], 'pasó el mínimo: la promoción se suma con la compra')
         self.assertEqual(datos.json()['carrito']['total_texto'], '$209.97 + ITBMS')
         # Baja otra vez: dcasa_envios quita la promoción; el envío sigue con su precio.
-        self.post('carrito/cantidad', {'producto_id': self.base_cama.product_variant_id.id, 'cantidad': 1})
+        self.post('carrito/cantidad', {'producto_id': self.base_crema.product_variant_id.id, 'cantidad': 1})
         self.assertEqual(self.envios(), [45.0])
         # Agregar otra cosa (como el «Agregar» de la página) tampoco lo pone en cero.
-        self.agregar(self.colchon, 1)
+        self.agregar(self.jabon, 1)
         self.assertIn(45.0, self.envios())
         # Sin productos, el envío sale (como en Odoo).
-        for plantilla in (self.base_cama, self.colchon):
+        for plantilla in (self.base_crema, self.jabon):
             self.post('carrito/cantidad', {'producto_id': plantilla.product_variant_id.id, 'cantidad': 0})
         self.assertEqual(self.envios(), [])
 
     def test_la_tienda_de_odoo_tampoco_lo_pone_en_cero_y_la_marca_no_llega_por_rpc(self):
-        self.agregar(self.base_cama, 1)
+        self.agregar(self.base_crema, 1)
         self.sumar(self.costa)
         orden = self.orden()
-        linea = orden.order_line.filtered(lambda sol: sol.product_id == self.base_cama.product_variant_id)
+        linea = orden.order_line.filtered(lambda sol: sol.product_id == self.base_crema.product_variant_id)
         orden._cart_update_line_quantity(line_id=linea.id, quantity=2)     # lo que hace /shop/cart al cambiar
         self.assertEqual(self.envios(orden), [45.0])
         envio = orden.order_line.filtered('dcasa_envio_lugar_id')
@@ -127,7 +127,7 @@ class TestEnvioEnElCarrito(TiendaCase):
         self.assertEqual(envio.price_unit, 0.0, 'solo el objeto del servidor lo frena, nunca un valor de JSON')
 
     def test_el_pdf_trae_el_envio_y_su_promocion(self):
-        self.agregar(self.base_cama, 3)
+        self.agregar(self.base_crema, 3)
         self.sumar(self.costa)
         texto = ' '.join(self.url_open(f'{RAIZ}/carrito/cotizacion.pdf').text.split())
         self.assertIn('Envío a domicilio: Costa Inventada', texto)
@@ -139,7 +139,7 @@ class TestEnvioEnElCarrito(TiendaCase):
 
     def test_lo_que_no_se_suma(self):
         self.assertEqual(self.sumar(self.costa).json(), {'ok': False, 'motivo': 'sin_carrito'})
-        self.agregar(self.base_cama, 1)
+        self.agregar(self.base_crema, 1)
         self.assertEqual(self.sumar(99999999).json(), {'ok': False, 'motivo': 'lugar'})
         # Un lugar que agregó una vendedora: hasta que Gerencia lo revise no tiene precio para el cliente (como Juan).
         vendedora = new_test_user(self.env, login='zzbt_vend_envio', name='ZZBT Vendedora Envío',
@@ -162,14 +162,14 @@ class TestEnvioEnElCarrito(TiendaCase):
         self.assertEqual(self.sumar(self.costa).json(), {'ok': False, 'motivo': 'apagado'})
 
     def test_otro_visitante_no_toca_tu_carrito(self):
-        self.agregar(self.base_cama, 1)
+        self.agregar(self.base_crema, 1)
         mio = self.orden()
         self.otra_sesion()
         self.assertEqual(self.sumar(self.costa).json()['motivo'], 'sin_carrito')
         self.assertEqual(self.envios(mio), [])
 
     def test_los_topes_por_sesion_y_por_conexion(self):
-        self.agregar(self.base_cama, 1)
+        self.agregar(self.base_crema, 1)
         with patch.object(C, 'MAX_ENVIO_POR_HORA', 2):
             self.assertTrue(self.sumar(self.costa).json()['ok'])
             self.assertTrue(self.sumar(self.colon).json()['ok'])
@@ -178,7 +178,7 @@ class TestEnvioEnElCarrito(TiendaCase):
         self.assertEqual(self.orden().order_line.filtered('dcasa_envio_lugar_id').dcasa_envio_lugar_id, self.colon)
         # Por conexión: una sesión nueva no da cupo nuevo.
         self.otra_sesion()
-        self.agregar(self.base_cama, 1)
+        self.agregar(self.base_crema, 1)
         with patch.object(C, 'MAX_ENVIO_POR_CONEXION_HORA', 2):
             respuesta = self.sumar(self.costa)
         self.assertEqual(respuesta.status_code, 429, 'la conexión ya sumó dos envíos en esta hora')

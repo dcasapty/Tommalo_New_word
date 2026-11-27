@@ -66,7 +66,8 @@ _TOLERANCIA = 1e-6
 # (y lo que guarda el propio emparejamiento: si alguien lo escribe a mano, se vuelve a calcular).
 CAMPOS_DE_EMPAREJAR = {'sequence', 'dcasa_combo_cama_id', 'dcasa_combo_con_precio', 'dcasa_combo_ahorro_unitario',
                        'dcasa_combo_sin_campana'}
-# Precios en combo aprobados por la gerencia: {código de la pieza que acompaña: (precio normal con que se aprobó, precio en combo)}.
+# Precios en combo aprobados por la gerencia:
+# {código de la pieza que acompaña: (precio normal con que se aprobó, precio en combo)}.
 # Se cargan una sola vez (``_dcasa_cargar_precios_combo_aprobados``) y solo si la pieza sigue a ese precio normal: si
 # cambió, no se adivina (lo pone Gerencia). Vacío: los combos de Tommalo (si los hay) los decide su dueño.
 PRECIOS_COMBO_APROBADOS = {}

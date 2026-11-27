@@ -46,7 +46,7 @@ class TestCola(CorreoCase):
     def test_sale_por_resend_al_cliente_correcto_con_su_pdf(self):
         self.encender()
         empresa = self.env['res.partner'].create({
-            'name': 'Muebles Ana S.A.', 'is_company': True, 'phone': '6000-0011', 'email': 'empresa@example.com'})
+            'name': 'Articulos Ana S.A.', 'is_company': True, 'phone': '6000-0011', 'email': 'empresa@example.com'})
         contacto = self.env['res.partner'].create({
             'name': 'Ana Compras', 'parent_id': empresa.id, 'type': 'invoice', 'email': 'compras@example.com'})
         factura = self.pagada(contacto)
@@ -68,7 +68,7 @@ class TestCola(CorreoCase):
     def test_sin_correo_en_la_direccion_usa_el_de_la_ficha(self):
         self.encender()
         empresa = self.env['res.partner'].create({
-            'name': 'Muebles Beto S.A.', 'is_company': True, 'phone': '6000-0012', 'email': 'empresa.beto@example.com'})
+            'name': 'Articulos Beto S.A.', 'is_company': True, 'phone': '6000-0012', 'email': 'empresa.beto@example.com'})
         contacto = self.env['res.partner'].create({'name': 'Beto Compras', 'parent_id': empresa.id, 'type': 'invoice'})
         factura = self.pagada(contacto)
         self.procesar()

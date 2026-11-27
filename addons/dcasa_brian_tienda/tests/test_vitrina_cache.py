@@ -49,16 +49,16 @@ class TestVitrinaPublicaPocasConsultas(TiendaCase):
 
     def test_lo_de_cada_persona_no_se_mezcla(self):
         """El carrito de una persona no le quita productos a otra ni queda guardado en la memoria."""
-        self.colchon.website_sequence = -99999   # primero en «Lo más buscado»
+        self.jabon.website_sequence = -99999   # primero en «Lo más buscado»
         limpiar_cache_vitrina()
         anonima = self._plantillas(self.url_open(VITRINA))
-        self.assertEqual(anonima[0], self.colchon.id)
+        self.assertEqual(anonima[0], self.jabon.id)
         guardadas = sum(len(valor[1]) for valor in controlador._CACHE_VITRINA.values())
-        # Esta persona pone el colchón en su carrito: a ella ya no se le sugiere…
-        agregado = self.post('carrito/agregar', {'producto_id': self.colchon.product_variant_id.id, 'cantidad': 1})
+        # Esta persona pone el jabón en su carrito: a ella ya no se le sugiere…
+        agregado = self.post('carrito/agregar', {'producto_id': self.jabon.product_variant_id.id, 'cantidad': 1})
         self.assertTrue(agregado.json()['ok'], agregado.text)
         con_carrito = self._plantillas(self.url_open(VITRINA))
-        self.assertNotIn(self.colchon.id, con_carrito)
+        self.assertNotIn(self.jabon.id, con_carrito)
         # …y a otra persona, que llega después y toma lo guardado, sí.
         self.otra_sesion()
         otra = self._plantillas(self.url_open(VITRINA))
@@ -67,48 +67,48 @@ class TestVitrinaPublicaPocasConsultas(TiendaCase):
                          'lo guardado no cambió con el carrito de nadie')
         # Y una persona que llegó con el carrito vacío puede llenarlo y vaciarlo sin que la memoria se entere.
         for valor in controlador._CACHE_VITRINA.values():
-            self.assertIn(self.colchon.id, [ficha['plantilla_id'] for ficha in valor[1]])
+            self.assertIn(self.jabon.id, [ficha['plantilla_id'] for ficha in valor[1]])
 
     def test_lo_guardado_dura_un_minuto_y_se_renueva(self):
-        self.colchon.website_sequence = -99999
+        self.jabon.website_sequence = -99999
         limpiar_cache_vitrina()
         reloj = {'t': 1000.0}
         with patch.object(controlador.time, 'monotonic', side_effect=lambda: reloj['t']):
             primera = self.url_open(VITRINA).json()['productos']
-            self.colchon.name = 'ZZBT COLCHÓN QUEEN RENOMBRADO'
+            self.jabon.name = 'ZZBT JABÓN GRANDE RENOMBRADO'
             self.env.flush_all()
             reloj['t'] += SEGUNDOS_CACHE_VITRINA - 1
             todavia = self.url_open(VITRINA).json()['productos']
             self.assertEqual(todavia[0]['nombre'], primera[0]['nombre'], 'dentro del minuto se ve lo guardado')
             reloj['t'] += 2
             despues = self.url_open(VITRINA).json()['productos']
-            self.assertEqual(despues[0]['nombre'], 'ZZBT Colchón Queen Renombrado',
+            self.assertEqual(despues[0]['nombre'], 'ZZBT Jabón Grande Renombrado',
                              'pasado el minuto se arma de nuevo con lo vivo')
 
     def test_lo_viejo_de_la_tarjeta_nunca_llega_al_carrito(self):
         """Un producto que dejó de venderse o cambió de precio puede verse viejo en la tarjeta hasta un minuto; pero
         agregar siempre revisa lo vivo (publicado, precio y existencia) y el carrito cobra lo de ahora."""
-        self.colchon.website_sequence = -99999
+        self.jabon.website_sequence = -99999
         limpiar_cache_vitrina()
         antes = self.url_open(VITRINA).json()['productos'][0]
-        self.assertEqual(antes['plantilla_id'], self.colchon.id)
+        self.assertEqual(antes['plantilla_id'], self.jabon.id)
         self.assertTrue(antes['agregable'])
         # El precio cambia y el producto se despublica: la tarjeta guardada sigue como estaba…
-        self.colchon.list_price = 400.0
-        self.colchon.is_published = False
+        self.jabon.list_price = 400.0
+        self.jabon.is_published = False
         self.env.flush_all()
         guardada = self.url_open(VITRINA).json()['productos'][0]
-        self.assertEqual(guardada['plantilla_id'], self.colchon.id, 'dentro del minuto la tarjeta se ve como estaba')
+        self.assertEqual(guardada['plantilla_id'], self.jabon.id, 'dentro del minuto la tarjeta se ve como estaba')
         # …pero «Agregar» no deja comprar lo que ya no se vende,
-        agregado = self.post('carrito/agregar', {'producto_id': self.colchon.product_variant_id.id, 'cantidad': 1})
+        agregado = self.post('carrito/agregar', {'producto_id': self.jabon.product_variant_id.id, 'cantidad': 1})
         self.assertEqual(agregado.json(), {'ok': False, 'motivo': 'no_disponible'}, 'lo despublicado no se agrega')
         # y, vuelto a publicar, el carrito cobra el precio de AHORA, no el de la tarjeta guardada.
-        self.colchon.is_published = True
+        self.jabon.is_published = True
         self.env.flush_all()
-        agregado = self.post('carrito/agregar', {'producto_id': self.colchon.product_variant_id.id, 'cantidad': 1})
+        agregado = self.post('carrito/agregar', {'producto_id': self.jabon.product_variant_id.id, 'cantidad': 1})
         self.assertTrue(agregado.json()['ok'], agregado.text)
         linea = agregado.json()['carrito']['lineas'][0]
-        self.assertEqual(linea['producto_id'], self.colchon.product_variant_id.id)
+        self.assertEqual(linea['producto_id'], self.jabon.product_variant_id.id)
         total = agregado.json()['carrito']['total_texto']
         self.assertNotIn('278', total, 'el carrito no cobra el precio viejo de la tarjeta')
         self.assertIn('400', total, 'sino el vivo')
